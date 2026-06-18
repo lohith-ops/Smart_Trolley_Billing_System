@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Trolley - Inventory</title>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="styles.css">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .inventory-list {
+            display: grid;
+            gap: 16px;
+        }
+
+        .inventory-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 24px;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--panel-border);
+            border-radius: 12px;
+            transition: var(--transition);
+        }
+
+        .inventory-item:hover {
+            border-color: var(--accent-purple);
+            transform: scale(1.01);
+        }
+
+        .item-identity {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex: 2;
+        }
+
+        .tag-icon {
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .item-info h4 { font-size: 1.1rem; }
+        .item-info span { font-size: 0.8rem; color: var(--text-secondary); font-family: monospace; background: rgba(0,0,0,0.5); padding: 2px 6px; border-radius: 4px;}
+
+        .item-price {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--accent-green);
+            flex: 1;
+            text-align: right;
+        }
+
+        .item-actions {
+            flex: 1;
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+        
+        .btn-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            border: none;
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        
+        .btn-icon:hover {
+            background: var(--accent-cyan);
+            color: white;
+        }
+    </style>
+</head>
+<body class="dark-theme">
+    <div class="app-container">
+        <!-- Sidebar Navigation (Same as Dashboard) -->
+        <aside class="sidebar glass-panel">
+            <div class="sidebar-header">
+                <div class="logo-icon">
+                    <i class="fa-solid fa-cart-shopping"></i>
+                </div>
+                <h2>Smart Trolley</h2>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="index.html" class="nav-item">
+                    <i class="fa-solid fa-house"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="inventory.html" class="nav-item active">
+                    <i class="fa-solid fa-boxes-stacked"></i>
+                    <span>Inventory</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="fa-solid fa-users"></i>
+                    <span>Customers</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span>Analytics</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="fa-solid fa-gear"></i>
+                    <span>Settings</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="status-indicator">
+                    <span class="pulse-dot"></span>
+                    <span>System Online</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="top-header glass-panel">
+                <div class="header-search">
+                    <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                    <input type="text" placeholder="Search inventory...">
+                </div>
+                <div class="header-actions">
+                    <button class="icon-btn"><i class="fa-regular fa-bell"></i></button>
+                    <div class="user-profile">
+                        <img src="https://ui-avatars.com/api/?name=Admin&background=10b981&color=fff" alt="Admin">
+                        <span>Admin</span>
+                    </div>
+                </div>
+            </header>
+
+            <div class="glass-panel" style="padding: 24px; flex: 1;">
+                <div class="panel-header" style="margin-bottom: 24px;">
+                    <h3>Product Inventory</h3>
+                    <button class="btn btn-outline"><i class="fa-solid fa-plus"></i> Add Product</button>
+                </div>
+                
+                <div class="inventory-list" id="inventory-list">
+                    <!-- Populated by app.js -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Application Logic -->
+    <script src="app.js"></script>
+    <script>
+        // Specific logic for inventory page
+        document.addEventListener('DOMContentLoaded', () => {
+            const inventoryContainer = document.getElementById('inventory-list');
+            
+            // We use the same products defined in app.js
+            setTimeout(() => {
+                if (window.Products) {
+                    renderInventory(window.Products);
+                }
+            }, 100);
+
+            function renderInventory(products) {
+                inventoryContainer.innerHTML = '';
+                products.forEach(p => {
+                    const el = document.createElement('div');
+                    el.className = 'inventory-item';
+                    el.innerHTML = `
+                        <div class="item-identity">
+                            <div class="tag-icon"><i class="fa-solid fa-tag"></i></div>
+                            <div class="item-info">
+                                <h4>${p.name}</h4>
+                                <span>UID: ${p.uid}</span>
+                            </div>
+                        </div>
+                        <div class="item-price">$${p.price.toFixed(2)}</div>
+                        <div class="item-actions">
+                            <button class="btn-icon"><i class="fa-solid fa-pen"></i></button>
+                            <button class="btn-icon" style="color: var(--accent-red)"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                    `;
+                    inventoryContainer.appendChild(el);
+                });
+            }
+        });
+    </script>
+</body>
+</html>

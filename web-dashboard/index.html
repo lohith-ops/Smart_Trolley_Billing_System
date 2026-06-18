@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Trolley Dashboard</title>
+    <meta name="description" content="Dashboard for the IoT Smart Trolley Billing System">
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="styles.css">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="dark-theme">
+    <div class="app-container">
+        
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar glass-panel">
+            <div class="sidebar-header">
+                <div class="logo-icon">
+                    <i class="fa-solid fa-cart-shopping"></i>
+                </div>
+                <h2>Smart Trolley</h2>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="index.html" class="nav-item active">
+                    <i class="fa-solid fa-house"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="inventory.html" class="nav-item">
+                    <i class="fa-solid fa-boxes-stacked"></i>
+                    <span>Inventory</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="fa-solid fa-users"></i>
+                    <span>Customers</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span>Analytics</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="fa-solid fa-gear"></i>
+                    <span>Settings</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="status-indicator">
+                    <span class="pulse-dot"></span>
+                    <span>System Online</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="top-header glass-panel">
+                <div class="header-search">
+                    <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                    <input type="text" placeholder="Search transactions...">
+                </div>
+                <div class="header-actions">
+                    <button class="icon-btn"><i class="fa-regular fa-bell"></i></button>
+                    <div class="user-profile">
+                        <img src="https://ui-avatars.com/api/?name=Admin&background=10b981&color=fff" alt="Admin">
+                        <span>Admin</span>
+                    </div>
+                </div>
+            </header>
+
+            <div class="dashboard-grid">
+                <!-- Overview Cards -->
+                <div class="overview-cards">
+                    <div class="card glass-panel gradient-border">
+                        <div class="card-icon cyan"><i class="fa-solid fa-dollar-sign"></i></div>
+                        <div class="card-info">
+                            <p>Today's Revenue</p>
+                            <h3 id="stat-revenue">$0.00</h3>
+                        </div>
+                    </div>
+                    <div class="card glass-panel gradient-border">
+                        <div class="card-icon purple"><i class="fa-solid fa-cart-flatbed"></i></div>
+                        <div class="card-info">
+                            <p>Active Trolleys</p>
+                            <h3 id="stat-trolleys">0</h3>
+                        </div>
+                    </div>
+                    <div class="card glass-panel gradient-border">
+                        <div class="card-icon green"><i class="fa-solid fa-barcode"></i></div>
+                        <div class="card-info">
+                            <p>Items Scanned</p>
+                            <h3 id="stat-items">0</h3>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Trolley Feed -->
+                <div class="trolley-feed glass-panel">
+                    <div class="feed-header">
+                        <h3>Live Cart Activity</h3>
+                        <button class="btn btn-danger" id="reset-btn"><i class="fa-solid fa-rotate-left"></i> Reset Cart</button>
+                    </div>
+                    <div class="feed-list" id="transaction-feed">
+                        <!-- Dynamic items will be injected here via app.js -->
+                        <div class="empty-state">
+                            <i class="fa-regular fa-clock"></i>
+                            <p>Waiting for trolley scans...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Carts Overview -->
+                <div class="live-carts glass-panel">
+                    <div class="panel-header">
+                        <h3>Active Trolleys</h3>
+                        <button class="btn btn-checkout" id="checkout-btn">
+                            <i class="fa-solid fa-receipt"></i> Checkout
+                        </button>
+                    </div>
+                    <div class="cart-list" id="active-carts-container">
+                        <!-- Dynamic carts will be injected here via app.js -->
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Receipt Modal -->
+    <div class="modal-overlay" id="receipt-modal">
+        <div class="modal-box glass-panel">
+            <div class="modal-icon">
+                <i class="fa-solid fa-circle-check"></i>
+            </div>
+            <h2>Checkout Complete!</h2>
+            <p class="modal-sub">Transaction saved successfully</p>
+            <div class="receipt-total">
+                <span>Total Amount</span>
+                <h1 id="receipt-amount">Rs.0.00</h1>
+            </div>
+            <div class="receipt-meta" id="receipt-meta"></div>
+            <button class="btn btn-outline" id="modal-close-btn">Close</button>
+        </div>
+    </div>
+
+    <!-- Registration Modal -->
+    <div class="modal-overlay" id="register-modal">
+        <div class="modal-box glass-panel">
+            <div class="modal-icon" style="color: #3b82f6;">
+                <i class="fa-solid fa-plus-circle"></i>
+            </div>
+            <h2>Register New Product</h2>
+            <p class="modal-sub">Unknown RFID Card Scanned</p>
+            
+            <form id="register-form" class="register-form">
+                <div class="form-group">
+                    <label>Card UID</label>
+                    <input type="text" id="reg-uid" readonly class="form-input readonly-input">
+                </div>
+                <div class="form-group">
+                    <label>Product Name</label>
+                    <input type="text" id="reg-name" required placeholder="e.g. Milk 1L" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label>Price (Rs.)</label>
+                    <input type="number" step="0.01" id="reg-price" required placeholder="0.00" class="form-input">
+                </div>
+                
+                <div class="form-actions">
+                    <button type="button" class="btn btn-outline" id="reg-cancel-btn">Cancel</button>
+                    <button type="submit" class="btn btn-checkout" style="background: linear-gradient(135deg, #3b82f6, #2563eb);">Save Product</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Application Logic -->
+    <script src="app.js"></script>
+</body>
+</html>
