@@ -139,23 +139,41 @@ void loop() {
     currentMode = "ADD";
   }
 
-  // ── 2. RECEIVE FROM PYTHON (LCD display commands) ────────────────────────
+  // ── 2. RECEIVE FROM PYTHON (LCD display & Buzzer commands) ───────────────
   // MUST be before RFID block — RFID uses early return which would block this.
   if (Serial.available()) {
     String msg = Serial.readStringUntil('\n');
     msg.trim();
 
-    if (msg.startsWith("ITEM:")) {
-      // Format: ITEM:<name>|TOTAL:<price>
+    if (msg.startsWith("LCD:")) {
+      // Format: LCD:Line1|Line2 or LCD:SingleLine
       int sep = msg.indexOf('|');
       if (sep != -1) {
-        String itemName  = msg.substring(5, sep);          // after "ITEM:"
-        String totalStr  = msg.substring(sep + 7);         // after "|TOTAL:"
-        lcdShow(itemName, "Rs." + totalStr);
+        String line1 = msg.substring(4, sep);
+        String line2 = msg.substring(sep + 1);
+        lcdShow(line1, line2);
+      } else {
+        lcdShow(msg.substring(4));
+      }
+    }
+    else if (msg.startsWith("BEEP:")) {
+      int count = msg.substring(5).toInt();
+      for (int i = 0; i < count; i++) {
+        if (i > 0) delay(100);
+        beepOnce();
+      }
+    }
+    else if (msg.startsWith("ITEM:")) {
+      // Legacy Format: ITEM:<name>|TOTAL:<price>
+      int sep = msg.indexOf('|');
+      if (sep != -1) {
+        String itemName  = msg.substring(5, sep);
+        String totalStr  = msg.substring(sep + 7);
+        lcdShow(itemName, "Total: Rs." + totalStr);
       }
     }
     else if (msg == "CMD:RESET") {
-      lcdShow("Cart Reset!", "Rs.0.00");
+      lcdShow("Cart Reset!", "Total: Rs.0.00");
       delay(1200);
       lcdShow("Mode: " + currentMode, "Scan card...");
     }

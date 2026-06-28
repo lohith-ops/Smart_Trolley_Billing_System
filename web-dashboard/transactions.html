@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Trolley - Transaction History</title>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="styles.css">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="dark-theme">
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar glass-panel">
+            <div class="sidebar-header">
+                <div class="logo-icon">
+                    <i class="fa-solid fa-cart-shopping"></i>
+                </div>
+                <h2>Smart Trolley</h2>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="index.html" class="nav-item">
+                    <i class="fa-solid fa-house"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="inventory.html" class="nav-item">
+                    <i class="fa-solid fa-boxes-stacked"></i>
+                    <span>Inventory</span>
+                </a>
+                <a href="transactions.html" class="nav-item active">
+                    <i class="fa-solid fa-receipt"></i>
+                    <span>Transactions</span>
+                </a>
+                <a href="analytics.html" class="nav-item">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span>Analytics</span>
+                </a>
+                <a href="settings.html" class="nav-item">
+                    <i class="fa-solid fa-gear"></i>
+                    <span>Settings</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="status-indicator">
+                    <span class="pulse-dot"></span>
+                    <span>System Online</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="top-header glass-panel">
+                <div class="header-search">
+                    <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                    <input type="text" id="tx-search" placeholder="Search transactions...">
+                </div>
+                <div class="header-actions">
+                    <button class="icon-btn"><i class="fa-regular fa-bell"></i></button>
+                    <div class="user-profile">
+                        <img src="https://ui-avatars.com/api/?name=Admin&background=10b981&color=fff" alt="Admin">
+                        <span>Admin</span>
+                    </div>
+                </div>
+            </header>
+
+            <div class="glass-panel" style="padding: 24px; flex: 1; display: flex; flex-direction: column;">
+                <div class="panel-header" style="margin-bottom: 16px;">
+                    <h3>Transaction Logs</h3>
+                </div>
+                
+                <div class="table-responsive" style="flex: 1;">
+                    <table class="transactions-table">
+                        <thead>
+                            <tr>
+                                <th>Transaction Date</th>
+                                <th>Items Purchased</th>
+                                <th>Total Revenue</th>
+                                <th style="text-align: right;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="transactions-list">
+                            <!-- Populated dynamically by transactions.js -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Receipt Breakdown Modal -->
+    <div class="modal-overlay" id="receipt-modal">
+        <div class="modal-box glass-panel">
+            <div class="modal-icon">
+                <i class="fa-solid fa-receipt"></i>
+            </div>
+            <h2>Transaction Receipt</h2>
+            <p class="modal-sub" id="receipt-date">Checked out date</p>
+            
+            <div class="receipt-total" style="background: rgba(6, 182, 212, 0.1); border-color: rgba(6, 182, 212, 0.3);">
+                <span>Total Amount Paid</span>
+                <h1 id="receipt-amount" style="color: var(--accent-cyan);">Rs.0.00</h1>
+            </div>
+            
+            <div class="receipt-meta" id="receipt-items-container">
+                <!-- Items list -->
+            </div>
+            
+            <button class="btn btn-outline" id="modal-close-btn">Close</button>
+        </div>
+    </div>
+
+    <!-- Application Logic -->
+    <script src="shared.js"></script>
+    <script src="transactions.js"></script>
+</body>
+</html>

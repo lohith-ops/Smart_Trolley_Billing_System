@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Trolley - Analytics</title>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="styles.css">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="dark-theme">
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar glass-panel">
+            <div class="sidebar-header">
+                <div class="logo-icon">
+                    <i class="fa-solid fa-cart-shopping"></i>
+                </div>
+                <h2>Smart Trolley</h2>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="index.html" class="nav-item">
+                    <i class="fa-solid fa-house"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="inventory.html" class="nav-item">
+                    <i class="fa-solid fa-boxes-stacked"></i>
+                    <span>Inventory</span>
+                </a>
+                <a href="transactions.html" class="nav-item">
+                    <i class="fa-solid fa-receipt"></i>
+                    <span>Transactions</span>
+                </a>
+                <a href="analytics.html" class="nav-item active">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span>Analytics</span>
+                </a>
+                <a href="settings.html" class="nav-item">
+                    <i class="fa-solid fa-gear"></i>
+                    <span>Settings</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="status-indicator">
+                    <span class="pulse-dot"></span>
+                    <span>System Online</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="top-header glass-panel">
+                <div style="font-weight: 600; font-size: 1.1rem; color: var(--text-primary);">
+                    Analytics Dashboard
+                </div>
+                <div class="header-actions">
+                    <button class="icon-btn"><i class="fa-regular fa-bell"></i></button>
+                    <div class="user-profile">
+                        <img src="https://ui-avatars.com/api/?name=Admin&background=10b981&color=fff" alt="Admin">
+                        <span>Admin</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Metrics Overview Cards -->
+            <div class="overview-cards">
+                <div class="card glass-panel gradient-border">
+                    <div class="card-icon cyan"><i class="fa-solid fa-chart-bar"></i></div>
+                    <div class="card-info">
+                        <p>Total Revenue</p>
+                        <h3 id="metric-revenue">Rs.0.00</h3>
+                    </div>
+                </div>
+                <div class="card glass-panel gradient-border">
+                    <div class="card-icon purple"><i class="fa-solid fa-receipt"></i></div>
+                    <div class="card-info">
+                        <p>Total Checkouts</p>
+                        <h3 id="metric-checkouts">0</h3>
+                    </div>
+                </div>
+                <div class="card glass-panel gradient-border">
+                    <div class="card-icon green"><i class="fa-solid fa-calculator"></i></div>
+                    <div class="card-info">
+                        <p>Average Basket Total</p>
+                        <h3 id="metric-avg-basket">Rs.0.00</h3>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Container -->
+            <div class="analytics-grid">
+                <div class="glass-panel analytics-chart-panel">
+                    <h3>Revenue Growth</h3>
+                    <div style="position: relative; height: calc(100% - 40px); width: 100%;">
+                        <canvas id="revenue-chart"></canvas>
+                    </div>
+                </div>
+                <div class="glass-panel analytics-chart-panel">
+                    <h3>Popular Products (Quantities Sold)</h3>
+                    <div style="position: relative; height: calc(100% - 40px); width: 100%;">
+                        <canvas id="product-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top Products Table -->
+            <div class="glass-panel" style="padding: 24px;">
+                <h3 style="font-weight:600; font-size:1.1rem; margin-bottom:16px;">Top Performing Products</h3>
+                <div class="table-responsive">
+                    <table class="transactions-table">
+                        <thead>
+                            <tr>
+                                <th>Product Name</th>
+                                <th>Quantity Sold</th>
+                                <th>Total Revenue Generated</th>
+                            </tr>
+                        </thead>
+                        <tbody id="top-products-body">
+                            <!-- Populated dynamically by analytics.js -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Application Logic -->
+    <script src="shared.js"></script>
+    <script src="analytics.js"></script>
+</body>
+</html>

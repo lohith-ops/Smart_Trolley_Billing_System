@@ -678,9 +678,292 @@ body.dark-theme {
     color: var(--text-primary);
 }
 
-/* Responsiveness */
+/* ── Itemized Cart Detail Display ────────────────────────────────────────── */
+.active-cart {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+}
+.cart-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    padding-bottom: 10px;
+}
+.cart-items-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 4px;
+    max-height: 180px;
+    overflow-y: auto;
+}
+.cart-detail-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    padding: 2px 4px;
+}
+.cart-detail-row span.qty {
+    color: var(--accent-cyan);
+    font-weight: 600;
+    margin-right: 6px;
+    font-family: monospace;
+}
+
+/* ── Collapsible Simulator Panel ────────────────────────────────────────── */
+.simulator-panel {
+    position: fixed;
+    top: 16px;
+    right: -360px;
+    width: 340px;
+    height: calc(100vh - 32px);
+    z-index: 100;
+    transition: var(--transition);
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    background: rgba(15, 17, 21, 0.95);
+    border-left: 1px solid var(--panel-border);
+}
+.simulator-panel.open {
+    right: 16px;
+    box-shadow: -10px 0 30px rgba(0,0,0,0.5);
+}
+.simulator-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--panel-border);
+    padding-bottom: 12px;
+}
+.simulator-header h3 {
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent-cyan), #3b82f6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.simulator-close {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 1.2rem;
+    transition: var(--transition);
+}
+.simulator-close:hover {
+    color: var(--accent-red);
+}
+.sim-toggle-btn {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    z-index: 99;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--grad-primary);
+    border: none;
+    color: white;
+    font-size: 1.4rem;
+    cursor: pointer;
+    box-shadow: 0 4px 15px var(--accent-cyan-glow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+}
+.sim-toggle-btn:hover {
+    transform: scale(1.1) rotate(15deg);
+}
+
+.sim-group {
+    margin-bottom: 20px;
+}
+.sim-group label {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.sim-mode-toggle {
+    display: flex;
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 4px;
+    gap: 4px;
+}
+.sim-mode-opt {
+    flex: 1;
+    padding: 8px;
+    text-align: center;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: var(--transition);
+    color: var(--text-secondary);
+}
+.sim-mode-opt.active[data-mode="ADD"] {
+    background: rgba(16, 185, 129, 0.2);
+    color: var(--accent-green);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+.sim-mode-opt.active[data-mode="REMOVE"] {
+    background: rgba(244, 63, 94, 0.2);
+    color: var(--accent-red);
+    border: 1px solid rgba(244, 63, 94, 0.3);
+}
+
+.sim-hardware-box {
+    background: #000;
+    border: 2px solid #333;
+    border-radius: 12px;
+    padding: 16px;
+    margin-top: auto;
+    font-family: monospace;
+    box-shadow: inset 0 0 15px rgba(0,255,0,0.1);
+}
+.sim-lcd-screen {
+    background: #2b3a1a;
+    border: 4px solid #1a2410;
+    color: #8ce13b;
+    padding: 12px;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    letter-spacing: 1px;
+    line-height: 1.4;
+    text-shadow: 0 0 4px rgba(140,225,59,0.5);
+    height: 64px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+.sim-buzzer-light {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
+    font-size: 0.8rem;
+    color: #666;
+}
+.buzzer-led {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #444;
+    transition: background 0.1s ease;
+}
+.buzzer-led.beep {
+    background: var(--accent-red);
+    box-shadow: 0 0 10px var(--accent-red);
+}
+
+/* ── CRUD Form Actions ────────────────────────────────────────────────── */
+.table-responsive {
+    width: 100%;
+    overflow-x: auto;
+}
+
+/* ── Transactions Layout ───────────────────────────────────────────────── */
+.transactions-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 16px;
+    text-align: left;
+}
+.transactions-table th {
+    padding: 14px 20px;
+    color: var(--text-secondary);
+    font-weight: 500;
+    border-bottom: 1px solid var(--panel-border);
+    font-size: 0.9rem;
+}
+.transactions-table td {
+    padding: 16px 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    font-size: 0.95rem;
+}
+.transactions-table tr:hover td {
+    background: rgba(255,255,255,0.02);
+}
+
+/* ── Analytics Elements ────────────────────────────────────────────────── */
+.analytics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+    gap: 24px;
+}
+.analytics-chart-panel {
+    padding: 24px;
+    height: 320px;
+    position: relative;
+}
+.analytics-chart-panel h3 {
+    margin-bottom: 20px;
+    font-weight: 600;
+    font-size: 1.05rem;
+}
+.top-items-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.top-item-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 8px;
+    border: 1px solid var(--panel-border);
+}
+
+/* ── Settings Layout ───────────────────────────────────────────────────── */
+.settings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 24px;
+}
+.settings-card {
+    padding: 24px;
+}
+.settings-card h3 {
+    margin-bottom: 18px;
+    font-weight: 600;
+    font-size: 1.05rem;
+    border-bottom: 1px solid var(--panel-border);
+    padding-bottom: 8px;
+}
+.hardware-status-panel {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 8px;
+    border: 1px solid var(--panel-border);
+    margin-bottom: 16px;
+}
+.status-text {
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.status-text.online { color: var(--accent-green); }
+.status-text.offline { color: var(--accent-red); }
+
+/* ── Responsiveness ────────────────────────────────────────────────────── */
 @media (max-width: 1024px) {
-    .dashboard-grid {
+    .dashboard-grid, .analytics-grid {
         grid-template-columns: 1fr;
     }
 }
@@ -689,4 +972,5 @@ body.dark-theme {
     .sidebar { display: none; }
     .main-content { padding: 16px; }
     .overview-cards { grid-template-columns: 1fr; }
+    .settings-grid { grid-template-columns: 1fr; }
 }

@@ -24,6 +24,7 @@ transactions_collection = db['transactions']
 # Global State for Arduino Integration (Optional, can be used if Arduino is connected)
 current_mode = "ADD"
 global_ser = None
+SERIAL_PORT = "COM4"  # Default serial port, modifiable via settings UI
 
 # We can keep a "mock" state for testing, but let's persist everything to MongoDB
 # Active cart will be stored in carts_collection with id "cart_1"
@@ -71,7 +72,8 @@ def get_dashboard():
                 "id": c["_id"].split("_")[-1],
                 "total": c["total"],
                 "itemsContained": c["itemsContained"],
-                "lastActive": c["lastActive"]
+                "lastActive": c["lastActive"],
+                "items": c.get("items", {})
             })
 
     # Get recent feed
@@ -82,7 +84,10 @@ def get_dashboard():
         "revenue": revenue,
         "scannedItems": items_scanned,
         "activeCarts": active_carts,
-        "feed": feed_items
+        "feed": feed_items,
+        "currentMode": current_mode,
+        "arduinoConnected": global_ser is not None and global_ser.is_open,
+        "serialPort": SERIAL_PORT
     })
 
 def send_command_to_arduino(cmd):
@@ -182,7 +187,14 @@ def cart_action():
     
     product, total, uid_key = process_scan(action, uid)
     if not product:
+        send_command_to_arduino("LCD:Unknown Card!|Check Dashboard")
+        send_command_to_arduino("BEEP:3")
         return jsonify({"success": False, "message": "Product not found", "uid": uid_key}), 404
+        
+    action_symbol = "+" if action == "ADD" else "-"
+    short_name = f"{action_symbol} {product['name']}"[:16]
+    send_command_to_arduino(f"LCD:{short_name}|Total: Rs.{total:.2f}")
+    send_command_to_arduino("BEEP:1")
         
     cart = carts_collection.find_one({"_id": "cart_1"})
     return jsonify({
@@ -214,6 +226,8 @@ def perform_checkout():
             "total": cart["total"],
             "timestamp": time.time()
         })
+        send_command_to_arduino("LCD:Checked Out!|Total: Rs.0.00")
+        send_command_to_arduino("BEEP:2")
         return True, cart["total"], saved_items
     return False, 0.0, {}
 
@@ -233,6 +247,8 @@ def perform_reset():
         "total": cart.get("total", 0.0) if cart else 0.0,
         "timestamp": time.time()
     })
+    send_command_to_arduino("LCD:Cart Reset!|Total: Rs.0.00")
+    send_command_to_arduino("BEEP:2")
     return True
 
 @app.route("/api/checkout", methods=["POST"])
@@ -271,15 +287,154 @@ def register_product():
     )
     
     return jsonify({"success": True, "message": f"Registered {name}"})
-
 @app.route("/api/reset", methods=["POST"])
 def reset_cart():
     perform_reset()
     return jsonify({"success": True, "message": "Cart has been reset"})
 
+@app.route("/api/products/<uid>", methods=["DELETE"])
+def delete_product(uid):
+    uid_norm = normalize_uid(uid)
+    result = products_collection.delete_one({"uid_norm": uid_norm})
+    if result.deleted_count > 0:
+        return jsonify({"success": True, "message": "Product deleted successfully"})
+    return jsonify({"success": False, "message": "Product not found"}), 404
+
+@app.route("/api/simulator/mode", methods=["POST"])
+def set_simulator_mode():
+    global current_mode
+    data = request.json
+    mode = data.get("mode")
+    if mode not in ["ADD", "REMOVE"]:
+        return jsonify({"success": False, "message": "Invalid mode"}), 400
+    current_mode = mode
+    # Sync with Arduino if connected
+    if current_mode == "ADD":
+        send_command_to_arduino("LCD:You Can Now|Add Item")
+    else:
+        send_command_to_arduino("LCD:You Can Now|Remove Item")
+    return jsonify({"success": True, "mode": current_mode})
+
+@app.route("/api/transactions", methods=["GET"])
+def get_transactions():
+    transactions = list(transactions_collection.find({}, {"_id": 0}).sort("timestamp", -1))
+    return jsonify(transactions)
+
+@app.route("/api/analytics", methods=["GET"])
+def get_analytics():
+    # Revenue
+    pipeline_rev = [{"$group": {"_id": None, "totalRevenue": {"$sum": "$total"}}}]
+    rev_res = list(transactions_collection.aggregate(pipeline_rev))
+    total_revenue = rev_res[0]["totalRevenue"] if rev_res else 0.0
+    
+    # Checkouts count
+    total_checkouts = transactions_collection.count_documents({})
+    
+    # Average Order Value
+    avg_order_value = total_revenue / total_checkouts if total_checkouts > 0 else 0.0
+    
+    # Top products (calculate in Python for safety and simplicity)
+    product_counts = {}
+    product_revenue = {}
+    all_tx = list(transactions_collection.find({}))
+    for tx in all_tx:
+        items = tx.get("items", {})
+        for item_key, item_details in items.items():
+            name = item_details.get("name", "Unknown Item")
+            quantity = item_details.get("quantity", 0)
+            subtotal = item_details.get("subtotal", 0.0)
+            product_counts[name] = product_counts.get(name, 0) + quantity
+            product_revenue[name] = product_revenue.get(name, 0.0) + subtotal
+            
+    top_products = []
+    for name in product_counts:
+        top_products.append({
+            "name": name,
+            "quantity": product_counts[name],
+            "revenue": product_revenue[name]
+        })
+    top_products.sort(key=lambda x: x["quantity"], reverse=True)
+    top_products = top_products[:5]
+    
+    # Sales history timeseries
+    timeseries = []
+    recent_tx = list(transactions_collection.find({}, {"_id": 0}).sort("timestamp", 1).limit(15))
+    for tx in recent_tx:
+        timeseries.append({
+            "timestamp": tx["timestamp"],
+            "total": tx["total"]
+        })
+        
+    return jsonify({
+        "totalRevenue": total_revenue,
+        "totalCheckouts": total_checkouts,
+        "avgOrderValue": avg_order_value,
+        "topProducts": top_products,
+        "timeseries": timeseries
+    })
+
+@app.route("/api/settings/update", methods=["POST"])
+def update_settings():
+    global SERIAL_PORT, global_ser
+    data = request.json
+    new_port = data.get("serialPort")
+    
+    if new_port:
+        if new_port != SERIAL_PORT:
+            SERIAL_PORT = new_port
+            if global_ser:
+                try:
+                    global_ser.close()
+                except:
+                    pass
+                global_ser = None
+            print(f"Serial port updated to {SERIAL_PORT}. Reconnecting...")
+            
+    return jsonify({
+        "success": True, 
+        "serialPort": SERIAL_PORT,
+        "arduinoConnected": global_ser is not None and global_ser.is_open
+    })
+
+@app.route("/api/settings/database", methods=["POST"])
+def manage_database():
+    action = request.json.get("action")
+    if action == "seed":
+        products_collection.delete_many({})
+        defaults = [
+            {"uid": "5C 1E 7E 05", "name": "Rice 1kg", "price": 60.0},
+            {"uid": "76 E3 33 06", "name": "Sugar 1kg", "price": 45.0},
+            {"uid": "A3 B4 C5 D6", "name": "Whole Wheat Bread", "price": 25.0},
+            {"uid": "11 22 33 44", "name": "Milk (1 Gallon)", "price": 50.0},
+            {"uid": "99 88 77 66", "name": "Cheddar Cheese", "price": 80.0},
+            {"uid": "FF EE DD CC", "name": "Free Range Eggs", "price": 40.0}
+        ]
+        inserted = 0
+        for p in defaults:
+            uid_norm = normalize_uid(p["uid"])
+            products_collection.update_one(
+                {"uid_norm": uid_norm},
+                {"$set": {
+                    "uid": p["uid"],
+                    "name": p["name"],
+                    "price": float(p["price"]),
+                    "uid_norm": uid_norm
+                }},
+                upsert=True
+            )
+            inserted += 1
+        return jsonify({"success": True, "message": f"Database seeded with {inserted} default products."})
+        
+    elif action == "clear_transactions":
+        transactions_collection.delete_many({})
+        db['feed'].delete_many({})
+        perform_reset()
+        return jsonify({"success": True, "message": "Transaction logs and feed have been cleared."})
+        
+    return jsonify({"success": False, "message": "Invalid database action"}), 400
+
 def serial_loop():
-    global global_ser, current_mode
-    SERIAL_PORT = 'COM4'  # You can change this if your Arduino moves to COM3, COM5, etc.
+    global global_ser, current_mode, SERIAL_PORT
     BAUD_RATE = 9600
     
     while True:
@@ -304,7 +459,7 @@ def serial_loop():
                     if "RESET=0" in line:
                         print("[BTN] ✅ Reset button IS being pressed — triggering reset")
                         perform_reset()
-                        send_command_to_arduino("LCD:Cart Reset!|Rs.0")
+                        send_command_to_arduino("LCD:Cart Reset!|Total: Rs.0.00")
                         send_command_to_arduino("BEEP:2")
 
                 # ── Reset — catch ALL possible formats Arduino might send ─────
@@ -314,7 +469,7 @@ def serial_loop():
                       or "Bill cleared" in line):
                     print("[RESET] Hardware reset button triggered")
                     perform_reset()
-                    send_command_to_arduino("LCD:Cart Reset!|Rs.0")
+                    send_command_to_arduino("LCD:Cart Reset!|Total: Rs.0.00")
 
                 elif line == "MODE:ADD":
                     current_mode = "ADD"
@@ -328,9 +483,9 @@ def serial_loop():
                     uid = line.split("SCAN:")[1].strip()
                     product, total, uid_key = process_scan(current_mode, uid)
                     if product:
-                        action_text = "Added" if current_mode == "ADD" else "Removed"
-                        short_name = product["name"][:16]
-                        send_command_to_arduino(f"LCD:{short_name}|{action_text} Rs.{total:.2f}")
+                        action_symbol = "+" if current_mode == "ADD" else "-"
+                        short_name = f"{action_symbol} {product['name']}"[:16]
+                        send_command_to_arduino(f"LCD:{short_name}|Total: Rs.{total:.2f}")
                         send_command_to_arduino("BEEP:1")
                     else:
                         print(f"[WARN] Unknown UID Scanned: {uid}")

@@ -34,15 +34,15 @@
                     <i class="fa-solid fa-boxes-stacked"></i>
                     <span>Inventory</span>
                 </a>
-                <a href="#" class="nav-item">
-                    <i class="fa-solid fa-users"></i>
-                    <span>Customers</span>
+                <a href="transactions.html" class="nav-item">
+                    <i class="fa-solid fa-receipt"></i>
+                    <span>Transactions</span>
                 </a>
-                <a href="#" class="nav-item">
+                <a href="analytics.html" class="nav-item">
                     <i class="fa-solid fa-chart-line"></i>
                     <span>Analytics</span>
                 </a>
-                <a href="#" class="nav-item">
+                <a href="settings.html" class="nav-item">
                     <i class="fa-solid fa-gear"></i>
                     <span>Settings</span>
                 </a>
@@ -75,10 +75,10 @@
                 <!-- Overview Cards -->
                 <div class="overview-cards">
                     <div class="card glass-panel gradient-border">
-                        <div class="card-icon cyan"><i class="fa-solid fa-dollar-sign"></i></div>
+                        <div class="card-icon cyan"><i class="fa-solid fa-indian-rupee-sign"></i></div>
                         <div class="card-info">
                             <p>Today's Revenue</p>
-                            <h3 id="stat-revenue">$0.00</h3>
+                            <h3 id="stat-revenue">Rs.0.00</h3>
                         </div>
                     </div>
                     <div class="card glass-panel gradient-border">
@@ -176,7 +176,62 @@
         </div>
     </div>
 
+    <!-- Floating Simulator Toggle Button -->
+    <button class="sim-toggle-btn" id="sim-toggle-btn" title="Open Virtual Trolley Simulator">
+        <i class="fa-solid fa-microchip"></i>
+    </button>
+
+    <!-- Collapsible Simulator Panel -->
+    <aside class="simulator-panel glass-panel" id="sim-panel">
+        <div class="simulator-header">
+            <h3><i class="fa-solid fa-microchip"></i> Trolley Simulator</h3>
+            <button class="simulator-close" id="sim-close-btn"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        
+        <div class="sim-group">
+            <label>Scanner Action Mode</label>
+            <div class="sim-mode-toggle">
+                <div class="sim-mode-opt active" data-mode="ADD">ADD ITEM</div>
+                <div class="sim-mode-opt" data-mode="REMOVE">REMOVE ITEM</div>
+            </div>
+        </div>
+        
+        <div class="sim-group">
+            <label>RFID Product Catalog</label>
+            <select id="sim-product-select" class="form-input">
+                <!-- Populated dynamically -->
+            </select>
+        </div>
+        
+        <div class="sim-group">
+            <label>Or Custom RFID UID</label>
+            <input type="text" id="sim-custom-uid" placeholder="e.g. 5C 1E 7E 05" class="form-input">
+        </div>
+        
+        <div class="sim-group" style="display: flex; gap: 10px;">
+            <button class="btn btn-outline" id="sim-scan-btn" style="flex: 1;"><i class="fa-solid fa-rss"></i> Scan Tag</button>
+        </div>
+        
+        <!-- Simulated Hardware Frame -->
+        <div class="sim-hardware-box">
+            <div class="sim-lcd-screen">
+                <div id="sim-lcd-line1">Mode: ADD</div>
+                <div id="sim-lcd-line2">Scan card...</div>
+            </div>
+            <div class="sim-buzzer-light">
+                <div class="buzzer-led" id="sim-buzzer-led"></div>
+                <span>5V Active buzzer</span>
+            </div>
+        </div>
+
+        <div class="sim-group" style="display: flex; gap: 10px; margin-top: 15px;">
+            <button class="btn btn-danger" id="sim-reset-btn" style="flex: 1; padding: 6px;"><i class="fa-solid fa-rotate-left"></i> Reset</button>
+            <button class="btn btn-checkout" id="sim-checkout-btn" style="flex: 1; padding: 6px;"><i class="fa-solid fa-receipt"></i> Checkout</button>
+        </div>
+    </aside>
+
     <!-- Application Logic -->
-    <script src="app.js"></script>
+    <script src="shared.js"></script>
+    <script src="dashboard.js"></script>
 </body>
 </html>

@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Trolley - System Settings</title>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="styles.css">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="dark-theme">
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar glass-panel">
+            <div class="sidebar-header">
+                <div class="logo-icon">
+                    <i class="fa-solid fa-cart-shopping"></i>
+                </div>
+                <h2>Smart Trolley</h2>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="index.html" class="nav-item">
+                    <i class="fa-solid fa-house"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="inventory.html" class="nav-item">
+                    <i class="fa-solid fa-boxes-stacked"></i>
+                    <span>Inventory</span>
+                </a>
+                <a href="transactions.html" class="nav-item">
+                    <i class="fa-solid fa-receipt"></i>
+                    <span>Transactions</span>
+                </a>
+                <a href="analytics.html" class="nav-item">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span>Analytics</span>
+                </a>
+                <a href="settings.html" class="nav-item active">
+                    <i class="fa-solid fa-gear"></i>
+                    <span>Settings</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="status-indicator">
+                    <span class="pulse-dot"></span>
+                    <span>System Online</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="top-header glass-panel">
+                <div style="font-weight: 600; font-size: 1.1rem; color: var(--text-primary);">
+                    System Configuration
+                </div>
+                <div class="header-actions">
+                    <button class="icon-btn"><i class="fa-regular fa-bell"></i></button>
+                    <div class="user-profile">
+                        <img src="https://ui-avatars.com/api/?name=Admin&background=10b981&color=fff" alt="Admin">
+                        <span>Admin</span>
+                    </div>
+                </div>
+            </header>
+
+            <div class="settings-grid">
+                <!-- Hardware Integration -->
+                <div class="glass-panel settings-card">
+                    <h3><i class="fa-solid fa-microchip"></i> Hardware Settings</h3>
+                    
+                    <div class="hardware-status-panel">
+                        <span>Connection Status</span>
+                        <div id="hw-status" class="status-text offline">
+                            <span class="pulse-dot" style="animation:none; background:#ef4444;"></span>
+                            <span>Offline</span>
+                        </div>
+                    </div>
+
+                    <form id="settings-hw-form" style="margin-top: 16px;">
+                        <div class="form-group">
+                            <label>Arduino Serial Port (COM)</label>
+                            <input type="text" id="serial-port-input" placeholder="e.g. COM4" required class="form-input">
+                            <span style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 6px; display: block;">
+                                Check Device Manager for port allocation. Reconnects on change.
+                            </span>
+                        </div>
+                        <button type="submit" class="btn btn-outline" style="width: 100%; margin-top: 8px;">
+                            <i class="fa-solid fa-save"></i> Save Port Configuration
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Database Maintenance -->
+                <div class="glass-panel settings-card">
+                    <h3><i class="fa-solid fa-database"></i> Database Maintenance</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.4;">
+                        Perform catalog maintenance or wipe transaction history data.
+                    </p>
+                    
+                    <div class="form-group" style="display: flex; flex-direction: column; gap: 14px;">
+                        <button id="seed-db-btn" class="btn btn-outline" style="text-align: left; display: flex; align-items: center; gap: 12px;">
+                            <i class="fa-solid fa-folder-open" style="color: var(--accent-cyan);"></i>
+                            <div>
+                                <strong style="display: block; font-size: 0.9rem;">Reset & Re-Seed Catalog</strong>
+                                <span style="font-size: 0.75rem; color: var(--text-secondary); font-weight: normal;">Restore default products list (Rice, Sugar, Milk, Cheddar).</span>
+                            </div>
+                        </button>
+
+                        <button id="clear-tx-btn" class="btn btn-danger" style="text-align: left; display: flex; align-items: center; gap: 12px; background: rgba(244,63,94,0.05);">
+                            <i class="fa-solid fa-trash-can" style="color: var(--accent-red);"></i>
+                            <div>
+                                <strong style="display: block; font-size: 0.9rem;">Wipe Transaction History</strong>
+                                <span style="font-size: 0.75rem; color: var(--text-secondary); font-weight: normal;">Deletes transaction receipts and dashboard feed lists.</span>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Application Logic -->
+    <script src="shared.js"></script>
+    <script src="settings.js"></script>
+</body>
+</html>

@@ -107,15 +107,15 @@
                     <i class="fa-solid fa-boxes-stacked"></i>
                     <span>Inventory</span>
                 </a>
-                <a href="#" class="nav-item">
-                    <i class="fa-solid fa-users"></i>
-                    <span>Customers</span>
+                <a href="transactions.html" class="nav-item">
+                    <i class="fa-solid fa-receipt"></i>
+                    <span>Transactions</span>
                 </a>
-                <a href="#" class="nav-item">
+                <a href="analytics.html" class="nav-item">
                     <i class="fa-solid fa-chart-line"></i>
                     <span>Analytics</span>
                 </a>
-                <a href="#" class="nav-item">
+                <a href="settings.html" class="nav-item">
                     <i class="fa-solid fa-gear"></i>
                     <span>Settings</span>
                 </a>
@@ -147,53 +147,50 @@
             <div class="glass-panel" style="padding: 24px; flex: 1;">
                 <div class="panel-header" style="margin-bottom: 24px;">
                     <h3>Product Inventory</h3>
-                    <button class="btn btn-outline"><i class="fa-solid fa-plus"></i> Add Product</button>
+                    <button class="btn btn-outline" id="add-product-btn"><i class="fa-solid fa-plus"></i> Add Product</button>
                 </div>
                 
                 <div class="inventory-list" id="inventory-list">
-                    <!-- Populated by app.js -->
+                    <!-- Populated by inventory.js -->
                 </div>
             </div>
         </main>
     </div>
 
-    <!-- Application Logic -->
-    <script src="app.js"></script>
-    <script>
-        // Specific logic for inventory page
-        document.addEventListener('DOMContentLoaded', () => {
-            const inventoryContainer = document.getElementById('inventory-list');
+    <!-- Product Form Modal (Add / Edit) -->
+    <div class="modal-overlay" id="product-modal">
+        <div class="modal-box glass-panel">
+            <div class="modal-icon" style="color: var(--accent-cyan);">
+                <i class="fa-solid fa-box-open"></i>
+            </div>
+            <h2 id="modal-title">Add Product</h2>
+            <p class="modal-sub">Create or update catalog items</p>
             
-            // We use the same products defined in app.js
-            setTimeout(() => {
-                if (window.Products) {
-                    renderInventory(window.Products);
-                }
-            }, 100);
+            <form id="product-form" class="register-form">
+                <input type="hidden" id="prod-original-uid"> <!-- key for edit mode if UID changes -->
+                <div class="form-group">
+                    <label>Card UID</label>
+                    <input type="text" id="prod-uid" required placeholder="e.g. 5C 1E 7E 05" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label>Product Name</label>
+                    <input type="text" id="prod-name" required placeholder="e.g. Milk 1L" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label>Price (Rs.)</label>
+                    <input type="number" step="0.01" id="prod-price" required placeholder="0.00" class="form-input">
+                </div>
+                
+                <div class="form-actions">
+                    <button type="button" class="btn btn-outline" id="prod-cancel-btn">Cancel</button>
+                    <button type="submit" class="btn btn-checkout" id="prod-submit-btn">Save Product</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
-            function renderInventory(products) {
-                inventoryContainer.innerHTML = '';
-                products.forEach(p => {
-                    const el = document.createElement('div');
-                    el.className = 'inventory-item';
-                    el.innerHTML = `
-                        <div class="item-identity">
-                            <div class="tag-icon"><i class="fa-solid fa-tag"></i></div>
-                            <div class="item-info">
-                                <h4>${p.name}</h4>
-                                <span>UID: ${p.uid}</span>
-                            </div>
-                        </div>
-                        <div class="item-price">$${p.price.toFixed(2)}</div>
-                        <div class="item-actions">
-                            <button class="btn-icon"><i class="fa-solid fa-pen"></i></button>
-                            <button class="btn-icon" style="color: var(--accent-red)"><i class="fa-solid fa-trash"></i></button>
-                        </div>
-                    `;
-                    inventoryContainer.appendChild(el);
-                });
-            }
-        });
-    </script>
+    <!-- Application Logic -->
+    <script src="shared.js"></script>
+    <script src="inventory.js"></script>
 </body>
 </html>

@@ -99,7 +99,7 @@ async function fetchDashboard() {
 
 // Update Dashboard Top Numbers
 function updateStatsUI() {
-    els.revenue.innerText = `$${State.revenue.toFixed(2)}`;
+    els.revenue.innerText = `Rs.${State.revenue.toFixed(2)}`;
     els.trolleys.innerText = State.activeCarts.length;
     els.items.innerText = State.scannedItems;
 }
@@ -119,7 +119,7 @@ function renderCarts() {
                 <h4><div class="cart-status"></div> Trolley #${cart.id}</h4>
                 <p>Items: ${cart.itemsContained} · ${cart.lastActive}</p>
             </div>
-            <div class="cart-total">$${cart.total.toFixed(2)}</div>
+            <div class="cart-total">Rs.${cart.total.toFixed(2)}</div>
         </div>
     `).join('');
 }
@@ -147,7 +147,7 @@ function renderFeed() {
                         <h4>Added ${item.productName}</h4>
                         <span>Trolley #1 · ${timeString}</span>
                     </div>
-                    <div class="tx-amount positive">+$${item.productPrice.toFixed(2)}</div>
+                    <div class="tx-amount positive">+Rs.${item.productPrice.toFixed(2)}</div>
                 </div>
             `;
         } else if (item.actionType === 'REMOVE') {
@@ -158,7 +158,7 @@ function renderFeed() {
                         <h4>Removed ${item.productName}</h4>
                         <span>Trolley #1 · ${timeString}</span>
                     </div>
-                    <div class="tx-amount negative">-$${item.productPrice.toFixed(2)}</div>
+                    <div class="tx-amount negative">-Rs.${item.productPrice.toFixed(2)}</div>
                 </div>
             `;
         } else if (item.actionType === 'CHECKOUT') {
@@ -169,7 +169,7 @@ function renderFeed() {
                         <h4>Trolley Checked Out</h4>
                         <span>${timeString}</span>
                     </div>
-                    <div class="tx-amount positive">$${item.total.toFixed(2)}</div>
+                    <div class="tx-amount positive">Rs.${item.total.toFixed(2)}</div>
                 </div>
             `;
         } else if (item.actionType === 'UNKNOWN_SCAN') {
@@ -191,7 +191,7 @@ function renderFeed() {
                         <h4>Cart Reset</h4>
                         <span>Trolley #1 · ${timeString}</span>
                     </div>
-                    <div class="tx-amount negative">-$${item.total.toFixed(2)}</div>
+                    <div class="tx-amount negative">-Rs.${item.total.toFixed(2)}</div>
                 </div>
             `;
         }
