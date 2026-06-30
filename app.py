@@ -1,5 +1,6 @@
 import threading
 import time
+import datetime
 import serial
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
@@ -55,8 +56,13 @@ def get_products():
 
 @app.route("/api/dashboard", methods=["GET"])
 def get_dashboard():
-    # Calculate revenue from transactions
-    pipeline = [{"$group": {"_id": None, "totalRevenue": {"$sum": "$total"}}}]
+    # Calculate revenue from transactions today
+    now = datetime.datetime.now()
+    today_start = datetime.datetime(now.year, now.month, now.day).timestamp()
+    pipeline = [
+        {"$match": {"timestamp": {"$gte": today_start}}},
+        {"$group": {"_id": None, "totalRevenue": {"$sum": "$total"}}}
+    ]
     rev_result = list(transactions_collection.aggregate(pipeline))
     revenue = rev_result[0]["totalRevenue"] if rev_result else 0.0
     
