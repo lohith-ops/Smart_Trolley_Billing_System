@@ -102,6 +102,9 @@ async function initDashboard() {
     if (els.simScanBtn) els.simScanBtn.addEventListener('click', triggerSimulatorScan);
     if (els.simResetBtn) els.simResetBtn.addEventListener('click', triggerSimulatorReset);
     if (els.simCheckoutBtn) els.simCheckoutBtn.addEventListener('click', triggerSimulatorCheckout);
+    
+    // Setup Payment Modal Handlers
+    setupPaymentModalListeners();
 }
 
 // Fetch products for simulator selector
@@ -369,60 +372,225 @@ async function resetCart() {
 }
 
 // Checkout cart API call
+let currentBill = null;
+
+// Checkout cart API call (Generate Bill)
 async function checkoutCart() {
     const cart = State.activeCarts[0];
     if (!cart || cart.itemsContained === 0) {
-        alert('Cart is empty. Scan items before checkout.');
+        alert('Cart is empty. Scan items before generating bill.');
         return;
     }
 
-    if (!confirm(`Checkout Trolley #${cart.id}?\nTotal: Rs.${cart.total.toFixed(2)}`)) return;
+    if (!confirm(`Generate Bill for Trolley #${cart.id}?\nTotal: Rs.${cart.total.toFixed(2)}`)) return;
 
     els.checkoutBtn.disabled = true;
     try {
-        const res  = await fetch('/api/checkout', { method: 'POST' });
+        const res  = await fetch('/api/cart/generate-bill', { method: 'POST' });
         const data = await res.json();
 
         if (data.success) {
             await fetchDashboard();
-            showReceiptModal(data.total, data.items || {});
-            
-            // Simulator LCD feedback
-            triggerLcdFeedback("Checked Out!", `Total: Rs.${parseFloat(data.total).toFixed(2)}`);
-            triggerBuzzerFeedback(2);
+            showBillingModal(data);
         } else {
-            alert(data.message || 'Checkout failed.');
+            alert(data.message || 'Failed to generate bill.');
         }
     } catch (e) {
-        console.error('Checkout error:', e);
-        alert('Network error during checkout.');
+        console.error('Bill generation error:', e);
+        alert('Network error during bill generation.');
     } finally {
         els.checkoutBtn.disabled = false;
     }
 }
 
-// Open Receipt Dialog
-function showReceiptModal(total, items) {
-    if (!els.receiptModal) return;
-    els.receiptAmount.textContent = `Rs.${parseFloat(total).toFixed(2)}`;
+// Show multi-stage billing modal
+function showBillingModal(billData) {
+    currentBill = billData;
+    
+    // Reset stages
+    document.querySelectorAll('.payment-stage').forEach(el => el.style.display = 'none');
+    const stage1 = document.getElementById('payment-stage-1');
+    if (stage1) stage1.style.display = 'block';
+    
+    // Reset payment tabs
+    const tabs = document.querySelectorAll('.pay-tab');
+    tabs.forEach((t, i) => {
+        t.classList.remove('active');
+        t.style.background = 'none';
+        t.style.color = 'var(--text-secondary)';
+        if (i === 0) {
+            t.classList.add('active');
+            t.style.background = 'rgba(255,255,255,0.08)';
+            t.style.color = 'var(--text-primary)';
+        }
+    });
+    document.querySelectorAll('.pay-panel').forEach(p => p.style.display = 'none');
+    const upiPanel = document.getElementById('pay-panel-upi');
+    if (upiPanel) upiPanel.style.display = 'block';
 
-    const entries = Object.values(items);
-    if (entries.length > 0) {
-        els.receiptMeta.innerHTML = entries.map(item => `
-            <div class="receipt-item">
-                <span>${item.name} × ${item.quantity}</span>
-                <span>Rs.${item.subtotal.toFixed(2)}</span>
-            </div>
-        `).join('');
-    } else {
-        els.receiptMeta.innerHTML = `<p style="color:var(--text-secondary);text-align:center">Receipt saved to transactions.</p>`;
+    // Populate Stage 1 Breakdown
+    const itemsListContainer = document.getElementById('billing-items-list');
+    if (itemsListContainer) {
+        const entries = Object.values(billData.items);
+        if (entries.length > 0) {
+            itemsListContainer.innerHTML = entries.map(item => `
+                <div style="display:flex; justify-content:space-between; font-size:0.9rem; border-bottom:1px solid rgba(255,255,255,0.03); padding-bottom:4px; width:100%;">
+                    <span>${item.name} × ${item.quantity}</span>
+                    <span style="font-weight:600;">Rs.${item.subtotal.toFixed(2)}</span>
+                </div>
+            `).join('');
+        } else {
+            itemsListContainer.innerHTML = `<p style="color:var(--text-secondary); text-align:center; font-size:0.85rem; margin:0;">No items found.</p>`;
+        }
     }
+    
+    const subtotalEl = document.getElementById('bill-subtotal');
+    const cgstEl = document.getElementById('bill-cgst');
+    const sgstEl = document.getElementById('bill-sgst');
+    const totalEl = document.getElementById('bill-total');
+    
+    if (subtotalEl) subtotalEl.textContent = `Rs.${billData.subtotal.toFixed(2)}`;
+    if (cgstEl) cgstEl.textContent = `Rs.${billData.cgst.toFixed(2)}`;
+    if (sgstEl) sgstEl.textContent = `Rs.${billData.sgst.toFixed(2)}`;
+    if (totalEl) totalEl.textContent = `Rs.${billData.total.toFixed(2)}`;
+    
+    // Show Modal
+    if (els.receiptModal) els.receiptModal.classList.add('active');
+}
 
-    els.receiptModal.classList.add('active');
+// Cancel bill & release cart
+async function cancelBill() {
+    if (!confirm('Are you sure you want to cancel this bill and return to scanning?')) return;
+    try {
+        const res = await fetch('/api/cart/cancel-bill', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            if (els.receiptModal) els.receiptModal.classList.remove('active');
+            await fetchDashboard();
+            triggerLcdFeedback("Bill Cancelled", `Total: Rs.${data.total.toFixed(2)}`);
+            triggerBuzzerFeedback(1);
+        } else {
+            alert(data.message || 'Failed to cancel bill.');
+        }
+    } catch (err) {
+        console.error('Cancel bill error:', err);
+        alert('Network error while cancelling bill.');
+    }
 }
 
 function closeReceiptModal() {
-    if (els.receiptModal) els.receiptModal.classList.remove('active');
+    const stage3 = document.getElementById('payment-stage-3');
+    if (stage3 && stage3.style.display === 'block') {
+        if (els.receiptModal) els.receiptModal.classList.remove('active');
+    } else {
+        cancelBill();
+    }
+}
+
+// Bind modal listeners
+function setupPaymentModalListeners() {
+    // Stage 1 -> Stage 2
+    const proceedBtn = document.getElementById('btn-proceed-to-payment');
+    if (proceedBtn) {
+        proceedBtn.addEventListener('click', () => {
+            document.querySelectorAll('.payment-stage').forEach(el => el.style.display = 'none');
+            const stage2 = document.getElementById('payment-stage-2');
+            if (stage2) stage2.style.display = 'block';
+            
+            const upiQrImg = document.getElementById('payment-upi-qr');
+            if (upiQrImg && currentBill) {
+                const totalAmount = currentBill.total.toFixed(2);
+                const upiString = `upi://pay?pa=smartsupermarket@okaxis&pn=SmartSupermarket&am=${totalAmount}&cu=INR&tn=SmartTrolleySettle`;
+                upiQrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(upiString)}`;
+            }
+        });
+    }
+
+    // Stage 2 -> Stage 1
+    const backBtn = document.getElementById('btn-back-to-invoice');
+    if (backBtn) {
+        backBtn.addEventListener('click', () => {
+            document.querySelectorAll('.payment-stage').forEach(el => el.style.display = 'none');
+            const stage1 = document.getElementById('payment-stage-1');
+            if (stage1) stage1.style.display = 'block';
+        });
+    }
+
+    // Cancel buttons
+    document.querySelectorAll('.btn-cancel-bill').forEach(btn => {
+        btn.addEventListener('click', cancelBill);
+    });
+    
+    const closeXBtn = document.getElementById('modal-close-x-btn');
+    if (closeXBtn) {
+        closeXBtn.addEventListener('click', cancelBill);
+    }
+
+    // Tabs switching
+    const tabs = document.querySelectorAll('.pay-tab');
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            tabs.forEach(t => {
+                t.classList.remove('active');
+                t.style.background = 'none';
+                t.style.color = 'var(--text-secondary)';
+            });
+            tab.classList.add('active');
+            tab.style.background = 'rgba(255,255,255,0.08)';
+            tab.style.color = 'var(--text-primary)';
+            
+            const target = tab.dataset.tab;
+            document.querySelectorAll('.pay-panel').forEach(p => p.style.display = 'none');
+            const activePanel = document.getElementById(`pay-panel-${target}`);
+            if (activePanel) activePanel.style.display = 'block';
+        });
+    });
+
+    // Simulated payments success
+    document.querySelectorAll('.btn-pay-success').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const method = btn.dataset.method;
+            btn.disabled = true;
+            const origText = btn.innerHTML;
+            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Processing...`;
+            
+            try {
+                const res = await fetch('/api/cart/pay', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ paymentMethod: method })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    document.querySelectorAll('.payment-stage').forEach(el => el.style.display = 'none');
+                    const stage3 = document.getElementById('payment-stage-3');
+                    if (stage3) stage3.style.display = 'block';
+                    
+                    const successAmount = document.getElementById('success-billed-amount');
+                    const successMethod = document.getElementById('success-payment-method');
+                    if (successAmount) successAmount.textContent = `Rs.${data.total.toFixed(2)}`;
+                    if (successMethod) successMethod.textContent = `Paid via ${method}`;
+                    
+                    const receiptLink = document.getElementById('modal-receipt-link');
+                    if (receiptLink) {
+                        receiptLink.href = `receipt.html?timestamp=${data.timestamp}`;
+                    }
+                    
+                    triggerLcdFeedback("Checked Out!", "Total: Rs.0.00");
+                    triggerBuzzerFeedback(2);
+                    await fetchDashboard();
+                } else {
+                    alert(data.message || 'Payment failed.');
+                }
+            } catch (err) {
+                console.error('Payment error:', err);
+                alert('Network error while processing payment.');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = origText;
+            }
+        });
+    });
 }
 
 // Open Product Register Modal
@@ -515,10 +683,16 @@ async function triggerSimulatorScan() {
             els.simCustomUid.value = ''; // clear custom uid
             await fetchDashboard();
         } else {
-            // Unregistered item scanned
-            triggerLcdFeedback("Unknown Card!", "Check Dashboard");
-            triggerBuzzerFeedback(3);
-            await fetchDashboard();
+            if (res.status === 400 && data.message && data.message.includes("locked")) {
+                alert(data.message);
+                triggerLcdFeedback("Cart Locked!", "Pay or Cancel");
+                triggerBuzzerFeedback(3);
+            } else {
+                // Unregistered item scanned
+                triggerLcdFeedback("Unknown Card!", "Check Dashboard");
+                triggerBuzzerFeedback(3);
+                await fetchDashboard();
+            }
         }
     } catch (e) {
         console.error("Simulation scan error:", e);
@@ -557,13 +731,15 @@ async function triggerSimulatorCheckout() {
 
     els.simCheckoutBtn.disabled = true;
     try {
-        const res = await fetch('/api/checkout', { method: 'POST' });
+        const res = await fetch('/api/cart/generate-bill', { method: 'POST' });
         const data = await res.json();
         if (data.success) {
-            triggerLcdFeedback("Checked Out!", `Total: Rs.${data.total.toFixed(2)}`);
-            triggerBuzzerFeedback(2);
+            triggerLcdFeedback("Bill Generated", `Total: Rs.${data.total.toFixed(2)}`);
+            triggerBuzzerFeedback(1);
             await fetchDashboard();
-            showReceiptModal(data.total, data.items || {});
+            showBillingModal(data);
+        } else {
+            alert(data.message || 'Failed to generate bill.');
         }
     } catch (e) {
         console.error("Simulation checkout error:", e);

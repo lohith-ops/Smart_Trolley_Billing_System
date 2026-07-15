@@ -224,14 +224,18 @@ SERIAL_PORT = config_data.get("serialPort", "COM4")
 # We can keep a "mock" state for testing, but let's persist everything to MongoDB
 # Active cart will be stored in carts_collection with id "cart_1"
 def init_cart():
-    if not carts_collection.find_one({"_id": "cart_1"}):
+    cart = carts_collection.find_one({"_id": "cart_1"})
+    if not cart:
         carts_collection.insert_one({
             "_id": "cart_1",
             "items": {},
             "total": 0.0,
             "itemsContained": 0,
+            "status": "ACTIVE",
             "lastActive": "Just now"
         })
+    elif "status" not in cart:
+        carts_collection.update_one({"_id": "cart_1"}, {"$set": {"status": "ACTIVE"}})
 
 init_cart()
 
@@ -273,7 +277,8 @@ def get_dashboard():
                 "total": c["total"],
                 "itemsContained": c["itemsContained"],
                 "lastActive": c["lastActive"],
-                "items": c.get("items", {})
+                "items": c.get("items", {}),
+                "status": c.get("status", "ACTIVE")
             })
 
     # Get recent feed
@@ -381,6 +386,10 @@ def process_scan(action, uid):
 
 @app.route("/api/cart/action", methods=["POST"])
 def cart_action():
+    cart = carts_collection.find_one({"_id": "cart_1"})
+    if cart and cart.get("status") == "BILL_GENERATED":
+        return jsonify({"success": False, "message": "Cart is locked! Complete payment or cancel bill to modify cart."}), 400
+
     data = request.json
     action = data.get("action")
     uid = data.get("uid")
@@ -439,6 +448,7 @@ def perform_reset():
             "items": {},
             "total": 0.0,
             "itemsContained": 0,
+            "status": "ACTIVE",
             "lastActive": "Reset"
         }
     })
@@ -451,12 +461,120 @@ def perform_reset():
     send_command_to_arduino("BEEP:2")
     return True
 
+@app.route("/api/cart/generate-bill", methods=["POST"])
+def generate_bill():
+    cart = carts_collection.find_one({"_id": "cart_1"})
+    if not cart or cart.get("itemsContained", 0) == 0:
+        return jsonify({"success": False, "message": "Cart is empty — scan items first"}), 400
+    
+    total = cart["total"]
+    grand_total = total
+    subtotal = grand_total / 1.18
+    cgst = subtotal * 0.09
+    sgst = subtotal * 0.09
+    
+    carts_collection.update_one({"_id": "cart_1"}, {
+        "$set": {
+            "status": "BILL_GENERATED",
+            "lastActive": "Bill generated"
+        }
+    })
+    
+    send_command_to_arduino(f"LCD:Pay Rs.{grand_total:.2f}|Scan QR to Pay")
+    send_command_to_arduino("BEEP:1")
+    
+    db['feed'].insert_one({
+        "actionType": "BILL_GENERATED",
+        "total": grand_total,
+        "timestamp": time.time()
+    })
+    
+    return jsonify({
+        "success": True,
+        "subtotal": round(subtotal, 2),
+        "cgst": round(cgst, 2),
+        "sgst": round(sgst, 2),
+        "total": round(grand_total, 2),
+        "items": cart["items"]
+    })
+
+@app.route("/api/cart/cancel-bill", methods=["POST"])
+def cancel_bill():
+    cart = carts_collection.find_one({"_id": "cart_1"})
+    if not cart:
+        return jsonify({"success": False, "message": "Cart not found"}), 404
+        
+    carts_collection.update_one({"_id": "cart_1"}, {
+        "$set": {
+            "status": "ACTIVE",
+            "lastActive": "Scanning"
+        }
+    })
+    
+    total = cart.get("total", 0.0)
+    send_command_to_arduino(f"LCD:Bill Cancelled|Total: Rs.{total:.2f}")
+    send_command_to_arduino("BEEP:1")
+    
+    db['feed'].insert_one({
+        "actionType": "BILL_CANCELLED",
+        "total": total,
+        "timestamp": time.time()
+    })
+    
+    return jsonify({"success": True, "message": "Bill cancelled, cart returned to scanning", "total": total})
+
+@app.route("/api/cart/pay", methods=["POST"])
+def pay_bill():
+    cart = carts_collection.find_one({"_id": "cart_1"})
+    if not cart or cart.get("itemsContained", 0) == 0:
+        return jsonify({"success": False, "message": "Cart is empty — scan items first"}), 400
+        
+    data = request.json or {}
+    payment_method = data.get("paymentMethod", "UPI")
+    
+    saved_items = dict(cart["items"])
+    total = cart["total"]
+    timestamp = time.time()
+    
+    transactions_collection.insert_one({
+        "items": saved_items,
+        "total": total,
+        "paymentMethod": payment_method,
+        "timestamp": timestamp
+    })
+    
+    carts_collection.update_one({"_id": "cart_1"}, {
+        "$set": {
+            "items": {},
+            "total": 0.0,
+            "itemsContained": 0,
+            "status": "ACTIVE",
+            "lastActive": f"Paid via {payment_method}"
+        }
+    })
+    
+    db['feed'].insert_one({
+        "actionType": "CHECKOUT",
+        "total": total,
+        "paymentMethod": payment_method,
+        "timestamp": timestamp
+    })
+    
+    send_command_to_arduino("LCD:Checked Out!|Total: Rs.0.00")
+    send_command_to_arduino("BEEP:2")
+    
+    return jsonify({
+        "success": True,
+        "message": "Payment successful",
+        "total": total,
+        "items": saved_items,
+        "timestamp": timestamp
+    })
+
+# Kept for backward compatibility
 @app.route("/api/checkout", methods=["POST"])
 def checkout():
-    success, total, items = perform_checkout()
-    if success:
-        return jsonify({"success": True, "total": total, "items": items})
-    return jsonify({"success": False, "message": "Cart is empty — scan items first"})
+    return pay_bill()
 
 @app.route("/api/products/register", methods=["POST"])
 def register_product():
@@ -883,6 +1001,12 @@ def serial_loop():
                 elif line.startswith("SCAN:") or line.startswith("UID:"):
                     prefix = "SCAN:" if line.startswith("SCAN:") else "UID:"
                     uid = line.split(prefix)[1].strip()
+                    cart = carts_collection.find_one({"_id": "cart_1"})
+                    if cart and cart.get("status") == "BILL_GENERATED":
+                        print("[SCAN] Blocked: Cart is locked in BILL_GENERATED state.")
+                        send_command_to_arduino("LCD:Cart Locked!|Pay or Cancel Bill")
+                        send_command_to_arduino("BEEP:3")
+                        continue
                     product, total, uid_key = process_scan(current_mode, uid)
                     if product:
                         action_symbol = "+" if current_mode == "ADD" else "-"

@@ -138,7 +138,7 @@
                     <div class="panel-header">
                         <h3>Active Trolleys</h3>
                         <button class="btn btn-checkout" id="checkout-btn">
-                            <i class="fa-solid fa-receipt"></i> Checkout
+                            <i class="fa-solid fa-receipt"></i> Generate Bill
                         </button>
                     </div>
                     <div class="cart-list" id="active-carts-container">
@@ -149,22 +149,129 @@
         </main>
     </div>
 
-    <!-- Receipt Modal -->
+    <!-- Billing & Payment Modal (Two-stage) -->
     <div class="modal-overlay" id="receipt-modal">
-        <div class="modal-box glass-panel">
-            <div class="modal-icon">
-                <i class="fa-solid fa-circle-check"></i>
+        <div class="modal-box glass-panel billing-payment-modal" style="max-width: 500px; width: 90%; position: relative;">
+            
+            <!-- CLOSE/CANCEL BUTTON AT TOP RIGHT -->
+            <button class="modal-close-x" id="modal-close-x-btn" style="position: absolute; top: 15px; right: 20px; background: none; border: none; color: var(--text-secondary); font-size: 1.25rem; cursor: pointer;"><i class="fa-solid fa-xmark"></i></button>
+
+            <!-- STAGE 1: BILL BREAKDOWN -->
+            <div id="payment-stage-1" class="payment-stage active">
+                <div class="modal-icon" style="color: var(--accent-blue); margin-bottom: 10px;">
+                    <i class="fa-solid fa-file-invoice-dollar"></i>
+                </div>
+                <h2>Invoice Review</h2>
+                <p class="modal-sub">Verify your items and taxes before payment</p>
+                
+                <div class="receipt-items-container" style="max-height: 180px; overflow-y: auto; margin: 15px 0; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+                    <div id="billing-items-list" class="billing-items-list" style="display: flex; flex-direction: column; gap: 8px;">
+                        <!-- Dynamic items -->
+                    </div>
+                </div>
+
+                <div class="billing-breakdown-card" style="background: rgba(255,255,255,0.02); border-radius: 8px; padding: 12px; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.05);">
+                    <div class="breakdown-row" style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.9rem; color: var(--text-secondary);">
+                        <span>Subtotal (Excl. Tax)</span>
+                        <span id="bill-subtotal">Rs.0.00</span>
+                    </div>
+                    <div class="breakdown-row" style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.9rem; color: var(--text-secondary);">
+                        <span>CGST (9.0%)</span>
+                        <span id="bill-cgst">Rs.0.00</span>
+                    </div>
+                    <div class="breakdown-row" style="display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 0.9rem; color: var(--text-secondary); border-bottom: 1px dashed rgba(255,255,255,0.1); padding-bottom: 6px;">
+                        <span>SGST (9.0%)</span>
+                        <span id="bill-sgst">Rs.0.00</span>
+                    </div>
+                    <div class="breakdown-row" style="display: flex; justify-content: space-between; font-weight: bold; font-size: 1.15rem; color: var(--text-primary);">
+                        <span>Total Amount (Incl. Tax)</span>
+                        <span id="bill-total" style="color: var(--accent-green);">Rs.0.00</span>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 10px; width: 100%;">
+                    <button class="btn btn-outline btn-cancel-bill" style="flex: 1;">Cancel Bill</button>
+                    <button class="btn btn-checkout" id="btn-proceed-to-payment" style="flex: 1; background: var(--grad-primary);">Proceed to Pay</button>
+                </div>
             </div>
-            <h2>Checkout Complete!</h2>
-            <p class="modal-sub">Transaction saved successfully</p>
-            <div class="receipt-total">
-                <span>Total Amount</span>
-                <h1 id="receipt-amount">Rs.0.00</h1>
+
+            <!-- STAGE 2: PAYMENT METHODS -->
+            <div id="payment-stage-2" class="payment-stage" style="display: none;">
+                <div class="modal-icon" style="color: var(--accent-purple); margin-bottom: 10px;">
+                    <i class="fa-solid fa-credit-card"></i>
+                </div>
+                <h2>Secure Checkout Payment</h2>
+                <p class="modal-sub">Select your preferred payment method</p>
+
+                <!-- Payment Tabs Header -->
+                <div class="payment-tabs" style="display: flex; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 4px; margin: 15px 0;">
+                    <button class="pay-tab active" data-tab="upi" style="flex:1; border:none; padding:8px 0; background:none; border-radius:6px; color:var(--text-primary); cursor:pointer; font-weight:500; transition:0.3s;"><i class="fa-solid fa-qrcode"></i> UPI</button>
+                    <button class="pay-tab" data-tab="card" style="flex:1; border:none; padding:8px 0; background:none; border-radius:6px; color:var(--text-secondary); cursor:pointer; font-weight:500; transition:0.3s;"><i class="fa-solid fa-credit-card"></i> Card</button>
+                    <button class="pay-tab" data-tab="cash" style="flex:1; border:none; padding:8px 0; background:none; border-radius:6px; color:var(--text-secondary); cursor:pointer; font-weight:500; transition:0.3s;"><i class="fa-solid fa-coins"></i> Cash</button>
+                </div>
+
+                <!-- Payment Contents -->
+                <div class="payment-contents" style="margin-bottom: 20px; min-height: 220px; display: flex; align-items: center; justify-content: center;">
+                    
+                    <!-- UPI Panel -->
+                    <div id="pay-panel-upi" class="pay-panel active" style="text-align: center; width: 100%;">
+                        <div class="qr-container" style="position: relative; display: inline-block; background: white; padding: 12px; border-radius: 12px; margin-bottom: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.15);">
+                            <img id="payment-upi-qr" src="" alt="UPI Payment QR Code" style="width: 150px; height: 150px; display: block;">
+                            <div class="scanner-line"></div>
+                        </div>
+                        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 12px;">Scan the QR using BHIM, GPay, PhonePe, or Paytm</p>
+                        <button class="btn btn-checkout btn-pay-success" data-method="UPI" style="background: linear-gradient(135deg, #10b981, #059669); border:none; padding:8px 16px; font-size:0.9rem; display:inline-flex; align-items:center; gap:6px;"><i class="fa-solid fa-circle-check"></i> Simulate QR Scan Success</button>
+                    </div>
+
+                    <!-- Card Panel -->
+                    <div id="pay-panel-card" class="pay-panel" style="display: none; text-align: center; width: 100%;">
+                        <div class="card-terminal-mock" style="background: rgba(255,255,255,0.03); border: 1px dashed rgba(255,255,255,0.1); border-radius: 12px; padding: 20px; margin-bottom: 15px; display: flex; flex-direction: column; align-items: center;">
+                            <i class="fa-solid fa-nfc-symbol" style="font-size: 2.5rem; color: var(--accent-blue); margin-bottom: 8px;"></i>
+                            <p style="font-size: 0.9rem; font-weight: 500;">Tap, Insert or Swipe Card</p>
+                            <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px;">Supports Visa, MasterCard, RuPay</p>
+                        </div>
+                        <button class="btn btn-checkout btn-pay-success" data-method="CARD" style="background: linear-gradient(135deg, #3b82f6, #2563eb); border:none; padding:8px 16px; font-size:0.9rem; display:inline-flex; align-items:center; gap:6px;"><i class="fa-solid fa-credit-card"></i> Simulate Card Swipe/Tap</button>
+                    </div>
+
+                    <!-- Cash Panel -->
+                    <div id="pay-panel-cash" class="pay-panel" style="display: none; text-align: center; width: 100%;">
+                        <div class="cash-instructions-mock" style="background: rgba(255,255,255,0.03); border: 1px dashed rgba(255,255,255,0.1); border-radius: 12px; padding: 20px; margin-bottom: 15px; display: flex; flex-direction: column; align-items: center;">
+                            <i class="fa-solid fa-cash-register" style="font-size: 2.5rem; color: #f59e0b; margin-bottom: 8px;"></i>
+                            <p style="font-size: 0.9rem; font-weight: 500;">Counter Billing Option Selected</p>
+                            <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px;">Please submit payment to the cashier counter to settle this bill.</p>
+                        </div>
+                        <button class="btn btn-checkout btn-pay-success" data-method="CASH" style="background: linear-gradient(135deg, #f59e0b, #d97706); border:none; padding:8px 16px; font-size:0.9rem; display:inline-flex; align-items:center; gap:6px;"><i class="fa-solid fa-coins"></i> Settle Bill (Cash Paid)</button>
+                    </div>
+
+                </div>
+
+                <div style="display: flex; gap: 10px; width: 100%;">
+                    <button class="btn btn-outline" id="btn-back-to-invoice" style="flex: 1;"><i class="fa-solid fa-arrow-left"></i> Back</button>
+                    <button class="btn btn-outline btn-cancel-bill" style="flex: 1;">Cancel Bill</button>
+                </div>
             </div>
-            <div class="receipt-meta" id="receipt-meta"></div>
-            <button class="btn btn-outline" id="modal-close-btn">Close</button>
-        </div>
-    </div>
+
+            <!-- STAGE 3: SUCCESS -->
+            <div id="payment-stage-3" class="payment-stage" style="display: none;">
+                <div class="modal-icon" style="color: var(--accent-green); margin-bottom: 10px;">
+                    <i class="fa-solid fa-circle-check"></i>
+                </div>
+                <h2>Payment Successful!</h2>
+                <p class="modal-sub">Your transaction has been recorded</p>
+                
+                <div class="success-payment-details" style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; padding: 15px; margin: 20px 0; text-align: center;">
+                    <span style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 4px;">Billed Grand Total</span>
+                    <h1 id="success-billed-amount" style="color: var(--accent-green); font-size: 2.2rem; font-weight: bold; margin: 0;">Rs.0.00</h1>
+                    <span id="success-payment-method" style="font-size: 0.8rem; font-weight:600; color:var(--text-secondary); margin-top: 8px; display:inline-block; background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px; text-transform: uppercase;">PAID VIA UPI</span>
+                </div>
+
+                <div style="display: flex; gap: 12px; justify-content: center; width: 100%;">
+                    <button class="btn btn-outline" id="modal-close-btn" style="flex: 1;">Close</button>
+                    <a id="modal-receipt-link" href="#" target="_blank" class="btn btn-checkout" style="flex: 1; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px;">
+                        <i class="fa-solid fa-receipt"></i> View Receipt
+                    </a>
+                </div>
+            </div>
 
     <!-- Registration Modal -->
     <div class="modal-overlay" id="register-modal">
@@ -247,7 +354,7 @@
 
         <div class="sim-group" style="display: flex; gap: 10px; margin-top: 15px;">
             <button class="btn btn-danger" id="sim-reset-btn" style="flex: 1; padding: 6px;"><i class="fa-solid fa-rotate-left"></i> Reset</button>
-            <button class="btn btn-checkout" id="sim-checkout-btn" style="flex: 1; padding: 6px;"><i class="fa-solid fa-receipt"></i> Checkout</button>
+            <button class="btn btn-checkout" id="sim-checkout-btn" style="flex: 1; padding: 6px;"><i class="fa-solid fa-receipt"></i> Generate Bill</button>
         </div>
     </aside>
 
