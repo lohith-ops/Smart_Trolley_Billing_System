@@ -18,6 +18,9 @@ const els = {
     revenue: document.getElementById('stat-revenue'),
     trolleys: document.getElementById('stat-trolleys'),
     items: document.getElementById('stat-items'),
+    lowstock: document.getElementById('stat-lowstock'),
+    offline: document.getElementById('stat-offline'),
+    pending: document.getElementById('stat-pending'),
     feedContainer: document.getElementById('transaction-feed'),
     cartsContainer: document.getElementById('active-carts-container'),
     resetBtn: document.getElementById('reset-btn'),
@@ -135,6 +138,7 @@ async function fetchDashboard() {
         State.activeCarts = data.activeCarts;
         State.feed = data.feed;
         State.currentMode = data.currentMode;
+        State.arduinoConnected = data.arduinoConnected;
 
         // Check for Unknown Scans
         if (State.feed.length > 0) {
@@ -164,6 +168,18 @@ function updateStatsUI() {
     if (els.revenue) els.revenue.innerText = `Rs.${State.revenue.toFixed(2)}`;
     if (els.trolleys) els.trolleys.innerText = State.activeCarts.length;
     if (els.items) els.items.innerText = State.scannedItems;
+    
+    // Count low stock products (stock < 10)
+    const lowStockCount = Products.filter(p => p.stock < 10).length;
+    if (els.lowstock) els.lowstock.innerText = lowStockCount;
+    
+    // Offline devices (Arduino offline = 1, otherwise 0)
+    const offlineCount = State.arduinoConnected ? 0 : 1;
+    if (els.offline) els.offline.innerText = offlineCount;
+    
+    // Pending checkouts (active carts with items > 0)
+    const pendingCount = State.activeCarts.filter(c => c.itemsContained > 0).length;
+    if (els.pending) els.pending.innerText = pendingCount;
 }
 
 // Render active cart details AND its scanned items

@@ -39,6 +39,9 @@ MFRC522 mfrc522(SS_PIN, RST_PIN);
 
 // ── State ──────────────────────────────────────────────────────────────────
 String currentMode = "ADD";
+unsigned long lastHeartbeatTime = 0;
+bool isOffline = false;
+const unsigned long OFFLINE_TIMEOUT_MS = 12000;
 
 // ── Debounce ───────────────────────────────────────────────────────────────
 unsigned long lastDebounceAdd    = 0;
@@ -105,38 +108,50 @@ void setup() {
   }
 
   lcdShow("Mode: ADD", "Scan card...");
+  lastHeartbeatTime = millis();
 }
 
 // ── Main Loop ──────────────────────────────────────────────────────────────
 void loop() {
 
+  // ── Heartbeat Check ──────────────────────────────────────────────────────
+  if (millis() - lastHeartbeatTime > OFFLINE_TIMEOUT_MS) {
+    if (!isOffline) {
+      isOffline = true;
+      lcdShow("Server Offline", "Reconnecting...");
+      beepDouble();
+    }
+  }
+
   // ── 1. BUTTON HANDLING (with debounce) ──────────────────────────────────
   unsigned long now = millis();
 
-  if (digitalRead(ADD_BTN) == LOW && (now - lastDebounceAdd > DEBOUNCE_MS)) {
-    lastDebounceAdd = now;
-    currentMode = "ADD";
-    Serial.println("MODE:ADD");
-    beepOnce();
-    lcdShow("Mode: ADD", "Scan card...");
-  }
+  if (!isOffline) {
+    if (digitalRead(ADD_BTN) == LOW && (now - lastDebounceAdd > DEBOUNCE_MS)) {
+      lastDebounceAdd = now;
+      currentMode = "ADD";
+      Serial.println("MODE:ADD");
+      beepOnce();
+      lcdShow("Mode: ADD", "Scan card...");
+    }
 
-  if (digitalRead(REMOVE_BTN) == LOW && (now - lastDebounceRemove > DEBOUNCE_MS)) {
-    lastDebounceRemove = now;
-    currentMode = "REMOVE";
-    Serial.println("MODE:REMOVE");
-    beepOnce();
-    lcdShow("Mode: REMOVE", "Scan card...");
-  }
+    if (digitalRead(REMOVE_BTN) == LOW && (now - lastDebounceRemove > DEBOUNCE_MS)) {
+      lastDebounceRemove = now;
+      currentMode = "REMOVE";
+      Serial.println("MODE:REMOVE");
+      beepOnce();
+      lcdShow("Mode: REMOVE", "Scan card...");
+    }
 
-  if (digitalRead(RESET_BTN) == LOW && (now - lastDebounceReset > DEBOUNCE_MS)) {
-    lastDebounceReset = now;
-    Serial.println("RESET");
-    beepDouble();
-    lcdShow("Cart Reset!", "Total: Rs.0.00");
-    delay(1500);
-    lcdShow("Mode: ADD", "Scan card...");
-    currentMode = "ADD";
+    if (digitalRead(RESET_BTN) == LOW && (now - lastDebounceReset > DEBOUNCE_MS)) {
+      lastDebounceReset = now;
+      Serial.println("RESET");
+      beepDouble();
+      lcdShow("Cart Reset!", "Total: Rs.0.00");
+      delay(1500);
+      lcdShow("Mode: ADD", "Scan card...");
+      currentMode = "ADD";
+    }
   }
 
   // ── 2. RECEIVE FROM PYTHON (LCD display & Buzzer commands) ───────────────
@@ -145,7 +160,21 @@ void loop() {
     String msg = Serial.readStringUntil('\n');
     msg.trim();
 
-    if (msg.startsWith("LCD:")) {
+    if (msg.length() > 0) {
+      lastHeartbeatTime = millis();
+      if (isOffline) {
+        isOffline = false;
+        lcdShow("Server Restored", "Mode: " + currentMode);
+        beepOnce();
+        delay(1000);
+        lcdShow("Mode: " + currentMode, "Scan card...");
+      }
+    }
+
+    if (msg == "HEARTBEAT") {
+      // Handled by the generic msg.length() check above
+    }
+    else if (msg.startsWith("LCD:")) {
       // Format: LCD:Line1|Line2 or LCD:SingleLine
       int sep = msg.indexOf('|');
       if (sep != -1) {
@@ -180,6 +209,7 @@ void loop() {
   }
 
   // ── 3. RFID SCAN ─────────────────────────────────────────────────────────
+  if (isOffline) return;
   if (!mfrc522.PICC_IsNewCardPresent()) return;
   if (!mfrc522.PICC_ReadCardSerial())   return;
 

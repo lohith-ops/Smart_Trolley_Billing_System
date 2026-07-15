@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Trolley - Employee Management</title>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="styles.css">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="dark-theme">
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar glass-panel"></aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="top-header glass-panel">
+                <div style="font-weight: 600; font-size: 1.1rem; color: var(--text-primary);">
+                    Employee Roster Management
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-outline" id="add-employee-btn">
+                        <i class="fa-solid fa-user-plus"></i> Add Employee
+                    </button>
+                    <div class="user-profile">
+                        <img src="https://ui-avatars.com/api/?name=Admin&background=10b981&color=fff" alt="Admin">
+                        <span>Admin</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Employee Grid -->
+            <div class="employees-grid" id="employees-container">
+                <!-- Dynamic cards populated by employees.js -->
+            </div>
+        </main>
+    </div>
+
+    <!-- Employee Roster Modal -->
+    <div class="modal-overlay" id="employee-modal">
+        <div class="modal-box glass-panel">
+            <div class="modal-icon" style="color: var(--accent-purple);">
+                <i class="fa-solid fa-users"></i>
+            </div>
+            <h2 id="emp-modal-title">Register Employee</h2>
+            <p class="modal-sub">Create or modify worker accounts and shifts</p>
+            
+            <form id="employee-form" class="register-form">
+                <div class="form-group">
+                    <label>Employee ID</label>
+                    <input type="text" id="emp-id" required placeholder="e.g. E005" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label>Full Name</label>
+                    <input type="text" id="emp-name" required placeholder="e.g. Rahul Gupta" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label>Assigned Role</label>
+                    <select id="emp-role" required class="form-input">
+                        <option value="Admin">Admin</option>
+                        <option value="Manager">Manager</option>
+                        <option value="Cashier">Cashier</option>
+                        <option value="Inventory Staff">Inventory Staff</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Working Shift</label>
+                    <select id="emp-shift" required class="form-input">
+                        <option value="Morning (08:00 AM - 04:00 PM)">Morning (08:00 AM - 04:00 PM)</option>
+                        <option value="Evening (04:00 PM - 12:00 AM)">Evening (04:00 PM - 12:00 AM)</option>
+                        <option value="Night (12:00 AM - 08:00 AM)">Night (12:00 AM - 08:00 AM)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Roster Status</label>
+                    <select id="emp-status" required class="form-input">
+                        <option value="Active">Active</option>
+                        <option value="On Leave">On Leave</option>
+                        <option value="Suspended">Suspended</option>
+                    </select>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="button" class="btn btn-outline" id="emp-cancel-btn">Cancel</button>
+                    <button type="submit" class="btn btn-checkout" id="emp-submit-btn" style="background:var(--grad-primary);">Save Employee</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Application Logic -->
+    <script src="shared.js"></script>
+    <script src="employees.js"></script>
+</body>
+</html>

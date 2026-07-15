@@ -2,6 +2,8 @@ import threading
 import time
 import datetime
 import serial
+import os
+import json
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from pymongo import MongoClient
@@ -15,17 +17,209 @@ def add_header(response):
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return response
 
+# Configuration File Persistence
+CONFIG_FILE = "config.json"
+
+def load_config():
+    defaults = {
+        "serialPort": "COM4"
+    }
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                return {**defaults, **json.load(f)}
+        except Exception as e:
+            print(f"[CONFIG] Error reading config file: {e}")
+    return defaults
+
+def save_config(cfg):
+    try:
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=4)
+        print(f"[CONFIG] Configuration saved to {CONFIG_FILE}")
+    except Exception as e:
+        print(f"[CONFIG] Error saving config file: {e}")
+
+# In-Memory Mock Database Fallback for development environments without MongoDB
+class MockCursor:
+    def __init__(self, data):
+        self.data = data
+    def sort(self, key, direction=-1):
+        reverse = (direction == -1)
+        self.data.sort(key=lambda x: x.get(key, 0), reverse=reverse)
+        return self
+    def limit(self, count):
+        self.data = self.data[:count]
+        return self
+    def __iter__(self):
+        return iter(self.data)
+    def __len__(self):
+        return len(self.data)
+
+class MockCollection:
+    def __init__(self, data=None):
+        self.data = data if data is not None else []
+    def find_one(self, filter, projection=None):
+        for doc in self.data:
+            match = True
+            for k, v in filter.items():
+                if doc.get(k) != v:
+                    match = False
+                    break
+            if match:
+                return doc
+        return None
+    def find(self, filter=None, projection=None):
+        if filter is None:
+            filter = {}
+        results = []
+        for doc in self.data:
+            match = True
+            for k, v in filter.items():
+                if doc.get(k) != v:
+                    match = False
+                    break
+            if match:
+                results.append(doc)
+        return MockCursor(results)
+    def insert_one(self, document):
+        if "_id" not in document:
+            document["_id"] = str(len(self.data) + 1)
+        self.data.append(document)
+        return type('InsertOneResult', (object,), {'inserted_id': document["_id"]})()
+    def update_one(self, filter, update, upsert=False):
+        doc = self.find_one(filter)
+        if not doc:
+            if upsert:
+                new_doc = {}
+                for k, v in filter.items():
+                    new_doc[k] = v
+                if "$set" in update:
+                    for k, v in update["$set"].items():
+                        new_doc[k] = v
+                self.data.append(new_doc)
+                return type('UpdateResult', (object,), {'upserted_id': new_doc.get("_id", "upserted"), 'matched_count': 0, 'modified_count': 1})()
+            return type('UpdateResult', (object,), {'upserted_id': None, 'matched_count': 0, 'modified_count': 0})()
+        if "$set" in update:
+            for k, v in update["$set"].items():
+                doc[k] = v
+        return type('UpdateResult', (object,), {'upserted_id': None, 'matched_count': 1, 'modified_count': 1})()
+    def delete_one(self, filter):
+        doc = self.find_one(filter)
+        if doc in self.data:
+            self.data.remove(doc)
+            return type('DeleteResult', (object,), {'deleted_count': 1})()
+        return type('DeleteResult', (object,), {'deleted_count': 0})()
+    def delete_many(self, filter):
+        if not filter:
+            count = len(self.data)
+            self.data.clear()
+            return type('DeleteResult', (object,), {'deleted_count': count})()
+        initial_len = len(self.data)
+        to_keep = []
+        deleted = 0
+        for doc in self.data:
+            match = True
+            for k, v in filter.items():
+                if doc.get(k) != v:
+                    match = False
+                    break
+            if match:
+                deleted += 1
+            else:
+                to_keep.append(doc)
+        self.data = to_keep
+        return type('DeleteResult', (object,), {'deleted_count': deleted})()
+    def count_documents(self, filter):
+        if not filter:
+            return len(self.data)
+        count = 0
+        for doc in self.data:
+            match = True
+            for k, v in filter.items():
+                if doc.get(k) != v:
+                    match = False
+                    break
+            if match:
+                count += 1
+        return count
+    def aggregate(self, pipeline):
+        total = 0.0
+        is_revenue = False
+        gte_val = 0
+        for stage in pipeline:
+            if "$match" in stage:
+                timestamp_match = stage["$match"].get("timestamp", {})
+                if isinstance(timestamp_match, dict) and "$gte" in timestamp_match:
+                    gte_val = timestamp_match["$gte"]
+            if "$group" in stage:
+                group = stage["$group"]
+                if "totalRevenue" in group and "$sum" in group["totalRevenue"]:
+                    is_revenue = True
+        if is_revenue:
+            for doc in self.data:
+                if doc.get("timestamp", 0) >= gte_val:
+                    total += doc.get("total", 0.0)
+            return [{"_id": None, "totalRevenue": total}]
+        return []
+
+class MockDatabase:
+    def __init__(self):
+        self.collections = {}
+    def __getitem__(self, name):
+        if name not in self.collections:
+            self.collections[name] = MockCollection()
+        return self.collections[name]
+
+class MockClient:
+    def __init__(self):
+        self.db = MockDatabase()
+    def __getitem__(self, name):
+        return self.db
+    def server_info(self):
+        return {"version": "mock"}
+
 # MongoDB connection
-client = MongoClient('mongodb://localhost:27017/')
-db = client['smart_trolley']
-products_collection = db['products']
-carts_collection = db['carts']
-transactions_collection = db['transactions']
+mongo_ok = False
+try:
+    client = MongoClient('mongodb://localhost:27017/', serverSelectionTimeoutMS=1500)
+    client.server_info()  # Force connection check
+    db = client['smart_trolley']
+    products_collection = db['products']
+    carts_collection = db['carts']
+    transactions_collection = db['transactions']
+    mongo_ok = True
+    print("[DB] Connected to local MongoDB successfully.")
+except Exception as e:
+    print(f"[DB WARN] MongoDB connection failed: {e}")
+    print("[DB WARN] Falling back to IN-MEMORY Mock Database. Changes will not persist after restart.")
+    client = MockClient()
+    db = client['smart_trolley']
+    products_collection = db['products']
+    carts_collection = db['carts']
+    transactions_collection = db['transactions']
+    
+    # Seed default products catalog into mock database
+    defaults = [
+        {"uid": "5C 1E 7E 05", "name": "Rice 1kg", "price": 60.0, "category": "Grains", "stock": 45, "shelf": "Aisle A - Shelf 1", "offer": "Buy 1 Get 1 Free"},
+        {"uid": "76 E3 33 06", "name": "Sugar 1kg", "price": 45.0, "category": "Grains", "stock": 12, "shelf": "Aisle A - Shelf 2", "offer": "No Active Offers"},
+        {"uid": "A3 B4 C5 D6", "name": "Whole Wheat Bread", "price": 25.0, "category": "Bakery", "stock": 8, "shelf": "Aisle B - Shelf 1", "offer": "10% Off"},
+        {"uid": "11 22 33 44", "name": "Milk (1 Gallon)", "price": 50.0, "category": "Dairy", "stock": 32, "shelf": "Aisle C - Shelf 1", "offer": "No Active Offers"},
+        {"uid": "99 88 77 66", "name": "Cheddar Cheese", "price": 80.0, "category": "Dairy", "stock": 15, "shelf": "Aisle C - Shelf 1", "offer": "20% Off"},
+        {"uid": "FF EE DD CC", "name": "Free Range Eggs", "price": 40.0, "category": "Dairy", "stock": 24, "shelf": "Aisle C - Shelf 1", "offer": "No Active Offers"}
+    ]
+    for p in defaults:
+        uid_norm = p["uid"].replace(" ", "").upper()
+        p["uid_norm"] = uid_norm
+        products_collection.data.append(p)
 
 # Global State for Arduino Integration (Optional, can be used if Arduino is connected)
 current_mode = "ADD"
 global_ser = None
-SERIAL_PORT = "COM4"  # Default serial port, modifiable via settings UI
+
+# Load persistent configurations
+config_data = load_config()
+SERIAL_PORT = config_data.get("serialPort", "COM4")
 
 # We can keep a "mock" state for testing, but let's persist everything to MongoDB
 # Active cart will be stored in carts_collection with id "cart_1"
@@ -287,7 +481,11 @@ def register_product():
             "uid": uid,
             "name": name,
             "price": price_float,
-            "uid_norm": uid_norm
+            "uid_norm": uid_norm,
+            "stock": int(data.get("stock", 20)),
+            "category": data.get("category", "Grocery"),
+            "shelf": data.get("shelf", "Aisle A - Shelf 1"),
+            "offer": data.get("offer", "No Active Offers")
         }},
         upsert=True
     )
@@ -388,6 +586,10 @@ def update_settings():
     if new_port:
         if new_port != SERIAL_PORT:
             SERIAL_PORT = new_port
+            # Save settings config
+            cfg = load_config()
+            cfg["serialPort"] = SERIAL_PORT
+            save_config(cfg)
             if global_ser:
                 try:
                     global_ser.close()
@@ -434,14 +636,194 @@ def manage_database():
     elif action == "clear_transactions":
         transactions_collection.delete_many({})
         db['feed'].delete_many({})
-        perform_reset()
+        carts_collection.update_one({"_id": "cart_1"}, {
+            "$set": {
+                "items": {},
+                "total": 0.0,
+                "itemsContained": 0,
+                "lastActive": "Cleared"
+            }
+        })
         return jsonify({"success": True, "message": "Transaction logs and feed have been cleared."})
         
     return jsonify({"success": False, "message": "Invalid database action"}), 400
 
+# ── Auxiliary Web Overhaul APIs ──────────────────────────────────────────────
+
+@app.route("/api/employees", methods=["GET", "POST"])
+def manage_employees():
+    employees_collection = db["employees"]
+    if request.method == "GET":
+        emps = list(employees_collection.find({}, {"_id": 0}))
+        return jsonify(emps)
+    elif request.method == "POST":
+        data = request.json
+        emp_id = data.get("id")
+        if not emp_id:
+            return jsonify({"success": False, "message": "Employee ID required"}), 400
+        employees_collection.update_one(
+            {"id": emp_id},
+            {"$set": {
+                "id": emp_id,
+                "name": data.get("name", "Unknown Name"),
+                "role": data.get("role", "Staff"),
+                "shift": data.get("shift", "Morning"),
+                "status": data.get("status", "Active")
+            }},
+            upsert=True
+        )
+        return jsonify({"success": True, "message": "Employee saved successfully"})
+
+@app.route("/api/employees/<emp_id>", methods=["DELETE"])
+def delete_employee(emp_id):
+    employees_collection = db["employees"]
+    result = employees_collection.delete_one({"id": emp_id})
+    if result.deleted_count > 0:
+        return jsonify({"success": True, "message": "Employee deleted"})
+    return jsonify({"success": False, "message": "Employee not found"}), 404
+
+@app.route("/api/feedback", methods=["GET", "POST"])
+def manage_feedback():
+    feedback_collection = db["feedback"]
+    if request.method == "GET":
+        feedbacks = list(feedback_collection.find({}, {"_id": 0}))
+        ratings = [f.get("rating", 5) for f in feedbacks]
+        avg_rating = sum(ratings) / len(ratings) if ratings else 5.0
+        return jsonify({
+            "feedbacks": feedbacks,
+            "averageRating": round(avg_rating, 1),
+            "totalResponses": len(feedbacks)
+        })
+    elif request.method == "POST":
+        data = request.json
+        rating = data.get("rating", 5)
+        comments = data.get("comments", "")
+        feedback_collection.insert_one({
+            "rating": int(rating),
+            "comments": comments,
+            "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        })
+        return jsonify({"success": True, "message": "Feedback submitted successfully"})
+
+@app.route("/api/trolleys", methods=["GET"])
+def get_trolleys():
+    cart_1 = carts_collection.find_one({"_id": "cart_1"})
+    trolley_1_total = cart_1.get("total", 0.0) if cart_1 else 0.0
+    trolley_1_items = cart_1.get("itemsContained", 0) if cart_1 else 0
+    trolley_1_status = "Active" if (global_ser is not None and global_ser.is_open) else "Idle"
+    if trolley_1_items > 0:
+        trolley_1_status = "Active"
+        
+    trolleys = [
+        {
+            "id": "Trolley-01",
+            "status": trolley_1_status,
+            "customer": "Lohith Kumar",
+            "items": trolley_1_items,
+            "total": trolley_1_total,
+            "battery": 86,
+            "latency": 42 if trolley_1_status == "Active" else 0
+        },
+        {
+            "id": "Trolley-02",
+            "status": "Idle",
+            "customer": "Jane Smith",
+            "items": 0,
+            "total": 0.0,
+            "battery": 92,
+            "latency": 0
+        },
+        {
+            "id": "Trolley-03",
+            "status": "Offline",
+            "customer": "None",
+            "items": 0,
+            "total": 0.0,
+            "battery": 15,
+            "latency": 0
+        },
+        {
+            "id": "Trolley-04",
+            "status": "Active",
+            "customer": "Amit Patel",
+            "items": 3,
+            "total": 145.0,
+            "battery": 74,
+            "latency": 68
+        }
+    ]
+    return jsonify(trolleys)
+
+@app.route("/api/customer/profile", methods=["GET"])
+def get_customer_profile():
+    transactions = list(transactions_collection.find({}, {"_id": 0}))
+    points = sum(int(tx.get("total", 0) // 10) for tx in transactions)
+    
+    return jsonify({
+        "memberId": "MEM-872910",
+        "name": "Lohith Kumar",
+        "email": "lohith.k@gmail.com",
+        "phone": "+91 98765 43210",
+        "tier": "Gold Member",
+        "points": points + 150,
+        "savedAddresses": [
+            "123, 4th Cross, Green Glen Layout, Bangalore - 560103",
+            "Office: Tech Park Phase 2, Outer Ring Road, Bangalore"
+        ],
+        "wishlist": [
+            {"name": "Rice 1kg", "price": 60.0, "category": "Grains"},
+            {"name": "Sugar 1kg", "price": 45.0, "category": "Grains"}
+        ]
+    })
+
+@app.route("/api/settings/backup", methods=["POST"])
+def db_backup():
+    try:
+        backup_data = {
+            "products": list(products_collection.find({}, {"_id": 0})),
+            "transactions": list(transactions_collection.find({}, {"_id": 0})),
+            "employees": list(db["employees"].find({}, {"_id": 0})),
+            "feedback": list(db["feedback"].find({}, {"_id": 0}))
+        }
+        backup_path = os.path.join(app.static_folder, "backup.json")
+        with open(backup_path, "w", encoding="utf-8") as f:
+            json.dump(backup_data, f, indent=4)
+        return jsonify({"success": True, "message": "Database backup completed successfully."})
+    except Exception as e:
+        return jsonify({"success": False, "message": f"Backup failed: {str(e)}"}), 500
+        
+@app.route("/api/settings/restore", methods=["POST"])
+def db_restore():
+    try:
+        backup_path = os.path.join(app.static_folder, "backup.json")
+        if not os.path.exists(backup_path):
+            return jsonify({"success": False, "message": "Backup file (backup.json) not found."}), 404
+            
+        with open(backup_path, "r", encoding="utf-8") as f:
+            backup_data = json.load(f)
+            
+        if "products" in backup_data and backup_data["products"]:
+            products_collection.delete_many({})
+            products_collection.insert_many(backup_data["products"])
+        if "transactions" in backup_data and backup_data["transactions"]:
+            transactions_collection.delete_many({})
+            transactions_collection.insert_many(backup_data["transactions"])
+        if "employees" in backup_data and backup_data["employees"]:
+            db["employees"].delete_many({})
+            db["employees"].insert_many(backup_data["employees"])
+        if "feedback" in backup_data and backup_data["feedback"]:
+            db["feedback"].delete_many({})
+            db["feedback"].insert_many(backup_data["feedback"])
+            
+        return jsonify({"success": True, "message": "Database restored successfully."})
+    except Exception as e:
+        return jsonify({"success": False, "message": f"Restore failed: {str(e)}"}), 500
+
 def serial_loop():
     global global_ser, current_mode, SERIAL_PORT
     BAUD_RATE = 9600
+    last_heartbeat_time = 0
+    last_warn_time = 0
     
     while True:
         # Reconnection Logic
@@ -449,10 +831,23 @@ def serial_loop():
             try:
                 global_ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
                 print(f"Connected to Arduino on {SERIAL_PORT}")
+                last_warn_time = 0  # Reset warning rate limiter
             except Exception as e:
-                print(f"Waiting for Arduino on {SERIAL_PORT}... (Please check your connection or close Serial Monitor)")
+                now_t = time.time()
+                if now_t - last_warn_time > 15:
+                    print(f"Waiting for Arduino on {SERIAL_PORT}... (Please check your connection or close Serial Monitor)")
+                    last_warn_time = now_t
                 time.sleep(3)
                 continue
+
+        # Send heartbeat
+        try:
+            now_t = time.time()
+            if now_t - last_heartbeat_time >= 5.0:
+                send_command_to_arduino("HEARTBEAT")
+                last_heartbeat_time = now_t
+        except Exception as e:
+            print(f"Heartbeat send error: {e}")
 
         try:
             line = global_ser.readline().decode('utf-8', errors='ignore').strip()
@@ -485,8 +880,9 @@ def serial_loop():
                     current_mode = "REMOVE"
                     print("[Mode] Switched to REMOVE")
                     send_command_to_arduino("LCD:You Can Now|Remove Item")
-                elif line.startswith("SCAN:"):
-                    uid = line.split("SCAN:")[1].strip()
+                elif line.startswith("SCAN:") or line.startswith("UID:"):
+                    prefix = "SCAN:" if line.startswith("SCAN:") else "UID:"
+                    uid = line.split(prefix)[1].strip()
                     product, total, uid_key = process_scan(current_mode, uid)
                     if product:
                         action_symbol = "+" if current_mode == "ADD" else "-"
@@ -500,7 +896,10 @@ def serial_loop():
         except serial.SerialException as e:
             print(f"Serial connection lost! Reconnecting... Error: {e}")
             if global_ser:
-                global_ser.close()
+                try:
+                    global_ser.close()
+                except:
+                    pass
             global_ser = None
             time.sleep(2)
         except Exception as e:

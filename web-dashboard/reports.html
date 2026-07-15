@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Trolley - Reports Module</title>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="styles.css">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="dark-theme">
+    <div class="app-container">
+        <!-- Sidebar (populated dynamically by shared.js) -->
+        <aside class="sidebar glass-panel"></aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="top-header glass-panel">
+                <div style="font-weight: 600; font-size: 1.1rem; color: var(--text-primary);">
+                    Financial Reports & Summaries
+                </div>
+                <div class="header-actions">
+                    <button class="icon-btn"><i class="fa-regular fa-bell"></i></button>
+                    <div class="user-profile">
+                        <img src="https://ui-avatars.com/api/?name=Admin&background=10b981&color=fff" alt="Admin">
+                        <span>Admin</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Report Configuration Toolbar -->
+            <div class="glass-panel" style="padding: 24px; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 20px;">
+                <div class="form-group" style="margin: 0; flex: 1; min-width: 200px;">
+                    <label>Report Timeframe</label>
+                    <select id="report-type" class="form-input" style="margin-top: 8px;">
+                        <option value="daily">Daily Checkout Activity</option>
+                        <option value="weekly">Weekly Compilation</option>
+                        <option value="monthly">Monthly Audit</option>
+                        <option value="yearly">Yearly Summary</option>
+                    </select>
+                </div>
+                
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-checkout" id="generate-report-btn">
+                        <i class="fa-solid fa-sync" style="margin-right: 6px;"></i> Compile Report
+                    </button>
+                    <button class="btn btn-outline" id="export-pdf-btn">
+                        <i class="fa-solid fa-file-pdf" style="margin-right: 6px;"></i> Export PDF
+                    </button>
+                    <button class="btn btn-outline" id="export-csv-btn">
+                        <i class="fa-solid fa-file-csv" style="margin-right: 6px;"></i> Export CSV
+                    </button>
+                    <button class="btn btn-outline" id="export-excel-btn">
+                        <i class="fa-solid fa-file-excel" style="margin-right: 6px;"></i> Export Excel
+                    </button>
+                </div>
+            </div>
+
+            <!-- Summary metrics -->
+            <div class="overview-cards" id="report-metrics-container" style="display: none;">
+                <div class="card glass-panel gradient-border">
+                    <div class="card-icon cyan"><i class="fa-solid fa-cash-register"></i></div>
+                    <div class="card-info">
+                        <p>Gross Billing</p>
+                        <h3 id="report-metric-gross">Rs.0.00</h3>
+                    </div>
+                </div>
+                <div class="card glass-panel gradient-border">
+                    <div class="card-icon purple"><i class="fa-solid fa-basket-shopping"></i></div>
+                    <div class="card-info">
+                        <p>Total Items Transacted</p>
+                        <h3 id="report-metric-items">0</h3>
+                    </div>
+                </div>
+                <div class="card glass-panel gradient-border">
+                    <div class="card-icon green"><i class="fa-solid fa-percent"></i></div>
+                    <div class="card-info">
+                        <p>Total GST Collected (18%)</p>
+                        <h3 id="report-metric-gst">Rs.0.00</h3>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Report Details Table -->
+            <div class="glass-panel" style="padding: 24px; display: none;" id="report-table-card">
+                <h3 style="font-weight:600; font-size:1.1rem; margin-bottom:16px;" id="report-table-title">Compiled Activity Table</h3>
+                <div class="table-responsive">
+                    <table class="transactions-table">
+                        <thead>
+                            <tr id="report-table-headers">
+                                <!-- Dynamic headers -->
+                            </tr>
+                        </thead>
+                        <tbody id="report-table-body">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div id="report-empty-state" class="glass-panel" style="padding: 40px; text-align: center; color: var(--text-secondary);">
+                <i class="fa-solid fa-file-invoice-dollar" style="font-size: 3rem; color: var(--accent-cyan); margin-bottom: 16px;"></i>
+                <h4>No Report Compiled</h4>
+                <p style="margin-top: 8px;">Select a timeframe configuration and click "Compile Report" above to construct stats.</p>
+            </div>
+        </main>
+    </div>
+
+    <!-- jsPDF Dynamic Script for PDF printing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- Application Logic -->
+    <script src="shared.js"></script>
+    <script src="reports.js"></script>
+</body>
+</html>

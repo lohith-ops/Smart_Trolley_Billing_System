@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Trolley - Live Trolleys</title>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="styles.css">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="dark-theme">
+    <div class="app-container">
+        <!-- Sidebar (populated dynamically by shared.js) -->
+        <aside class="sidebar glass-panel"></aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="top-header glass-panel">
+                <div style="font-weight: 600; font-size: 1.1rem; color: var(--text-primary);">
+                    Multi-Trolley Fleet Monitor
+                </div>
+                <div class="header-actions">
+                    <button class="icon-btn"><i class="fa-regular fa-bell"></i></button>
+                    <div class="user-profile">
+                        <img src="https://ui-avatars.com/api/?name=Admin&background=10b981&color=fff" alt="Admin">
+                        <span>Admin</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Filters & Search Toolbar -->
+            <div class="glass-panel" style="padding: 16px 24px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px;">
+                <div style="display: flex; gap: 10px;" id="filter-container">
+                    <button class="btn btn-outline active-filter" data-filter="all" style="padding: 6px 12px; font-size: 0.85rem;">All Trolleys</button>
+                    <button class="btn btn-outline" data-filter="active" style="padding: 6px 12px; font-size: 0.85rem;">Active</button>
+                    <button class="btn btn-outline" data-filter="idle" style="padding: 6px 12px; font-size: 0.85rem;">Idle</button>
+                    <button class="btn btn-outline" data-filter="offline" style="padding: 6px 12px; font-size: 0.85rem;">Offline</button>
+                </div>
+                
+                <div class="header-search" style="margin: 0; width: 280px;">
+                    <i class="fa-solid fa-search search-icon"></i>
+                    <input type="text" id="trolley-search" placeholder="Search by ID or customer...">
+                </div>
+            </div>
+
+            <!-- Trolleys Grid -->
+            <div class="trolleys-grid" id="trolleys-container">
+                <!-- Cards injected dynamically by trolleys.js -->
+            </div>
+        </main>
+    </div>
+
+    <!-- Application Logic -->
+    <script src="shared.js"></script>
+    <script src="trolleys.js"></script>
+</body>
+</html>

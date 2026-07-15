@@ -961,9 +961,385 @@ body.dark-theme {
 .status-text.online { color: var(--accent-green); }
 .status-text.offline { color: var(--accent-red); }
 
+/* ── Sidebar Navigation Optimizations for Multiple Links ─────────────────── */
+.sidebar {
+    overflow-y: auto;
+    max-height: calc(100vh - 32px);
+    padding: 18px;
+    gap: 16px;
+}
+.sidebar::-webkit-scrollbar {
+    width: 4px;
+}
+.sidebar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+.sidebar-header {
+    margin-bottom: 12px;
+}
+.sidebar-group-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-secondary);
+    font-weight: 700;
+    margin: 12px 0 4px 6px;
+    opacity: 0.5;
+}
+.nav-item {
+    padding: 10px 12px;
+    font-size: 0.9rem;
+}
+.nav-item i {
+    width: 20px;
+    font-size: 16px;
+    margin-right: 8px;
+}
+
+/* ── Toast Notifications System ─────────────────────────────────────────── */
+.toast-container {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    z-index: 9999;
+}
+.toast {
+    min-width: 320px;
+    background: rgba(15, 17, 21, 0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    color: #f8fafc;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    transform: translateX(120%);
+    transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.toast.show {
+    transform: translateX(0);
+}
+.toast-icon {
+    font-size: 1.3rem;
+    margin-top: 2px;
+}
+.toast-icon.info { color: var(--accent-cyan); }
+.toast-icon.success { color: var(--accent-green); }
+.toast-icon.warning { color: #f59e0b; }
+.toast-icon.error { color: var(--accent-red); }
+.toast-content {
+    flex: 1;
+}
+.toast-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 2px;
+}
+.toast-msg {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    line-height: 1.3;
+}
+.toast-close {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+.toast-close:hover {
+    color: var(--text-primary);
+}
+
+/* ── Multi-Trolley Grid Layout ─────────────────────────────────────────── */
+.trolleys-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 24px;
+}
+.trolley-status-badge {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+.trolley-status-badge.active { background: rgba(16, 185, 129, 0.2); color: var(--accent-green); }
+.trolley-status-badge.idle { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
+.trolley-status-badge.offline { background: rgba(244, 63, 94, 0.2); color: var(--accent-red); }
+
+.trolley-details-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--panel-border);
+    padding-bottom: 12px;
+    margin-bottom: 12px;
+}
+
+.trolley-stat-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin: 8px 0;
+}
+.trolley-stat-value {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+/* ── Supermarket navigation map ─────────────────────────────────────────── */
+.supermarket-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: auto auto auto;
+    gap: 20px;
+    margin-top: 16px;
+}
+.store-aisle {
+    height: 140px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    transition: var(--transition);
+}
+.store-aisle:hover {
+    transform: translateY(-4px);
+    border-color: var(--accent-cyan);
+    box-shadow: 0 8px 24px var(--accent-cyan-glow);
+}
+.store-aisle.active-highlight {
+    border-color: var(--accent-green);
+    box-shadow: 0 8px 24px rgba(16, 185, 129, 0.3);
+    background: rgba(16, 185, 129, 0.05);
+}
+.aisle-label {
+    font-weight: 600;
+    font-size: 1rem;
+}
+.aisle-stock {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+.store-entrance, .store-checkout-area, .store-customer-service {
+    grid-column: span 2;
+    height: 80px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px dashed var(--panel-border);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+/* ── Stock Heat Map ─────────────────────────────────────────────────────── */
+.heatmap-container {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 12px;
+    margin-top: 16px;
+}
+.heatmap-cell {
+    height: 90px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    border: 1px solid var(--panel-border);
+    font-size: 0.85rem;
+    font-weight: 600;
+    transition: var(--transition);
+    cursor: pointer;
+    text-align: center;
+    padding: 6px;
+}
+.heatmap-cell:hover {
+    transform: scale(1.05);
+}
+.heatmap-cell.stock-high {
+    background: rgba(16, 185, 129, 0.15);
+    border-color: var(--accent-green);
+    color: #10b981;
+}
+.heatmap-cell.stock-medium {
+    background: rgba(245, 158, 11, 0.15);
+    border-color: #f59e0b;
+    color: #f59e0b;
+}
+.heatmap-cell.stock-low {
+    background: rgba(244, 63, 94, 0.15);
+    border-color: var(--accent-red);
+    color: #f43f5e;
+    animation: alert-blink 2s infinite;
+}
+.heatmap-cell span {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    font-weight: normal;
+    margin-top: 4px;
+}
+
+/* ── Employee Cards Layout ──────────────────────────────────────────────── */
+.employees-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+}
+.employee-card {
+    padding: 20px;
+    position: relative;
+}
+.employee-avatar-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+.employee-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--grad-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    color: white;
+}
+.employee-name {
+    font-weight: 600;
+    font-size: 1.05rem;
+}
+.employee-role {
+    font-size: 0.8rem;
+    color: var(--accent-cyan);
+}
+
+/* ── Customer Portal ────────────────────────────────────────────────────── */
+.portal-login-box {
+    max-width: 420px;
+    margin: 80px auto;
+    padding: 32px;
+}
+.portal-grid {
+    display: grid;
+    grid-template-columns: 1fr 2.5fr;
+    gap: 24px;
+}
+.profile-sidebar {
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    text-align: center;
+}
+.profile-sidebar img {
+    border-radius: 50%;
+    width: 96px;
+    height: 96px;
+    border: 3px solid var(--accent-cyan);
+}
+.points-badge {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-weight: 700;
+    font-size: 1.1rem;
+    box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3);
+}
+
+/* ── Thermal Invoice Page ────────────────────────────────────────────────── */
+.receipt-paper {
+    max-width: 480px;
+    margin: 20px auto;
+    background: #f8fafc;
+    color: #0f1115;
+    padding: 32px;
+    border-radius: 4px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+    font-family: 'Courier New', Courier, monospace;
+    position: relative;
+    border-top: 8px solid var(--accent-cyan);
+}
+.receipt-paper * {
+    font-family: 'Courier New', Courier, monospace !important;
+}
+.receipt-header {
+    text-align: center;
+    border-bottom: 2px dashed #0f1115;
+    padding-bottom: 16px;
+    margin-bottom: 16px;
+}
+.receipt-logo {
+    font-size: 1.8rem;
+    font-weight: bold;
+    letter-spacing: 2px;
+}
+.receipt-line {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9rem;
+    margin: 4px 0;
+}
+.receipt-divider {
+    border-top: 1px dashed #0f1115;
+    margin: 12px 0;
+}
+.receipt-items-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+.receipt-items-table th {
+    text-align: left;
+    border-bottom: 1px dashed #0f1115;
+    padding-bottom: 8px;
+}
+.receipt-items-table td {
+    padding: 6px 0;
+}
+.receipt-barcode {
+    text-align: center;
+    margin-top: 20px;
+    font-size: 1.2rem;
+    letter-spacing: 3px;
+}
+
+/* ── Star Rating Input ─────────────────────────────────────────────────── */
+.rating-stars {
+    display: flex;
+    gap: 8px;
+    font-size: 1.5rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+.rating-stars i.active {
+    color: #f59e0b;
+}
+
 /* ── Responsiveness ────────────────────────────────────────────────────── */
 @media (max-width: 1024px) {
-    .dashboard-grid, .analytics-grid {
+    .dashboard-grid, .analytics-grid, .portal-grid {
         grid-template-columns: 1fr;
     }
 }
@@ -973,4 +1349,6 @@ body.dark-theme {
     .main-content { padding: 16px; }
     .overview-cards { grid-template-columns: 1fr; }
     .settings-grid { grid-template-columns: 1fr; }
+    .heatmap-container { grid-template-columns: repeat(3, 1fr); }
+    .supermarket-grid { grid-template-columns: 1fr; }
 }
