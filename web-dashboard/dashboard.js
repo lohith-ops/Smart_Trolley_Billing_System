@@ -353,9 +353,7 @@ async function setSimulatorMode(mode) {
 
 // Reset cart API call
 async function resetCart() {
-    if (!confirm('Are you sure you want to reset the cart? All items will be discarded.')) return;
-    
-    els.resetBtn.disabled = true;
+    if (els.resetBtn) els.resetBtn.disabled = true;
     try {
         const res = await fetch('/api/reset', { method: 'POST' });
         const data = await res.json();
@@ -363,11 +361,12 @@ async function resetCart() {
             await fetchDashboard();
             triggerLcdFeedback("Cart Reset!", "Total: Rs.0.00");
             triggerBuzzerFeedback(2);
+            if (window.showToast) window.showToast("Cart Reset", "Active cart has been cleared.", "info");
         }
     } catch (e) {
         console.error('Reset error:', e);
     } finally {
-        els.resetBtn.disabled = false;
+        if (els.resetBtn) els.resetBtn.disabled = false;
     }
 }
 
@@ -378,13 +377,12 @@ let currentBill = null;
 async function checkoutCart() {
     const cart = State.activeCarts[0];
     if (!cart || cart.itemsContained === 0) {
-        alert('Cart is empty. Scan items before generating bill.');
+        if (window.showToast) window.showToast("Cart Empty", "Scan items before generating a bill.", "warning");
+        else alert('Cart is empty. Scan items before generating bill.');
         return;
     }
 
-    if (!confirm(`Generate Bill for Trolley #${cart.id}?\nTotal: Rs.${cart.total.toFixed(2)}`)) return;
-
-    els.checkoutBtn.disabled = true;
+    if (els.checkoutBtn) els.checkoutBtn.disabled = true;
     try {
         const res  = await fetch('/api/cart/generate-bill', { method: 'POST' });
         const data = await res.json();
@@ -393,13 +391,15 @@ async function checkoutCart() {
             await fetchDashboard();
             showBillingModal(data);
         } else {
-            alert(data.message || 'Failed to generate bill.');
+            if (window.showToast) window.showToast("Error", data.message || 'Failed to generate bill.', "error");
+            else alert(data.message || 'Failed to generate bill.');
         }
     } catch (e) {
         console.error('Bill generation error:', e);
-        alert('Network error during bill generation.');
+        if (window.showToast) window.showToast("Network Error", "Failed to generate bill. Check connection.", "error");
+        else alert('Network error during bill generation.');
     } finally {
-        els.checkoutBtn.disabled = false;
+        if (els.checkoutBtn) els.checkoutBtn.disabled = false;
     }
 }
 
@@ -460,7 +460,6 @@ function showBillingModal(billData) {
 
 // Cancel bill & release cart
 async function cancelBill() {
-    if (!confirm('Are you sure you want to cancel this bill and return to scanning?')) return;
     try {
         const res = await fetch('/api/cart/cancel-bill', { method: 'POST' });
         const data = await res.json();
@@ -469,12 +468,13 @@ async function cancelBill() {
             await fetchDashboard();
             triggerLcdFeedback("Bill Cancelled", `Total: Rs.${data.total.toFixed(2)}`);
             triggerBuzzerFeedback(1);
+            if (window.showToast) window.showToast("Bill Cancelled", "Returned to scanning mode.", "info");
         } else {
-            alert(data.message || 'Failed to cancel bill.');
+            if (window.showToast) window.showToast("Error", data.message || 'Failed to cancel bill.', "error");
+            else alert(data.message || 'Failed to cancel bill.');
         }
     } catch (err) {
         console.error('Cancel bill error:', err);
-        alert('Network error while cancelling bill.');
     }
 }
 

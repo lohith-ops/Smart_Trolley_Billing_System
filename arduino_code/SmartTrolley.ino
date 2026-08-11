@@ -1,6 +1,6 @@
 /*
- * Smart Trolley Billing System — Arduino Firmware
- * ================================================
+ * Smart Trolley Billing System — Arduino Firmware (Robust & Non-Blocking)
+ * =======================================================================
  * Matches the Python backend protocol in app.py
  *
  * Serial Protocol:
@@ -11,10 +11,10 @@
  *     "RESET"             — Reset button pressed
  *
  *   Python → Arduino (LCD display):
- *     "ITEM:<name>|TOTAL:<price>\n"  — Show item and total on LCD
- *     "CMD:RESET\n"                  — Clear LCD, show "Cart Reset"
+ *     "LCD:Line1|Line2"   — Show 2-line text on LCD
+ *     "BEEP:<count>"      — Beep buzzer
  *
- * LCD I2C Address: 0x27 (try 0x3F if display is blank)
+ * LCD I2C Address: 0x27 (try 0x3F if display stays blank)
  * Pins: ADD=3, REMOVE=2, RESET=4, BUZZER=5, SS=10, RST=9
  */
 
@@ -41,7 +41,7 @@ MFRC522 mfrc522(SS_PIN, RST_PIN);
 String currentMode = "ADD";
 unsigned long lastHeartbeatTime = 0;
 bool isOffline = false;
-const unsigned long OFFLINE_TIMEOUT_MS = 12000;
+const unsigned long OFFLINE_TIMEOUT_MS = 15000;
 
 // ── Debounce ───────────────────────────────────────────────────────────────
 unsigned long lastDebounceAdd    = 0;
@@ -52,7 +52,7 @@ const unsigned long DEBOUNCE_MS  = 300;
 // ── Helpers ────────────────────────────────────────────────────────────────
 void beepOnce() {
   digitalWrite(BUZZER_PIN, HIGH);
-  delay(150);
+  delay(120);
   digitalWrite(BUZZER_PIN, LOW);
 }
 
@@ -79,21 +79,24 @@ void setup() {
   pinMode(REMOVE_BTN, INPUT_PULLUP);
   pinMode(RESET_BTN,  INPUT_PULLUP);
   pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, LOW);
 
   Serial.begin(9600);
 
   // LCD init
+  Wire.begin();
   lcd.init();
   lcd.backlight();
   lcdShow("Smart Trolley", "System Ready");
-  delay(2000);
-  lcd.clear();
+  beepOnce();
+  delay(1500);
 
   // SPI + RFID
   SPI.begin();
   mfrc522.PCD_Init();
+  mfrc522.PCD_SetAntennaGain(mfrc522.RxGain_max); // Max RFID gain
 
-  // RC522 self-check — report to Python
+  // RC522 self-check
   byte v = mfrc522.PCD_ReadRegister(mfrc522.VersionReg);
   Serial.print("RC522 Firmware : 0x");
   Serial.println(v, HEX);
@@ -101,10 +104,9 @@ void setup() {
     Serial.println("RC522 Status   : OK");
     lcdShow("RFID Ready", "Scan a card");
   } else {
-    Serial.println("RC522 Status   : ERROR — check SPI wiring and 3.3V power");
-    lcdShow("RFID Error", "Check wiring!");
-    delay(3000);
-    lcdShow("Mode: ADD", "Scan card...");
+    Serial.println("RC522 Status   : WARNING — Check SPI wiring and 3.3V power!");
+    lcdShow("RFID Check Wire", "Check 3.3V power");
+    delay(2000);
   }
 
   lcdShow("Mode: ADD", "Scan card...");
@@ -113,49 +115,9 @@ void setup() {
 
 // ── Main Loop ──────────────────────────────────────────────────────────────
 void loop() {
-
-  // ── Heartbeat Check ──────────────────────────────────────────────────────
-  if (millis() - lastHeartbeatTime > OFFLINE_TIMEOUT_MS) {
-    if (!isOffline) {
-      isOffline = true;
-      lcdShow("Server Offline", "Reconnecting...");
-      beepDouble();
-    }
-  }
-
-  // ── 1. BUTTON HANDLING (with debounce) ──────────────────────────────────
   unsigned long now = millis();
 
-  if (!isOffline) {
-    if (digitalRead(ADD_BTN) == LOW && (now - lastDebounceAdd > DEBOUNCE_MS)) {
-      lastDebounceAdd = now;
-      currentMode = "ADD";
-      Serial.println("MODE:ADD");
-      beepOnce();
-      lcdShow("Mode: ADD", "Scan card...");
-    }
-
-    if (digitalRead(REMOVE_BTN) == LOW && (now - lastDebounceRemove > DEBOUNCE_MS)) {
-      lastDebounceRemove = now;
-      currentMode = "REMOVE";
-      Serial.println("MODE:REMOVE");
-      beepOnce();
-      lcdShow("Mode: REMOVE", "Scan card...");
-    }
-
-    if (digitalRead(RESET_BTN) == LOW && (now - lastDebounceReset > DEBOUNCE_MS)) {
-      lastDebounceReset = now;
-      Serial.println("RESET");
-      beepDouble();
-      lcdShow("Cart Reset!", "Total: Rs.0.00");
-      delay(1500);
-      lcdShow("Mode: ADD", "Scan card...");
-      currentMode = "ADD";
-    }
-  }
-
-  // ── 2. RECEIVE FROM PYTHON (LCD display & Buzzer commands) ───────────────
-  // MUST be before RFID block — RFID uses early return which would block this.
+  // ── 1. RECEIVE FROM PYTHON (LCD display & Buzzer commands) ───────────────
   if (Serial.available()) {
     String msg = Serial.readStringUntil('\n');
     msg.trim();
@@ -172,10 +134,9 @@ void loop() {
     }
 
     if (msg == "HEARTBEAT") {
-      // Handled by the generic msg.length() check above
+      // Heartbeat updated above
     }
     else if (msg.startsWith("LCD:")) {
-      // Format: LCD:Line1|Line2 or LCD:SingleLine
       int sep = msg.indexOf('|');
       if (sep != -1) {
         String line1 = msg.substring(4, sep);
@@ -188,17 +149,8 @@ void loop() {
     else if (msg.startsWith("BEEP:")) {
       int count = msg.substring(5).toInt();
       for (int i = 0; i < count; i++) {
-        if (i > 0) delay(100);
+        if (i > 0) delay(80);
         beepOnce();
-      }
-    }
-    else if (msg.startsWith("ITEM:")) {
-      // Legacy Format: ITEM:<name>|TOTAL:<price>
-      int sep = msg.indexOf('|');
-      if (sep != -1) {
-        String itemName  = msg.substring(5, sep);
-        String totalStr  = msg.substring(sep + 7);
-        lcdShow(itemName, "Total: Rs." + totalStr);
       }
     }
     else if (msg == "CMD:RESET") {
@@ -208,8 +160,34 @@ void loop() {
     }
   }
 
-  // ── 3. RFID SCAN ─────────────────────────────────────────────────────────
-  if (isOffline) return;
+  // ── 2. BUTTON HANDLING (Non-blocking) ────────────────────────────────────
+  if (digitalRead(ADD_BTN) == LOW && (now - lastDebounceAdd > DEBOUNCE_MS)) {
+    lastDebounceAdd = now;
+    currentMode = "ADD";
+    Serial.println("MODE:ADD");
+    beepOnce();
+    lcdShow("Mode: ADD", "Scan card...");
+  }
+
+  if (digitalRead(REMOVE_BTN) == LOW && (now - lastDebounceRemove > DEBOUNCE_MS)) {
+    lastDebounceRemove = now;
+    currentMode = "REMOVE";
+    Serial.println("MODE:REMOVE");
+    beepOnce();
+    lcdShow("Mode: REMOVE", "Scan card...");
+  }
+
+  if (digitalRead(RESET_BTN) == LOW && (now - lastDebounceReset > DEBOUNCE_MS)) {
+    lastDebounceReset = now;
+    Serial.println("RESET");
+    beepDouble();
+    lcdShow("Cart Reset!", "Total: Rs.0.00");
+    delay(1200);
+    lcdShow("Mode: ADD", "Scan card...");
+    currentMode = "ADD";
+  }
+
+  // ── 3. RFID SCAN (Non-blocking) ──────────────────────────────────────────
   if (!mfrc522.PICC_IsNewCardPresent()) return;
   if (!mfrc522.PICC_ReadCardSerial())   return;
 
@@ -222,14 +200,14 @@ void loop() {
   }
   uid.toUpperCase();
 
-  // Send UID to Python
+  // Send UID to Python backend
   Serial.println("UID:" + uid);
 
-  // Show scanning feedback on LCD immediately
+  // Show immediate visual & audio feedback
   lcdShow("Scanning...", uid.substring(0, 16));
-
   beepOnce();
 
   mfrc522.PICC_HaltA();
   mfrc522.PCD_StopCrypto1();
+  delay(1200);
 }

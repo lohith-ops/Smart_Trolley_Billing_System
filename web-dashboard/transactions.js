@@ -2,19 +2,20 @@
  * Transaction History Logic
  */
 
-let Transactions = [];
+document.addEventListener('DOMContentLoaded', () => {
+    let Transactions = [];
 
-const els = {
-    transactionsList: document.getElementById('transactions-list'),
-    txSearch: document.getElementById('tx-search'),
-    
-    // Modal
-    receiptModal: document.getElementById('receipt-modal'),
-    receiptDate: document.getElementById('receipt-date'),
-    receiptAmount: document.getElementById('receipt-amount'),
-    receiptItemsContainer: document.getElementById('receipt-items-container'),
-    modalCloseBtn: document.getElementById('modal-close-btn')
-};
+    const els = {
+        transactionsList: document.getElementById('transactions-list'),
+        txSearch: document.getElementById('tx-search'),
+        
+        // Modal
+        receiptModal: document.getElementById('receipt-modal'),
+        receiptDate: document.getElementById('receipt-date'),
+        receiptAmount: document.getElementById('receipt-amount'),
+        receiptItemsContainer: document.getElementById('receipt-items-container'),
+        modalCloseBtn: document.getElementById('modal-close-btn')
+    };
 
 // Initialize
 async function initTransactions() {
@@ -128,8 +129,10 @@ function openReceiptModal(tx) {
     els.receiptModal.classList.add('active');
 }
 
-function closeReceiptModal() {
-    if (els.receiptModal) els.receiptModal.classList.remove('active');
-}
+    function closeReceiptModal() {
+        if (els.receiptModal) els.receiptModal.classList.remove('active');
+    }
 
-document.addEventListener('DOMContentLoaded', initTransactions);
+    // Initialize
+    initTransactions();
+});

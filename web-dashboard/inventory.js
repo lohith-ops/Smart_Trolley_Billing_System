@@ -2,28 +2,29 @@
  * Inventory Management & Heat Map Logic
  */
 
-let Products = [];
+document.addEventListener('DOMContentLoaded', () => {
+    let Products = [];
 
-const els = {
-    inventoryList: document.getElementById('inventory-list'),
-    addProductBtn: document.getElementById('add-product-btn'),
-    heatmap: document.getElementById('stock-heatmap'),
-    
-    // Modal Elements
-    productModal: document.getElementById('product-modal'),
-    productForm: document.getElementById('product-form'),
-    modalTitle: document.getElementById('modal-title'),
-    prodOriginalUid: document.getElementById('prod-original-uid'),
-    prodUid: document.getElementById('prod-uid'),
-    prodName: document.getElementById('prod-name'),
-    prodPrice: document.getElementById('prod-price'),
-    prodStock: document.getElementById('prod-stock'),
-    prodCategory: document.getElementById('prod-category'),
-    prodShelf: document.getElementById('prod-shelf'),
-    prodOffer: document.getElementById('prod-offer'),
-    prodCancelBtn: document.getElementById('prod-cancel-btn'),
-    prodSubmitBtn: document.getElementById('prod-submit-btn')
-};
+    const els = {
+        inventoryList: document.getElementById('inventory-list'),
+        addProductBtn: document.getElementById('add-product-btn'),
+        heatmap: document.getElementById('stock-heatmap'),
+        
+        // Modal Elements
+        productModal: document.getElementById('product-modal'),
+        productForm: document.getElementById('product-form'),
+        modalTitle: document.getElementById('modal-title'),
+        prodOriginalUid: document.getElementById('prod-original-uid'),
+        prodUid: document.getElementById('prod-uid'),
+        prodName: document.getElementById('prod-name'),
+        prodPrice: document.getElementById('prod-price'),
+        prodStock: document.getElementById('prod-stock'),
+        prodCategory: document.getElementById('prod-category'),
+        prodShelf: document.getElementById('prod-shelf'),
+        prodOffer: document.getElementById('prod-offer'),
+        prodCancelBtn: document.getElementById('prod-cancel-btn'),
+        prodSubmitBtn: document.getElementById('prod-submit-btn')
+    };
 
 // Initialize Inventory
 async function initInventory() {
@@ -284,4 +285,5 @@ async function deleteProduct(uid) {
     }
 }
 
-document.addEventListener('DOMContentLoaded', initInventory);
+    initInventory();
+});
