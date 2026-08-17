@@ -13,58 +13,68 @@ let State = {
 
 let Products = [];
 
-// DOM elements specific to Dashboard
-const els = {
-    revenue: document.getElementById('stat-revenue'),
-    trolleys: document.getElementById('stat-trolleys'),
-    items: document.getElementById('stat-items'),
-    lowstock: document.getElementById('stat-lowstock'),
-    offline: document.getElementById('stat-offline'),
-    pending: document.getElementById('stat-pending'),
-    feedContainer: document.getElementById('transaction-feed'),
-    cartsContainer: document.getElementById('active-carts-container'),
-    resetBtn: document.getElementById('reset-btn'),
-    checkoutBtn: document.getElementById('checkout-btn'),
+// DOM elements — populated lazily inside initDashboard() via refreshEls()
+const els = {};
+
+
+// Refresh DOM elements lazily to guarantee DOM load readiness
+function refreshEls() {
+    els.revenue = document.getElementById('stat-revenue');
+    els.trolleys = document.getElementById('stat-trolleys');
+    els.items = document.getElementById('stat-items');
+    els.lowstock = document.getElementById('stat-lowstock');
+    els.offline = document.getElementById('stat-offline');
+    els.pending = document.getElementById('stat-pending');
+    els.feedContainer = document.getElementById('transaction-feed');
+    els.cartsContainer = document.getElementById('active-carts-container');
+    els.resetBtn = document.getElementById('reset-btn');
+    els.mainResetBtn = document.getElementById('main-reset-btn');
+    els.checkoutBtn = document.getElementById('checkout-btn');
     
     // Receipt Modal
-    receiptModal: document.getElementById('receipt-modal'),
-    receiptAmount: document.getElementById('receipt-amount'),
-    receiptMeta: document.getElementById('receipt-meta'),
-    modalCloseBtn: document.getElementById('modal-close-btn'),
+    els.receiptModal = document.getElementById('receipt-modal');
+    els.receiptAmount = document.getElementById('receipt-amount');
+    els.receiptMeta = document.getElementById('receipt-meta');
+    els.modalCloseBtn = document.getElementById('modal-close-btn');
     
     // Registration Modal
-    regModal: document.getElementById('register-modal'),
-    regForm: document.getElementById('register-form'),
-    regUid: document.getElementById('reg-uid'),
-    regName: document.getElementById('reg-name'),
-    regPrice: document.getElementById('reg-price'),
-    regCancelBtn: document.getElementById('reg-cancel-btn'),
+    els.regModal = document.getElementById('register-modal');
+    els.regForm = document.getElementById('register-form');
+    els.regUid = document.getElementById('reg-uid');
+    els.regName = document.getElementById('reg-name');
+    els.regPrice = document.getElementById('reg-price');
+    els.regCancelBtn = document.getElementById('reg-cancel-btn');
 
     // Simulator Elements
-    simPanel: document.getElementById('sim-panel'),
-    simToggleBtn: document.getElementById('sim-toggle-btn'),
-    simCloseBtn: document.getElementById('sim-close-btn'),
-    simProductSelect: document.getElementById('sim-product-select'),
-    simCustomUid: document.getElementById('sim-custom-uid'),
-    simModeOpts: document.querySelectorAll('.sim-mode-opt'),
-    simScanBtn: document.getElementById('sim-scan-btn'),
-    simResetBtn: document.getElementById('sim-reset-btn'),
-    simCheckoutBtn: document.getElementById('sim-checkout-btn'),
-    simLcdLine1: document.getElementById('sim-lcd-line1'),
-    simLcdLine2: document.getElementById('sim-lcd-line2'),
-    simBuzzerLed: document.getElementById('sim-buzzer-led')
-};
+    els.simPanel = document.getElementById('sim-panel');
+    els.simToggleBtn = document.getElementById('sim-toggle-btn');
+    els.simCloseBtn = document.getElementById('sim-close-btn');
+    els.simProductSelect = document.getElementById('sim-product-select');
+    els.simCustomUid = document.getElementById('sim-custom-uid');
+    els.simModeOpts = document.querySelectorAll('.sim-mode-opt');
+    els.simScanBtn = document.getElementById('sim-scan-btn');
+    els.simResetBtn = document.getElementById('sim-reset-btn');
+    els.simCheckoutBtn = document.getElementById('sim-checkout-btn');
+    els.simLcdLine1 = document.getElementById('sim-lcd-line1');
+    els.simLcdLine2 = document.getElementById('sim-lcd-line2');
+    els.simBuzzerLed = document.getElementById('sim-buzzer-led');
+}
 
 // Initialize Dashboard
 async function initDashboard() {
+    refreshEls();
+
     await fetchProducts();
     await fetchDashboard();
     
     // Start dashboard polling
     setInterval(fetchDashboard, 2000);
 
-    // Setup action button listeners
+    // Setup reset button listeners
     if (els.resetBtn) els.resetBtn.addEventListener('click', resetCart);
+    if (els.mainResetBtn) els.mainResetBtn.addEventListener('click', resetCart);
+    if (els.simResetBtn) els.simResetBtn.addEventListener('click', resetCart);
+    
     if (els.checkoutBtn) els.checkoutBtn.addEventListener('click', checkoutCart);
     if (els.modalCloseBtn) els.modalCloseBtn.addEventListener('click', closeReceiptModal);
     
@@ -81,17 +91,17 @@ async function initDashboard() {
     // Simulator Panel Toggle & Actions
     if (els.simToggleBtn) {
         els.simToggleBtn.addEventListener('click', () => {
-            els.simPanel.classList.add('open');
+            if (els.simPanel) els.simPanel.classList.add('open');
         });
     }
     if (els.simCloseBtn) {
         els.simCloseBtn.addEventListener('click', () => {
-            els.simPanel.classList.remove('open');
+            if (els.simPanel) els.simPanel.classList.remove('open');
         });
     }
 
-    // Simulator Scan mode switch
-    els.simModeOpts.forEach(opt => {
+    // Bind ALL Scanner action mode toggle buttons on the page (top bar & simulator)
+    document.querySelectorAll('.sim-mode-opt').forEach(opt => {
         opt.addEventListener('click', async () => {
             const selectedMode = opt.getAttribute('data-mode');
             await setSimulatorMode(selectedMode);
@@ -100,7 +110,6 @@ async function initDashboard() {
 
     // Simulator Scanner scan triggers
     if (els.simScanBtn) els.simScanBtn.addEventListener('click', triggerSimulatorScan);
-    if (els.simResetBtn) els.simResetBtn.addEventListener('click', triggerSimulatorReset);
     if (els.simCheckoutBtn) els.simCheckoutBtn.addEventListener('click', triggerSimulatorCheckout);
     
     // Setup Payment Modal Handlers
@@ -185,7 +194,7 @@ function updateStatsUI() {
     if (els.pending) els.pending.innerText = pendingCount;
 }
 
-// Render active cart details AND its scanned items
+// Render active cart details AND its scanned items with interactive Add, Remove, and Delete controls
 function renderActiveCartAndItems() {
     if (!els.cartsContainer) return;
 
@@ -201,42 +210,157 @@ function renderActiveCartAndItems() {
 
     // Render carts details
     els.cartsContainer.innerHTML = State.activeCarts.map(cart => {
-        // Render items inside the cart
-        const itemsList = Object.values(cart.items);
+        const itemsEntries = Object.entries(cart.items || {});
         let itemsHtml = '';
         
-        if (itemsList.length > 0) {
+        if (itemsEntries.length > 0) {
             itemsHtml = `
-                <div class="cart-items-detail">
-                    ${itemsList.map(item => `
-                        <div class="cart-detail-row">
-                            <span><span class="qty">${item.quantity}x</span> ${item.name}</span>
-                            <span>Rs.${item.subtotal.toFixed(2)}</span>
+                <div class="cart-items-detail" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">
+                    ${itemsEntries.map(([uidKey, item]) => `
+                        <div class="cart-detail-row" style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px;">
+                            <div style="display: flex; flex-direction: column;">
+                                <span style="font-weight: 600; font-size: 0.9rem; color: var(--text-primary);">${item.name}</span>
+                                <span style="font-size: 0.75rem; color: var(--text-secondary);">Rs.${item.price.toFixed(2)} / unit</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <div style="display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 6px;">
+                                    <button class="btn-qty-sub" data-uid="${uidKey}" title="Remove 1 item" style="background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); color: var(--accent-red); width: 26px; height: 26px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold;">-</button>
+                                    <span style="font-weight: 700; min-width: 20px; text-align: center; color: #fff;">${item.quantity}</span>
+                                    <button class="btn-qty-add" data-uid="${uidKey}" title="Add 1 item" style="background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); color: var(--accent-green); width: 26px; height: 26px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold;">+</button>
+                                </div>
+                                <span style="font-weight: 700; color: var(--accent-green); font-size: 0.9rem; min-width: 65px; text-align: right;">Rs.${item.subtotal.toFixed(2)}</span>
+                                <button class="btn-qty-del" data-uid="${uidKey}" title="Remove all of this product" style="background: none; border: none; color: var(--accent-red); cursor: pointer; padding: 4px; font-size: 0.9rem;"><i class="fa-solid fa-trash"></i></button>
+                            </div>
                         </div>
                     `).join('')}
                 </div>
             `;
         } else {
             itemsHtml = `
-                <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 8px; font-style: italic; text-align: center;">
-                    Cart is empty. Scan products.
+                <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 12px; font-style: italic; text-align: center; padding: 12px; background: rgba(255,255,255,0.02); border-radius: 8px;">
+                    Cart is empty. Use Quick Add below or hardware buttons to scan items.
                 </div>
             `;
         }
 
+        const productOptions = Products.map(p => `<option value="${p.uid}">${p.name} — Rs.${p.price.toFixed(2)}</option>`).join('');
+
         return `
-            <div class="active-cart">
-                <div class="cart-header-row">
+            <div class="active-cart" style="padding: 16px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; margin-bottom: 16px;">
+                <div class="cart-header-row" style="display: flex; justify-content: space-between; align-items: center;">
                     <div class="cart-info">
-                        <h4><div class="cart-status"></div> Trolley #${cart.id}</h4>
-                        <p>${cart.itemsContained} items · ${cart.lastActive}</p>
+                        <h4 style="font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; gap: 8px;"><div class="cart-status"></div> Trolley #${cart.id}</h4>
+                        <p style="font-size: 0.8rem; color: var(--text-secondary);">${cart.itemsContained} items · ${cart.lastActive}</p>
                     </div>
-                    <div class="cart-total">Rs.${cart.total.toFixed(2)}</div>
+                    <div class="cart-total" style="font-size: 1.3rem; font-weight: 700; color: var(--accent-green);">Rs.${cart.total.toFixed(2)}</div>
                 </div>
+
                 ${itemsHtml}
+
+                <div class="cart-quick-controls" style="margin-top: 14px; padding-top: 12px; border-top: 1px dashed rgba(255,255,255,0.1); display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <select class="form-input cart-quick-select" style="flex: 1; min-width: 180px; padding: 6px 10px; font-size: 0.85rem; background: rgba(0,0,0,0.4); color: #fff; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px;">
+                        <option value="">-- Choose Product to Add --</option>
+                        ${productOptions}
+                    </select>
+                    <button class="btn btn-outline cart-quick-add-btn" style="padding: 6px 14px; font-size: 0.85rem; background: rgba(16, 185, 129, 0.15); color: var(--accent-green); border-color: rgba(16, 185, 129, 0.4);">
+                        <i class="fa-solid fa-plus" style="margin-right: 4px;"></i> Add Item
+                    </button>
+                    <button class="btn btn-outline cart-quick-rem-btn" style="padding: 6px 14px; font-size: 0.85rem; background: rgba(239, 68, 68, 0.15); color: var(--accent-red); border-color: rgba(239, 68, 68, 0.4);">
+                        <i class="fa-solid fa-minus" style="margin-right: 4px;"></i> Remove
+                    </button>
+                </div>
             </div>
         `;
     }).join('');
+
+    // Attach button listeners to generated controls
+    bindCartControlListeners();
+}
+
+// Bind event listeners for cart item modification buttons
+function bindCartControlListeners() {
+    // Add 1 quantity button (+)
+    document.querySelectorAll('.btn-qty-add').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const uid = btn.getAttribute('data-uid');
+            modifyCartItem(uid, 'ADD');
+        });
+    });
+
+    // Sub 1 quantity button (-)
+    document.querySelectorAll('.btn-qty-sub').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const uid = btn.getAttribute('data-uid');
+            modifyCartItem(uid, 'REMOVE');
+        });
+    });
+
+    // Delete product button (trash icon)
+    document.querySelectorAll('.btn-qty-del').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const uid = btn.getAttribute('data-uid');
+            modifyCartItem(uid, 'REMOVE_ALL');
+        });
+    });
+
+    // Quick Add button
+    document.querySelectorAll('.cart-quick-add-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const container = btn.closest('.cart-quick-controls');
+            const select = container ? container.querySelector('.cart-quick-select') : null;
+            if (select && select.value) {
+                modifyCartItem(select.value, 'ADD');
+            } else {
+                if (window.showToast) window.showToast("Select Product", "Please choose a product from the dropdown to add.", "warning");
+                else alert("Please choose a product from the dropdown.");
+            }
+        });
+    });
+
+    // Quick Remove button
+    document.querySelectorAll('.cart-quick-rem-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const container = btn.closest('.cart-quick-controls');
+            const select = container ? container.querySelector('.cart-quick-select') : null;
+            if (select && select.value) {
+                modifyCartItem(select.value, 'REMOVE');
+            } else {
+                if (window.showToast) window.showToast("Select Product", "Please choose a product from the dropdown to remove.", "warning");
+                else alert("Please choose a product from the dropdown.");
+            }
+        });
+    });
+}
+
+// Modify cart item handler (API call)
+async function modifyCartItem(uid, action) {
+    if (!uid) return;
+    try {
+        const res = await fetch('/api/cart/action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action, uid })
+        });
+        const data = await res.json();
+        if (data.success) {
+            await fetchDashboard();
+            triggerLcdFeedback(
+                `${action === 'ADD' ? '+' : '-'} ${data.product.name}`.substring(0, 16),
+                `Total: Rs.${data.cart.total.toFixed(2)}`,
+                3000
+            );
+            triggerBuzzerFeedback(1);
+            if (window.showToast) {
+                const actTitle = action === 'ADD' ? 'Item Added' : (action === 'REMOVE_ALL' ? 'Item Removed' : 'Item Decremented');
+                window.showToast(actTitle, `${data.product.name} updated in active cart.`, "success");
+            }
+        } else {
+            if (window.showToast) window.showToast("Action Blocked", data.message || "Could not modify cart.", "error");
+            else alert(data.message || "Could not modify cart.");
+        }
+    } catch (err) {
+        console.error("Cart item modification error:", err);
+    }
 }
 
 // Render recent checkout feeds
@@ -317,16 +441,26 @@ function renderFeed() {
     }).join('');
 }
 
-// Update simulator UI scan modes
+// Update ALL mode toggle buttons on the page (top bar + simulator panel)
 function updateSimulatorModeUI() {
-    els.simModeOpts.forEach(opt => {
+    document.querySelectorAll('.sim-mode-opt').forEach(opt => {
         const optMode = opt.getAttribute('data-mode');
         if (optMode === State.currentMode) {
             opt.classList.add('active');
+            opt.style.background = 'linear-gradient(135deg, var(--accent-cyan, #22d3ee), #6366f1)';
+            opt.style.color = '#fff';
+            opt.style.boxShadow = '0 0 12px rgba(34,211,238,0.35)';
         } else {
             opt.classList.remove('active');
+            opt.style.background = 'transparent';
+            opt.style.color = 'var(--text-secondary, #94a3b8)';
+            opt.style.boxShadow = 'none';
         }
     });
+
+    if (typeof lcdTimeout === 'undefined' || !lcdTimeout) {
+        triggerLcdFeedback(`Mode: ${State.currentMode}`, "Scan card...");
+    }
 }
 
 // Set scanner mode (ADD or REMOVE) via backend API
@@ -351,22 +485,34 @@ async function setSimulatorMode(mode) {
     }
 }
 
-// Reset cart API call
+// Reset cart API call — clears all active cart items
 async function resetCart() {
-    if (els.resetBtn) els.resetBtn.disabled = true;
+    if (!confirm('Reset the cart? All scanned items will be removed.')) return;
+
+    // Disable ALL reset buttons during the request
+    const allResetBtns = document.querySelectorAll('#reset-btn, #main-reset-btn, #sim-reset-btn');
+    allResetBtns.forEach(b => { b.disabled = true; b.style.opacity = '0.5'; });
+
     try {
-        const res = await fetch('/api/reset', { method: 'POST' });
+        const res = await fetch('/api/reset', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
         const data = await res.json();
         if (data.success) {
             await fetchDashboard();
-            triggerLcdFeedback("Cart Reset!", "Total: Rs.0.00");
+            triggerLcdFeedback("Cart Reset!", "Total: Rs.0.00", 3000);
             triggerBuzzerFeedback(2);
-            if (window.showToast) window.showToast("Cart Reset", "Active cart has been cleared.", "info");
+            if (window.showToast) window.showToast("Cart Reset", "All items cleared from the active cart.", "info");
+        } else {
+            if (window.showToast) window.showToast("Reset Failed", data.message || "Could not reset cart.", "error");
         }
     } catch (e) {
         console.error('Reset error:', e);
+        if (window.showToast) window.showToast("Network Error", "Could not connect to server.", "error");
     } finally {
-        if (els.resetBtn) els.resetBtn.disabled = false;
+        // Re-enable all reset buttons
+        allResetBtns.forEach(b => { b.disabled = false; b.style.opacity = ''; });
     }
 }
 
@@ -748,11 +894,32 @@ async function triggerSimulatorCheckout() {
     }
 }
 
-// Mock LCD character display writes
-function triggerLcdFeedback(line1, line2 = "") {
-    if (els.simLcdLine1 && els.simLcdLine2) {
-        els.simLcdLine1.textContent = line1.padEnd(16).substring(0, 16);
-        els.simLcdLine2.textContent = line2.padEnd(16).substring(0, 16);
+let lcdTimeout = null;
+
+// Mock LCD character display writes with timer support
+function triggerLcdFeedback(line1, line2 = "", durationMs = 0) {
+    if (lcdTimeout) {
+        clearTimeout(lcdTimeout);
+        lcdTimeout = null;
+    }
+    
+    if (els.simLcdLine1) {
+        els.simLcdLine1.textContent = line1.substring(0, 16);
+    }
+    if (els.simLcdLine2) {
+        els.simLcdLine2.textContent = line2.substring(0, 16);
+    }
+
+    if (durationMs > 0) {
+        lcdTimeout = setTimeout(() => {
+            if (els.simLcdLine1) {
+                els.simLcdLine1.textContent = `Mode: ${State.currentMode}`;
+            }
+            if (els.simLcdLine2) {
+                els.simLcdLine2.textContent = "Scan card...";
+            }
+            lcdTimeout = null;
+        }, durationMs);
     }
 }
 

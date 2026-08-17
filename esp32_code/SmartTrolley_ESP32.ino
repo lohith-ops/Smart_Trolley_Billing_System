@@ -43,7 +43,7 @@
 // ── Wi-Fi Configuration ────────────────────────────────────────────────────
 const char* ssid     = "Redmi 13C 5G";       // Matches your Hotspot SSID exactly
 const char* password = "111111111";          // Change to your Wi-Fi Password
-const String serverIP = "10.135.126.241";    // Your PC's Local IP address on hotspot
+const String serverIP = "10.50.17.241";    // Current PC Local IP on Wi-Fi/Hotspot
 const int serverPort = 5000;                 // Flask Server Port
 
 // API Endpoints
@@ -73,11 +73,16 @@ bool wifiConnected = false;
 unsigned long lastPingTime = 0;
 const unsigned long PING_INTERVAL_MS = 10000; // Ping server every 10s
 
+// Auto-detected idle pin states (determines unpressed logic)
+int addIdleState    = HIGH;
+int removeIdleState = HIGH;
+int resetIdleState  = HIGH;
+
 // Debounce timings
 unsigned long lastDebounceAdd    = 0;
 unsigned long lastDebounceRemove = 0;
 unsigned long lastDebounceReset  = 0;
-const unsigned long DEBOUNCE_MS  = 300;
+const unsigned long DEBOUNCE_MS  = 250;
 
 // ── Audio Indicator Helper Functions ───────────────────────────────────────
 void beepOnce() {
@@ -135,7 +140,12 @@ void setup() {
   digitalWrite(BUZZER_PIN, LOW);
 
   Serial.begin(115200);
-  delay(500);
+  delay(100);
+  addIdleState    = digitalRead(ADD_BTN);
+  removeIdleState = digitalRead(REMOVE_BTN);
+  resetIdleState  = digitalRead(RESET_BTN);
+
+  delay(400);
   Serial.println("\n==========================================");
   Serial.println("   Smart Trolley System — ESP32 Starting  ");
   Serial.println("==========================================");
@@ -252,11 +262,11 @@ void loop() {
     }
   }
 
-  // ── 2. Button Inputs (Always active, non-blocking) ───────────────────────
+  // ── 2. Button Inputs (Dual-Polarity Fail-Safe Detection) ───────────────────
   static unsigned long lastBtnDiag = 0;
-  if (now - lastBtnDiag > 3000) {
+  if (now - lastBtnDiag > 2000) {
     lastBtnDiag = now;
-    Serial.print("[BTN DIAGNOSTIC] ADD(GPIO13)=");
+    Serial.print("[BTN DIAG] ADD(GPIO13)=");
     Serial.print(digitalRead(ADD_BTN));
     Serial.print(" | REMOVE(GPIO12)=");
     Serial.print(digitalRead(REMOVE_BTN));
@@ -264,7 +274,11 @@ void loop() {
     Serial.println(digitalRead(RESET_BTN));
   }
 
-  if (digitalRead(ADD_BTN) == LOW && (now - lastDebounceAdd > DEBOUNCE_MS)) {
+  bool addActive    = (digitalRead(ADD_BTN) != addIdleState);
+  bool removeActive = (digitalRead(REMOVE_BTN) != removeIdleState);
+  bool resetActive  = (digitalRead(RESET_BTN) != resetIdleState);
+
+  if (addActive && (now - lastDebounceAdd > DEBOUNCE_MS)) {
     lastDebounceAdd = now;
     currentMode = "ADD";
     Serial.println("[BTN] ADD button pressed");
@@ -273,7 +287,7 @@ void loop() {
     syncModeWithServer("ADD");
   }
 
-  if (digitalRead(REMOVE_BTN) == LOW && (now - lastDebounceRemove > DEBOUNCE_MS)) {
+  if (removeActive && (now - lastDebounceRemove > DEBOUNCE_MS)) {
     lastDebounceRemove = now;
     currentMode = "REMOVE";
     Serial.println("[BTN] REMOVE button pressed");
@@ -282,7 +296,7 @@ void loop() {
     syncModeWithServer("REMOVE");
   }
 
-  if (digitalRead(RESET_BTN) == LOW && (now - lastDebounceReset > DEBOUNCE_MS)) {
+  if (resetActive && (now - lastDebounceReset > DEBOUNCE_MS)) {
     lastDebounceReset = now;
     Serial.println("[BTN] RESET button pressed");
     beepDouble();
@@ -380,8 +394,20 @@ void loop() {
     lcdShow("Unknown Card!", "Check Dashboard");
     beepTriple();
   } 
+  else if (httpCode == 400) {
+    // Cart is locked because bill was generated
+    Serial.println("[API] Cart Locked (Status 400)");
+    lcdShow("Cart Locked!", "Pay/Cancel Bill");
+    beepTriple();
+  }
+  else if (httpCode < 0) {
+    // Wi-Fi / TCP / IP connection failure
+    Serial.println("[API Error] Server connection failed, Code: " + String(httpCode));
+    lcdShow("Connection Error", "Check Server IP");
+    beepTriple();
+  }
   else {
-    // Other network errors
+    // Other server errors (HTTP 500, etc.)
     Serial.println("[API Error] Code: " + String(httpCode));
     lcdShow("Server Error!", "Code: " + String(httpCode));
     beepTriple();

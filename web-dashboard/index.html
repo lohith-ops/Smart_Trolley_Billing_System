@@ -17,43 +17,8 @@
 <body class="dark-theme">
     <div class="app-container">
         
-        <!-- Sidebar Navigation -->
-        <aside class="sidebar glass-panel">
-            <div class="sidebar-header">
-                <div class="logo-icon">
-                    <i class="fa-solid fa-cart-shopping"></i>
-                </div>
-                <h2>Smart Trolley</h2>
-            </div>
-            <nav class="sidebar-nav">
-                <a href="index.html" class="nav-item active">
-                    <i class="fa-solid fa-house"></i>
-                    <span>Dashboard</span>
-                </a>
-                <a href="inventory.html" class="nav-item">
-                    <i class="fa-solid fa-boxes-stacked"></i>
-                    <span>Inventory</span>
-                </a>
-                <a href="transactions.html" class="nav-item">
-                    <i class="fa-solid fa-receipt"></i>
-                    <span>Transactions</span>
-                </a>
-                <a href="analytics.html" class="nav-item">
-                    <i class="fa-solid fa-chart-line"></i>
-                    <span>Analytics</span>
-                </a>
-                <a href="settings.html" class="nav-item">
-                    <i class="fa-solid fa-gear"></i>
-                    <span>Settings</span>
-                </a>
-            </nav>
-            <div class="sidebar-footer">
-                <div class="status-indicator">
-                    <span class="pulse-dot"></span>
-                    <span>System Online</span>
-                </div>
-            </div>
-        </aside>
+        <!-- Sidebar Navigation (populated dynamically by shared.js) -->
+        <aside class="sidebar glass-panel"></aside>
 
         <!-- Main Content Area -->
         <main class="main-content">
@@ -115,6 +80,29 @@
                             <p>Pending Checkouts</p>
                             <h3 id="stat-pending">0</h3>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Scanner Mode & Controls Toolbar -->
+                <div class="glass-panel" style="grid-column: 1/-1; padding: 16px 24px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="font-weight: 600; font-size: 0.95rem; color: var(--text-primary);">
+                            <i class="fa-solid fa-sliders" style="margin-right: 6px; color: var(--accent-cyan);"></i> Active Scanner Mode:
+                        </span>
+                        <div class="sim-mode-toggle" style="display: flex; gap: 6px; background: rgba(0,0,0,0.3); padding: 4px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
+                            <button class="btn sim-mode-opt active" data-mode="ADD" id="top-btn-mode-add" style="padding: 8px 18px; font-size: 0.85rem; font-weight: 600; border-radius: 6px;">
+                                <i class="fa-solid fa-cart-plus" style="margin-right: 6px;"></i> ADD ITEM MODE
+                            </button>
+                            <button class="btn sim-mode-opt" data-mode="REMOVE" id="top-btn-mode-remove" style="padding: 8px 18px; font-size: 0.85rem; font-weight: 600; border-radius: 6px;">
+                                <i class="fa-solid fa-cart-arrow-down" style="margin-right: 6px;"></i> REMOVE ITEM MODE
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; gap: 12px; align-items: center;">
+                        <button class="btn btn-danger" id="main-reset-btn" style="padding: 8px 18px; font-size: 0.85rem; font-weight: 600; background: linear-gradient(135deg, #ef4444, #dc2626);">
+                            <i class="fa-solid fa-rotate-left" style="margin-right: 6px;"></i> Clear / Reset Cart
+                        </button>
                     </div>
                 </div>
 
@@ -360,7 +348,7 @@
     </aside>
 
     <!-- Application Logic -->
-    <script src="shared.js"></script>
-    <script src="dashboard.js"></script>
+    <script src="shared.js?v=1.0.1"></script>
+    <script src="dashboard.js?v=1.0.1"></script>
 </body>
 </html>

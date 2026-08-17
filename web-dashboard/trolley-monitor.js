@@ -74,7 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         els.hwTelemetry.innerHTML = `
             <div class="hardware-status-panel">
-                <span>Arduino Microcontroller</span>
+                <span>Microcontroller Unit (Arduino / ESP32)</span>
                 <span class="status-text ${isOnline ? 'online' : 'offline'}">
                     <span class="pulse-dot" style="background:${isOnline ? 'var(--accent-green)' : 'var(--accent-red)'}"></span>
                     <span>${isOnline ? 'Connected' : 'Disconnected'}</span>

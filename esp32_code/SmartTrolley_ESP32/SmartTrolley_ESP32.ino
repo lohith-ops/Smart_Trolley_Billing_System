@@ -43,7 +43,7 @@
 // ── Wi-Fi Configuration ────────────────────────────────────────────────────
 const char* ssid     = "Redmi 13C 5G";       // Matches your Hotspot SSID exactly
 const char* password = "111111111";          // Change to your Wi-Fi Password
-const String serverIP = "10.135.126.241";    // Your PC's Local IP address on hotspot
+const String serverIP = "10.50.17.241";    // Current PC Local IP on Wi-Fi/Hotspot
 const int serverPort = 5000;                 // Flask Server Port
 
 // API Endpoints
@@ -380,8 +380,20 @@ void loop() {
     lcdShow("Unknown Card!", "Check Dashboard");
     beepTriple();
   } 
+  else if (httpCode == 400) {
+    // Cart is locked because bill was generated
+    Serial.println("[API] Cart Locked (Status 400)");
+    lcdShow("Cart Locked!", "Pay/Cancel Bill");
+    beepTriple();
+  }
+  else if (httpCode < 0) {
+    // Wi-Fi / TCP / IP connection failure
+    Serial.println("[API Error] Server connection failed, Code: " + String(httpCode));
+    lcdShow("Connection Error", "Check Server IP");
+    beepTriple();
+  }
   else {
-    // Other network errors
+    // Other server errors (HTTP 500, etc.)
     Serial.println("[API Error] Code: " + String(httpCode));
     lcdShow("Server Error!", "Code: " + String(httpCode));
     beepTriple();

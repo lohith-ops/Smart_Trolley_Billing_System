@@ -22,7 +22,7 @@ CONFIG_FILE = "config.json"
 
 def load_config():
     defaults = {
-        "serialPort": "COM4"
+        "serialPort": "COM3"
     }
     if os.path.exists(CONFIG_FILE):
         try:
@@ -104,6 +104,14 @@ class MockCollection:
             for k, v in update["$set"].items():
                 doc[k] = v
         return type('UpdateResult', (object,), {'upserted_id': None, 'matched_count': 1, 'modified_count': 1})()
+    def insert_many(self, documents):
+        ids = []
+        for document in documents:
+            if "_id" not in document:
+                document["_id"] = str(len(self.data) + 1)
+            self.data.append(document)
+            ids.append(document["_id"])
+        return type('InsertManyResult', (object,), {'inserted_ids': ids})()
     def delete_one(self, filter):
         doc = self.find_one(filter)
         if doc in self.data:
@@ -219,7 +227,7 @@ global_ser = None
 
 # Load persistent configurations
 config_data = load_config()
-SERIAL_PORT = config_data.get("serialPort", "COM4")
+SERIAL_PORT = config_data.get("serialPort", "COM3")
 
 # We can keep a "mock" state for testing, but let's persist everything to MongoDB
 # Active cart will be stored in carts_collection with id "cart_1"
@@ -243,9 +251,12 @@ init_cart()
 def index():
     return send_from_directory(app.static_folder, "index.html")
 
-@app.route("/inventory.html")
-def inventory():
-    return send_from_directory(app.static_folder, "inventory.html")
+@app.route("/<path:path>")
+def serve_static(path):
+    full_path = os.path.join(app.static_folder, path)
+    if os.path.exists(full_path) and not os.path.isdir(full_path):
+        return send_from_directory(app.static_folder, path)
+    return send_from_directory(app.static_folder, "index.html")
 
 @app.route("/api/products", methods=["GET"])
 def get_products():
@@ -264,8 +275,16 @@ def get_dashboard():
     rev_result = list(transactions_collection.aggregate(pipeline))
     revenue = rev_result[0]["totalRevenue"] if rev_result else 0.0
     
-    # Get scanned items
-    items_scanned = transactions_collection.count_documents({})
+    # Calculate total items scanned across all transactions + current cart
+    items_scanned = 0
+    all_txs = list(transactions_collection.find({}, {"items": 1}))
+    for tx in all_txs:
+        for item_key, item_val in tx.get("items", {}).items():
+            items_scanned += item_val.get("quantity", 0)
+    
+    cart_1 = carts_collection.find_one({"_id": "cart_1"})
+    if cart_1:
+        items_scanned += cart_1.get("itemsContained", 0)
     
     # Get active carts
     carts = list(carts_collection.find({}))
@@ -331,7 +350,10 @@ def process_scan(action, uid):
         product = products_collection.find_one({"uid_norm": uid_key})
 
     cart = carts_collection.find_one({"_id": "cart_1"})
-    items = cart.get("items", {})
+    if not cart:
+        init_cart()
+        cart = carts_collection.find_one({"_id": "cart_1"})
+    items = cart.get("items", {}) if cart else {}
 
     if not product:
         # PUSH UNKNOWN EVENT TO FEED
@@ -344,6 +366,22 @@ def process_scan(action, uid):
 
     # Always use normalized UID as the cart item key for consistency
     if action == "ADD":
+        current_stock = product.get("stock")
+        if current_stock is None:
+            current_stock = 20
+        if current_stock <= 0:
+            db['feed'].insert_one({
+                "actionType": "OUT_OF_STOCK",
+                "productName": product["name"],
+                "timestamp": time.time()
+            })
+            return product, cart.get("total", 0.0), "OUT_OF_STOCK"
+
+        # Reduce stock count in database
+        new_stock = current_stock - 1
+        products_collection.update_one({"_id": product["_id"]}, {"$set": {"stock": new_stock}})
+        product["stock"] = new_stock
+
         if uid_key in items:
             items[uid_key]["quantity"] += 1
             items[uid_key]["subtotal"] = items[uid_key]["quantity"] * product["price"]
@@ -362,6 +400,26 @@ def process_scan(action, uid):
             else:
                 items[uid_key]["subtotal"] = items[uid_key]["quantity"] * product["price"]
 
+            # Restore stock count in database
+            curr_stk = product.get("stock")
+            if curr_stk is None:
+                curr_stk = 20
+            new_stock = curr_stk + 1
+            products_collection.update_one({"_id": product["_id"]}, {"$set": {"stock": new_stock}})
+            product["stock"] = new_stock
+    elif action == "REMOVE_ALL":
+        if uid_key in items:
+            qty_to_restore = items[uid_key]["quantity"]
+            del items[uid_key]
+
+            # Restore stock count in database
+            curr_stk = product.get("stock")
+            if curr_stk is None:
+                curr_stk = 20
+            new_stock = curr_stk + qty_to_restore
+            products_collection.update_one({"_id": product["_id"]}, {"$set": {"stock": new_stock}})
+            product["stock"] = new_stock
+
     total = sum(item["subtotal"] for item in items.values())
     items_contained = sum(item["quantity"] for item in items.values())
     
@@ -376,7 +434,7 @@ def process_scan(action, uid):
     
     # Add to feed
     db['feed'].insert_one({
-        "actionType": action,
+        "actionType": "REMOVE" if action in ["REMOVE", "REMOVE_ALL"] else "ADD",
         "productName": product["name"],
         "productPrice": product["price"],
         "timestamp": time.time()
@@ -399,8 +457,14 @@ def cart_action():
         send_command_to_arduino("LCD:Unknown Card!|Check Dashboard")
         send_command_to_arduino("BEEP:3")
         return jsonify({"success": False, "message": "Product not found", "uid": uid_key}), 404
+
+    if uid_key == "OUT_OF_STOCK":
+        short_pname = product['name'][:16]
+        send_command_to_arduino(f"LCD:{short_pname}|OUT OF STOCK!")
+        send_command_to_arduino("BEEP:3")
+        return jsonify({"success": False, "message": f"'{product['name']}' is Out of Stock!", "stock": 0}), 400
         
-    action_symbol = "+" if action == "ADD" else "-"
+    action_symbol = "-" if action in ["REMOVE", "REMOVE_ALL"] else "+"
     short_name = f"{action_symbol} {product['name']}"[:16]
     send_command_to_arduino(f"LCD:{short_name}|Total: Rs.{total:.2f}")
     send_command_to_arduino("BEEP:1")
@@ -408,7 +472,7 @@ def cart_action():
     cart = carts_collection.find_one({"_id": "cart_1"})
     return jsonify({
         "success": True, 
-        "product": {"name": product["name"], "price": product["price"]},
+        "product": {"name": product["name"], "price": product["price"], "stock": product.get("stock", 0)},
         "action": action,
         "cart": {"total": total, "itemsContained": cart["itemsContained"]}
     })
@@ -441,8 +505,22 @@ def perform_checkout():
     return False, 0.0, {}
 
 def perform_reset():
-    """Reset the cart without saving as a transaction (discard all items)."""
+    """Reset the cart without saving as a transaction (discard all items) and restore item stocks."""
     cart = carts_collection.find_one({"_id": "cart_1"})
+    if cart and "items" in cart:
+        items = cart.get("items", {})
+        for item_key, item_val in items.items():
+            qty = item_val.get("quantity", 0)
+            if qty > 0:
+                p = products_collection.find_one({"uid": item_key})
+                if not p:
+                    p = products_collection.find_one({"uid_norm": item_key})
+                if p:
+                    products_collection.update_one(
+                        {"_id": p["_id"]},
+                        {"$set": {"stock": p.get("stock", 0) + qty}}
+                    )
+
     carts_collection.update_one({"_id": "cart_1"}, {
         "$set": {
             "items": {},
@@ -610,6 +688,7 @@ def register_product():
     
     return jsonify({"success": True, "message": f"Registered {name}"})
 @app.route("/api/reset", methods=["POST"])
+@app.route("/api/cart/reset", methods=["POST"])
 def reset_cart():
     perform_reset()
     return jsonify({"success": True, "message": "Cart has been reset"})
@@ -695,6 +774,23 @@ def get_analytics():
         "timeseries": timeseries
     })
 
+@app.route("/api/settings/ports", methods=["GET"])
+def get_available_ports():
+    import serial.tools.list_ports
+    ports = serial.tools.list_ports.comports()
+    port_list = []
+    for p in ports:
+        port_list.append({
+            "port": p.device,
+            "description": p.description,
+            "hwid": p.hwid
+        })
+    return jsonify({
+        "success": True,
+        "ports": port_list,
+        "currentPort": SERIAL_PORT
+    })
+
 @app.route("/api/settings/update", methods=["POST"])
 def update_settings():
     global SERIAL_PORT, global_ser
@@ -702,19 +798,19 @@ def update_settings():
     new_port = data.get("serialPort")
     
     if new_port:
-        if new_port != SERIAL_PORT:
-            SERIAL_PORT = new_port
-            # Save settings config
-            cfg = load_config()
-            cfg["serialPort"] = SERIAL_PORT
-            save_config(cfg)
-            if global_ser:
-                try:
-                    global_ser.close()
-                except:
-                    pass
-                global_ser = None
-            print(f"Serial port updated to {SERIAL_PORT}. Reconnecting...")
+        SERIAL_PORT = new_port.strip().upper()
+        # Save settings config
+        cfg = load_config()
+        cfg["serialPort"] = SERIAL_PORT
+        save_config(cfg)
+        # Close existing connection to force reconnect loop to try the port immediately
+        if global_ser:
+            try:
+                global_ser.close()
+            except:
+                pass
+            global_ser = None
+        print(f"Serial port set to {SERIAL_PORT}. Reconnecting...")
             
     return jsonify({
         "success": True, 
@@ -948,15 +1044,38 @@ def serial_loop():
         if global_ser is None or not global_ser.is_open:
             try:
                 global_ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
-                print(f"Connected to Arduino on {SERIAL_PORT}")
+                print(f"Connected to hardware on {SERIAL_PORT}")
                 last_warn_time = 0  # Reset warning rate limiter
             except Exception as e:
-                now_t = time.time()
-                if now_t - last_warn_time > 15:
-                    print(f"Waiting for Arduino on {SERIAL_PORT}... (Please check your connection or close Serial Monitor)")
-                    last_warn_time = now_t
-                time.sleep(3)
-                continue
+                # Try auto-detecting connected serial device if configured port fails
+                try:
+                    import serial.tools.list_ports
+                    avail_ports = serial.tools.list_ports.comports()
+                    if avail_ports:
+                        for p in avail_ports:
+                            if p.device != SERIAL_PORT:
+                                try:
+                                    test_ser = serial.Serial(p.device, BAUD_RATE, timeout=1)
+                                    global_ser = test_ser
+                                    SERIAL_PORT = p.device
+                                    cfg = load_config()
+                                    cfg["serialPort"] = SERIAL_PORT
+                                    save_config(cfg)
+                                    print(f"[AUTO-DETECT] Successfully auto-connected to hardware on {SERIAL_PORT} ({p.description})")
+                                    last_warn_time = 0
+                                    break
+                                except Exception:
+                                    pass
+                except Exception:
+                    pass
+
+                if global_ser is None or not global_ser.is_open:
+                    now_t = time.time()
+                    if now_t - last_warn_time > 15:
+                        print(f"Waiting for hardware on {SERIAL_PORT}... (Please check your connection or close Serial Monitor)")
+                        last_warn_time = now_t
+                    time.sleep(3)
+                    continue
 
         # Send heartbeat
         try:
@@ -972,10 +1091,9 @@ def serial_loop():
             if line:
                 print(f"Arduino: {line}")
 
-                # ── Button state diagnostic (every 3s from Arduino) ──────────
-                if line.startswith("BTN_STATE:"):
-                    # Format: BTN_STATE: ADD=1 REMOVE=1 RESET=1  (1=not pressed, 0=pressed)
-                    if "RESET=0" in line:
+                # ── Button state diagnostic (every 2s from Arduino) ──────────
+                if line.startswith("BTN_STATE:") or line.startswith("[BTN DIAG"):
+                    if "RESET=0" in line or "RESET=0" in line:
                         print("[BTN] ✅ Reset button IS being pressed — triggering reset")
                         perform_reset()
                         send_command_to_arduino("LCD:Cart Reset!|Total: Rs.0.00")
@@ -985,16 +1103,17 @@ def serial_loop():
                 elif (line == "RESET"
                       or line.upper() == "RESET"
                       or line.startswith("Reset")
+                      or "BTN] RESET" in line
                       or "Bill cleared" in line):
                     print("[RESET] Hardware reset button triggered")
                     perform_reset()
                     send_command_to_arduino("LCD:Cart Reset!|Total: Rs.0.00")
 
-                elif line == "MODE:ADD":
+                elif line == "MODE:ADD" or "BTN] ADD" in line:
                     current_mode = "ADD"
                     print("[Mode] Switched to ADD")
                     send_command_to_arduino("LCD:You Can Now|Add Item")
-                elif line == "MODE:REMOVE":
+                elif line == "MODE:REMOVE" or "BTN] REMOVE" in line:
                     current_mode = "REMOVE"
                     print("[Mode] Switched to REMOVE")
                     send_command_to_arduino("LCD:You Can Now|Remove Item")
@@ -1008,7 +1127,12 @@ def serial_loop():
                         send_command_to_arduino("BEEP:3")
                         continue
                     product, total, uid_key = process_scan(current_mode, uid)
-                    if product:
+                    if uid_key == "OUT_OF_STOCK" and product:
+                        print(f"[WARN] Out of Stock: {product['name']}")
+                        short_pname = product['name'][:16]
+                        send_command_to_arduino(f"LCD:{short_pname}|OUT OF STOCK!")
+                        send_command_to_arduino("BEEP:3")
+                    elif product:
                         action_symbol = "+" if current_mode == "ADD" else "-"
                         short_name = f"{action_symbol} {product['name']}"[:16]
                         send_command_to_arduino(f"LCD:{short_name}|Total: Rs.{total:.2f}")

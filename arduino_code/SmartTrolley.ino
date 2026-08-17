@@ -1,20 +1,17 @@
 /*
- * Smart Trolley Billing System — Arduino Firmware (Robust & Non-Blocking)
+ * Smart Trolley Billing System — Arduino Firmware (Universal & Fail-Safe)
  * =======================================================================
- * Matches the Python backend protocol in app.py
- *
- * Serial Protocol:
+ * Supported Serial Protocol:
  *   Arduino → Python:
  *     "UID:XX XX XX XX"   — RFID card scanned (uppercase hex, space-separated)
  *     "MODE:ADD"          — Add button pressed
  *     "MODE:REMOVE"       — Remove button pressed
  *     "RESET"             — Reset button pressed
  *
- *   Python → Arduino (LCD display):
+ *   Python → Arduino:
  *     "LCD:Line1|Line2"   — Show 2-line text on LCD
  *     "BEEP:<count>"      — Beep buzzer
  *
- * LCD I2C Address: 0x27 (try 0x3F if display stays blank)
  * Pins: ADD=3, REMOVE=2, RESET=4, BUZZER=5, SS=10, RST=9
  */
 
@@ -23,7 +20,7 @@
 #include <MFRC522.h>
 #include <SPI.h>
 
-// ── LCD Setup (change 0x27 to 0x3F if display stays blank) ────────────────
+// ── LCD Setup (0x27 or 0x3F) ──────────────────────────────────────────────
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 // ── Pin Definitions ────────────────────────────────────────────────────────
@@ -32,27 +29,30 @@ const int REMOVE_BTN = 2;
 const int RESET_BTN  = 4;
 const int BUZZER_PIN = 5;
 
-// ── RFID Setup ─────────────────────────────────────────────────────────────
 #define SS_PIN  10
 #define RST_PIN  9
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 
-// ── State ──────────────────────────────────────────────────────────────────
+// ── State Variables ────────────────────────────────────────────────────────
 String currentMode = "ADD";
 unsigned long lastHeartbeatTime = 0;
-bool isOffline = false;
-const unsigned long OFFLINE_TIMEOUT_MS = 15000;
+unsigned long lastDiagTime = 0;
 
-// ── Debounce ───────────────────────────────────────────────────────────────
+// Auto-detected idle pin states (determines unpressed logic)
+int addIdleState    = HIGH;
+int removeIdleState = HIGH;
+int resetIdleState  = HIGH;
+
+// Debounce timing
 unsigned long lastDebounceAdd    = 0;
 unsigned long lastDebounceRemove = 0;
 unsigned long lastDebounceReset  = 0;
-const unsigned long DEBOUNCE_MS  = 300;
+const unsigned long DEBOUNCE_MS  = 250;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 void beepOnce() {
   digitalWrite(BUZZER_PIN, HIGH);
-  delay(120);
+  delay(100);
   digitalWrite(BUZZER_PIN, LOW);
 }
 
@@ -62,7 +62,6 @@ void beepDouble() {
   beepOnce();
 }
 
-/** Print a 2-line message on the LCD, padding/truncating to 16 chars each. */
 void lcdShow(String line1, String line2 = "") {
   lcd.clear();
   lcd.setCursor(0, 0);
@@ -75,6 +74,7 @@ void lcdShow(String line1, String line2 = "") {
 
 // ── Setup ──────────────────────────────────────────────────────────────────
 void setup() {
+  // Try internal pullup first
   pinMode(ADD_BTN,    INPUT_PULLUP);
   pinMode(REMOVE_BTN, INPUT_PULLUP);
   pinMode(RESET_BTN,  INPUT_PULLUP);
@@ -83,31 +83,24 @@ void setup() {
 
   Serial.begin(9600);
 
+  // Read initial unpressed pin states
+  delay(50);
+  addIdleState    = digitalRead(ADD_BTN);
+  removeIdleState = digitalRead(REMOVE_BTN);
+  resetIdleState  = digitalRead(RESET_BTN);
+
   // LCD init
   Wire.begin();
   lcd.init();
   lcd.backlight();
-  lcdShow("Smart Trolley", "System Ready");
+  lcdShow("Smart Trolley", "System Starting");
   beepOnce();
-  delay(1500);
+  delay(1000);
 
   // SPI + RFID
   SPI.begin();
   mfrc522.PCD_Init();
-  mfrc522.PCD_SetAntennaGain(mfrc522.RxGain_max); // Max RFID gain
-
-  // RC522 self-check
-  byte v = mfrc522.PCD_ReadRegister(mfrc522.VersionReg);
-  Serial.print("RC522 Firmware : 0x");
-  Serial.println(v, HEX);
-  if (v == 0x91 || v == 0x92) {
-    Serial.println("RC522 Status   : OK");
-    lcdShow("RFID Ready", "Scan a card");
-  } else {
-    Serial.println("RC522 Status   : WARNING — Check SPI wiring and 3.3V power!");
-    lcdShow("RFID Check Wire", "Check 3.3V power");
-    delay(2000);
-  }
+  mfrc522.PCD_SetAntennaGain(mfrc522.RxGain_max);
 
   lcdShow("Mode: ADD", "Scan card...");
   lastHeartbeatTime = millis();
@@ -117,31 +110,19 @@ void setup() {
 void loop() {
   unsigned long now = millis();
 
-  // ── 1. RECEIVE FROM PYTHON (LCD display & Buzzer commands) ───────────────
+  // ── 1. SERIAL COMMANDS FROM PYTHON ───────────────────────────────────────
   if (Serial.available()) {
     String msg = Serial.readStringUntil('\n');
     msg.trim();
 
     if (msg.length() > 0) {
       lastHeartbeatTime = millis();
-      if (isOffline) {
-        isOffline = false;
-        lcdShow("Server Restored", "Mode: " + currentMode);
-        beepOnce();
-        delay(1000);
-        lcdShow("Mode: " + currentMode, "Scan card...");
-      }
     }
 
-    if (msg == "HEARTBEAT") {
-      // Heartbeat updated above
-    }
-    else if (msg.startsWith("LCD:")) {
+    if (msg.startsWith("LCD:")) {
       int sep = msg.indexOf('|');
       if (sep != -1) {
-        String line1 = msg.substring(4, sep);
-        String line2 = msg.substring(sep + 1);
-        lcdShow(line1, line2);
+        lcdShow(msg.substring(4, sep), msg.substring(sep + 1));
       } else {
         lcdShow(msg.substring(4));
       }
@@ -160,8 +141,25 @@ void loop() {
     }
   }
 
-  // ── 2. BUTTON HANDLING (Non-blocking) ────────────────────────────────────
-  if (digitalRead(ADD_BTN) == LOW && (now - lastDebounceAdd > DEBOUNCE_MS)) {
+  // ── 2. DIAGNOSTIC PRINTING (Every 2 seconds) ─────────────────────────────
+  if (now - lastDiagTime > 2000) {
+    lastDiagTime = now;
+    Serial.print("[BTN DIAG] ADD(D3)=");
+    Serial.print(digitalRead(ADD_BTN));
+    Serial.print(" | REMOVE(D2)=");
+    Serial.print(digitalRead(REMOVE_BTN));
+    Serial.print(" | RESET(D4)=");
+    Serial.println(digitalRead(RESET_BTN));
+  }
+
+  // ── 3. UNIVERSAL DUAL-POLARITY BUTTON DETECTION ──────────────────────────
+  // Triggers when pin state changes from idle state (works with GND or 5V wiring)
+  bool addActive    = (digitalRead(ADD_BTN) != addIdleState);
+  bool removeActive = (digitalRead(REMOVE_BTN) != removeIdleState);
+  bool resetActive  = (digitalRead(RESET_BTN) != resetIdleState);
+
+  // ADD Button Pressed
+  if (addActive && (now - lastDebounceAdd > DEBOUNCE_MS)) {
     lastDebounceAdd = now;
     currentMode = "ADD";
     Serial.println("MODE:ADD");
@@ -169,7 +167,8 @@ void loop() {
     lcdShow("Mode: ADD", "Scan card...");
   }
 
-  if (digitalRead(REMOVE_BTN) == LOW && (now - lastDebounceRemove > DEBOUNCE_MS)) {
+  // REMOVE Button Pressed
+  if (removeActive && (now - lastDebounceRemove > DEBOUNCE_MS)) {
     lastDebounceRemove = now;
     currentMode = "REMOVE";
     Serial.println("MODE:REMOVE");
@@ -177,7 +176,8 @@ void loop() {
     lcdShow("Mode: REMOVE", "Scan card...");
   }
 
-  if (digitalRead(RESET_BTN) == LOW && (now - lastDebounceReset > DEBOUNCE_MS)) {
+  // RESET Button Pressed
+  if (resetActive && (now - lastDebounceReset > DEBOUNCE_MS)) {
     lastDebounceReset = now;
     Serial.println("RESET");
     beepDouble();
@@ -187,11 +187,10 @@ void loop() {
     currentMode = "ADD";
   }
 
-  // ── 3. RFID SCAN (Non-blocking) ──────────────────────────────────────────
+  // ── 4. RFID SCAN ─────────────────────────────────────────────────────────
   if (!mfrc522.PICC_IsNewCardPresent()) return;
   if (!mfrc522.PICC_ReadCardSerial())   return;
 
-  // Build UID string: "XX XX XX XX" (uppercase hex, space-separated)
   String uid = "";
   for (byte i = 0; i < mfrc522.uid.size; i++) {
     if (i > 0) uid += " ";
@@ -200,10 +199,7 @@ void loop() {
   }
   uid.toUpperCase();
 
-  // Send UID to Python backend
   Serial.println("UID:" + uid);
-
-  // Show immediate visual & audio feedback
   lcdShow("Scanning...", uid.substring(0, 16));
   beepOnce();
 

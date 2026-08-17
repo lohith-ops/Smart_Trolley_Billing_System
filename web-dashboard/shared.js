@@ -29,20 +29,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (data.arduinoConnected) {
                         pulseDot.style.backgroundColor = 'var(--accent-green)';
                         pulseDot.style.boxShadow = '0 0 8px var(--accent-green)';
-                        statusText.textContent = `Arduino Online (${data.serialPort})`;
+                        statusText.textContent = `Hardware Online (${data.serialPort})`;
                     } else {
                         pulseDot.style.backgroundColor = 'var(--accent-red)';
                         pulseDot.style.boxShadow = '0 0 8px var(--accent-red)';
-                        statusText.textContent = 'Arduino Offline';
+                        statusText.textContent = 'Hardware Offline';
                     }
                 }
 
-                // Trigger Toast on Arduino Connectivity Changes
+                // Trigger Toast on Connectivity Changes
                 if (lastArduinoState !== null && lastArduinoState !== data.arduinoConnected) {
                     if (data.arduinoConnected) {
-                        window.showToast("Hardware Online", `Arduino has successfully connected to port ${data.serialPort}`, "success");
+                        window.showToast("Hardware Online", `Microcontroller connected on port ${data.serialPort}`, "success");
                     } else {
-                        window.showToast("Hardware Connection Lost", `Arduino on ${data.serialPort} disconnected. Please check cables.`, "error");
+                        window.showToast("Hardware Connection Lost", `Device on ${data.serialPort} disconnected. Please check cables.`, "error");
                     }
                 }
                 lastArduinoState = data.arduinoConnected;
