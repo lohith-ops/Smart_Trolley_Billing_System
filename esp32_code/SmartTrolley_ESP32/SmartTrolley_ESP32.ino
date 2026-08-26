@@ -43,7 +43,7 @@
 // ── Wi-Fi Configuration ────────────────────────────────────────────────────
 const char* ssid     = "Redmi 13C 5G";       // Matches your Hotspot SSID exactly
 const char* password = "111111111";          // Change to your Wi-Fi Password
-const String serverIP = "10.50.17.241";    // Current PC Local IP on Wi-Fi/Hotspot
+const String serverIP = "10.83.19.241";       // Current PC Local IP on Wi-Fi/Hotspot
 const int serverPort = 5000;                 // Flask Server Port
 
 // API Endpoints

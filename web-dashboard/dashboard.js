@@ -49,6 +49,7 @@ function refreshEls() {
     els.simPanel = document.getElementById('sim-panel');
     els.simToggleBtn = document.getElementById('sim-toggle-btn');
     els.simCloseBtn = document.getElementById('sim-close-btn');
+    els.simTrolleySelect = document.getElementById('sim-trolley-select');
     els.simProductSelect = document.getElementById('sim-product-select');
     els.simCustomUid = document.getElementById('sim-custom-uid');
     els.simModeOpts = document.querySelectorAll('.sim-mode-opt');
@@ -151,6 +152,8 @@ async function fetchDashboard() {
         State.feed = data.feed;
         State.currentMode = data.currentMode;
         State.arduinoConnected = data.arduinoConnected;
+        State.trolleyCount = data.trolleyCount;
+        State.onlineTrolleys = data.onlineTrolleys;
 
         // Check for Unknown Scans
         if (State.feed.length > 0) {
@@ -178,15 +181,17 @@ async function fetchDashboard() {
 // Update Top level statistics counters
 function updateStatsUI() {
     if (els.revenue) els.revenue.innerText = `Rs.${State.revenue.toFixed(2)}`;
-    if (els.trolleys) els.trolleys.innerText = State.activeCarts.length;
+    if (els.trolleys) els.trolleys.innerText = State.trolleyCount || State.activeCarts.length;
     if (els.items) els.items.innerText = State.scannedItems;
     
     // Count low stock products (stock < 10)
     const lowStockCount = Products.filter(p => p.stock < 10).length;
     if (els.lowstock) els.lowstock.innerText = lowStockCount;
     
-    // Offline devices (Arduino offline = 1, otherwise 0)
-    const offlineCount = State.arduinoConnected ? 0 : 1;
+    // Offline devices
+    const totalCount = State.trolleyCount || 3;
+    const onlineCount = State.onlineTrolleys !== undefined ? State.onlineTrolleys : (State.arduinoConnected ? 1 : 0);
+    const offlineCount = Math.max(0, totalCount - onlineCount);
     if (els.offline) els.offline.innerText = offlineCount;
     
     // Pending checkouts (active carts with items > 0)
@@ -211,6 +216,7 @@ function renderActiveCartAndItems() {
     // Render carts details
     els.cartsContainer.innerHTML = State.activeCarts.map(cart => {
         const itemsEntries = Object.entries(cart.items || {});
+        const trolleyId = cart.trolley_id || `TROLLEY-00${cart.id}`;
         let itemsHtml = '';
         
         if (itemsEntries.length > 0) {
@@ -224,12 +230,12 @@ function renderActiveCartAndItems() {
                             </div>
                             <div style="display: flex; align-items: center; gap: 10px;">
                                 <div style="display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 6px;">
-                                    <button class="btn-qty-sub" data-uid="${uidKey}" title="Remove 1 item" style="background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); color: var(--accent-red); width: 26px; height: 26px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold;">-</button>
+                                    <button class="btn-qty-sub" data-uid="${uidKey}" data-trolley-id="${trolleyId}" title="Remove 1 item" style="background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); color: var(--accent-red); width: 26px; height: 26px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold;">-</button>
                                     <span style="font-weight: 700; min-width: 20px; text-align: center; color: #fff;">${item.quantity}</span>
-                                    <button class="btn-qty-add" data-uid="${uidKey}" title="Add 1 item" style="background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); color: var(--accent-green); width: 26px; height: 26px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold;">+</button>
+                                    <button class="btn-qty-add" data-uid="${uidKey}" data-trolley-id="${trolleyId}" title="Add 1 item" style="background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); color: var(--accent-green); width: 26px; height: 26px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold;">+</button>
                                 </div>
                                 <span style="font-weight: 700; color: var(--accent-green); font-size: 0.9rem; min-width: 65px; text-align: right;">Rs.${item.subtotal.toFixed(2)}</span>
-                                <button class="btn-qty-del" data-uid="${uidKey}" title="Remove all of this product" style="background: none; border: none; color: var(--accent-red); cursor: pointer; padding: 4px; font-size: 0.9rem;"><i class="fa-solid fa-trash"></i></button>
+                                <button class="btn-qty-del" data-uid="${uidKey}" data-trolley-id="${trolleyId}" title="Remove all of this product" style="background: none; border: none; color: var(--accent-red); cursor: pointer; padding: 4px; font-size: 0.9rem;"><i class="fa-solid fa-trash"></i></button>
                             </div>
                         </div>
                     `).join('')}
@@ -249,7 +255,7 @@ function renderActiveCartAndItems() {
             <div class="active-cart" style="padding: 16px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; margin-bottom: 16px;">
                 <div class="cart-header-row" style="display: flex; justify-content: space-between; align-items: center;">
                     <div class="cart-info">
-                        <h4 style="font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; gap: 8px;"><div class="cart-status"></div> Trolley #${cart.id}</h4>
+                        <h4 style="font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; gap: 8px;"><div class="cart-status"></div> ${trolleyId}</h4>
                         <p style="font-size: 0.8rem; color: var(--text-secondary);">${cart.itemsContained} items · ${cart.lastActive}</p>
                     </div>
                     <div class="cart-total" style="font-size: 1.3rem; font-weight: 700; color: var(--accent-green);">Rs.${cart.total.toFixed(2)}</div>
@@ -257,15 +263,15 @@ function renderActiveCartAndItems() {
 
                 ${itemsHtml}
 
-                <div class="cart-quick-controls" style="margin-top: 14px; padding-top: 12px; border-top: 1px dashed rgba(255,255,255,0.1); display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <div class="cart-quick-controls" data-trolley-id="${trolleyId}" style="margin-top: 14px; padding-top: 12px; border-top: 1px dashed rgba(255,255,255,0.1); display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                     <select class="form-input cart-quick-select" style="flex: 1; min-width: 180px; padding: 6px 10px; font-size: 0.85rem; background: rgba(0,0,0,0.4); color: #fff; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px;">
                         <option value="">-- Choose Product to Add --</option>
                         ${productOptions}
                     </select>
-                    <button class="btn btn-outline cart-quick-add-btn" style="padding: 6px 14px; font-size: 0.85rem; background: rgba(16, 185, 129, 0.15); color: var(--accent-green); border-color: rgba(16, 185, 129, 0.4);">
+                    <button class="btn btn-outline cart-quick-add-btn" data-trolley-id="${trolleyId}" style="padding: 6px 14px; font-size: 0.85rem; background: rgba(16, 185, 129, 0.15); color: var(--accent-green); border-color: rgba(16, 185, 129, 0.4);">
                         <i class="fa-solid fa-plus" style="margin-right: 4px;"></i> Add Item
                     </button>
-                    <button class="btn btn-outline cart-quick-rem-btn" style="padding: 6px 14px; font-size: 0.85rem; background: rgba(239, 68, 68, 0.15); color: var(--accent-red); border-color: rgba(239, 68, 68, 0.4);">
+                    <button class="btn btn-outline cart-quick-rem-btn" data-trolley-id="${trolleyId}" style="padding: 6px 14px; font-size: 0.85rem; background: rgba(239, 68, 68, 0.15); color: var(--accent-red); border-color: rgba(239, 68, 68, 0.4);">
                         <i class="fa-solid fa-minus" style="margin-right: 4px;"></i> Remove
                     </button>
                 </div>
@@ -283,7 +289,8 @@ function bindCartControlListeners() {
     document.querySelectorAll('.btn-qty-add').forEach(btn => {
         btn.addEventListener('click', () => {
             const uid = btn.getAttribute('data-uid');
-            modifyCartItem(uid, 'ADD');
+            const trolleyId = btn.getAttribute('data-trolley-id');
+            modifyCartItem(uid, 'ADD', trolleyId);
         });
     });
 
@@ -291,7 +298,8 @@ function bindCartControlListeners() {
     document.querySelectorAll('.btn-qty-sub').forEach(btn => {
         btn.addEventListener('click', () => {
             const uid = btn.getAttribute('data-uid');
-            modifyCartItem(uid, 'REMOVE');
+            const trolleyId = btn.getAttribute('data-trolley-id');
+            modifyCartItem(uid, 'REMOVE', trolleyId);
         });
     });
 
@@ -299,7 +307,8 @@ function bindCartControlListeners() {
     document.querySelectorAll('.btn-qty-del').forEach(btn => {
         btn.addEventListener('click', () => {
             const uid = btn.getAttribute('data-uid');
-            modifyCartItem(uid, 'REMOVE_ALL');
+            const trolleyId = btn.getAttribute('data-trolley-id');
+            modifyCartItem(uid, 'REMOVE_ALL', trolleyId);
         });
     });
 
@@ -308,8 +317,9 @@ function bindCartControlListeners() {
         btn.addEventListener('click', () => {
             const container = btn.closest('.cart-quick-controls');
             const select = container ? container.querySelector('.cart-quick-select') : null;
+            const trolleyId = btn.getAttribute('data-trolley-id') || (container ? container.getAttribute('data-trolley-id') : 'TROLLEY-001');
             if (select && select.value) {
-                modifyCartItem(select.value, 'ADD');
+                modifyCartItem(select.value, 'ADD', trolleyId);
             } else {
                 if (window.showToast) window.showToast("Select Product", "Please choose a product from the dropdown to add.", "warning");
                 else alert("Please choose a product from the dropdown.");
@@ -322,8 +332,9 @@ function bindCartControlListeners() {
         btn.addEventListener('click', () => {
             const container = btn.closest('.cart-quick-controls');
             const select = container ? container.querySelector('.cart-quick-select') : null;
+            const trolleyId = btn.getAttribute('data-trolley-id') || (container ? container.getAttribute('data-trolley-id') : 'TROLLEY-001');
             if (select && select.value) {
-                modifyCartItem(select.value, 'REMOVE');
+                modifyCartItem(select.value, 'REMOVE', trolleyId);
             } else {
                 if (window.showToast) window.showToast("Select Product", "Please choose a product from the dropdown to remove.", "warning");
                 else alert("Please choose a product from the dropdown.");
@@ -333,13 +344,14 @@ function bindCartControlListeners() {
 }
 
 // Modify cart item handler (API call)
-async function modifyCartItem(uid, action) {
+async function modifyCartItem(uid, action, trolleyId) {
     if (!uid) return;
+    const targetTrolley = trolleyId || (els.simTrolleySelect ? els.simTrolleySelect.value : 'TROLLEY-001');
     try {
         const res = await fetch('/api/cart/action', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action, uid })
+            body: JSON.stringify({ action, uid, trolley_id: targetTrolley })
         });
         const data = await res.json();
         if (data.success) {
@@ -352,7 +364,7 @@ async function modifyCartItem(uid, action) {
             triggerBuzzerFeedback(1);
             if (window.showToast) {
                 const actTitle = action === 'ADD' ? 'Item Added' : (action === 'REMOVE_ALL' ? 'Item Removed' : 'Item Decremented');
-                window.showToast(actTitle, `${data.product.name} updated in active cart.`, "success");
+                window.showToast(actTitle, `${data.product.name} updated in ${targetTrolley}.`, "success");
             }
         } else {
             if (window.showToast) window.showToast("Action Blocked", data.message || "Could not modify cart.", "error");
@@ -380,16 +392,19 @@ function renderFeed() {
     els.feedContainer.innerHTML = State.feed.map(item => {
         const d = new Date(item.timestamp * 1000);
         const timeString = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const trolleyLabel = item.trolley_id ? item.trolley_id.replace('TROLLEY-00', 'Trolley #').replace('TROLLEY-', 'Trolley #') : 'Trolley #1';
+        const priceStr = (typeof item.productPrice === 'number') ? item.productPrice.toFixed(2) : (item.productPrice ? Number(item.productPrice).toFixed(2) : '0.00');
+        const totalStr = (typeof item.total === 'number') ? item.total.toFixed(2) : (item.total ? Number(item.total).toFixed(2) : '0.00');
         
         if (item.actionType === 'ADD') {
             return `
                 <div class="transaction-item">
                     <div class="tx-icon tx-add"><i class="fa-solid fa-plus"></i></div>
                     <div class="tx-details">
-                        <h4>Added ${item.productName}</h4>
-                        <span>Trolley #1 · ${timeString}</span>
+                        <h4>Added ${item.productName || 'Product'}</h4>
+                        <span>${trolleyLabel} · ${timeString}</span>
                     </div>
-                    <div class="tx-amount positive">+Rs.${item.productPrice.toFixed(2)}</div>
+                    <div class="tx-amount positive">+Rs.${priceStr}</div>
                 </div>
             `;
         } else if (item.actionType === 'REMOVE') {
@@ -397,21 +412,54 @@ function renderFeed() {
                 <div class="transaction-item">
                     <div class="tx-icon tx-remove"><i class="fa-solid fa-minus"></i></div>
                     <div class="tx-details">
-                        <h4>Removed ${item.productName}</h4>
-                        <span>Trolley #1 · ${timeString}</span>
+                        <h4>Removed ${item.productName || 'Product'}</h4>
+                        <span>${trolleyLabel} · ${timeString}</span>
                     </div>
-                    <div class="tx-amount negative">-Rs.${item.productPrice.toFixed(2)}</div>
+                    <div class="tx-amount negative">-Rs.${priceStr}</div>
                 </div>
             `;
-        } else if (item.actionType === 'CHECKOUT') {
+        } else if (item.actionType === 'CHECKOUT' || item.actionType === 'BILL_PAID') {
             return `
                 <div class="transaction-item">
                     <div class="tx-icon tx-checkout"><i class="fa-solid fa-check"></i></div>
                     <div class="tx-details">
-                        <h4>Trolley Checked Out</h4>
+                        <h4>${trolleyLabel} Checked Out</h4>
                         <span>${timeString}</span>
                     </div>
-                    <div class="tx-amount positive">Rs.${item.total.toFixed(2)}</div>
+                    <div class="tx-amount positive">Rs.${totalStr}</div>
+                </div>
+            `;
+        } else if (item.actionType === 'BILL_GENERATED') {
+            return `
+                <div class="transaction-item">
+                    <div class="tx-icon" style="background: rgba(234, 179, 8, 0.15); color: #eab308;"><i class="fa-solid fa-file-invoice-dollar"></i></div>
+                    <div class="tx-details">
+                        <h4>Bill Generated (${trolleyLabel})</h4>
+                        <span>${timeString}</span>
+                    </div>
+                    <div class="tx-amount" style="color: #eab308;">Rs.${totalStr}</div>
+                </div>
+            `;
+        } else if (item.actionType === 'BILL_CANCELLED') {
+            return `
+                <div class="transaction-item">
+                    <div class="tx-icon tx-remove"><i class="fa-solid fa-ban"></i></div>
+                    <div class="tx-details">
+                        <h4>Bill Cancelled (${trolleyLabel})</h4>
+                        <span>${timeString}</span>
+                    </div>
+                    <div class="tx-amount negative">Rs.${totalStr}</div>
+                </div>
+            `;
+        } else if (item.actionType === 'OUT_OF_STOCK') {
+            return `
+                <div class="transaction-item" style="border-color: rgba(239, 68, 68, 0.3);">
+                    <div class="tx-icon tx-remove" style="background: rgba(239, 68, 68, 0.15); color: #ef4444;"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                    <div class="tx-details">
+                        <h4>Out of Stock: ${item.productName || 'Item'}</h4>
+                        <span>${trolleyLabel} · ${timeString}</span>
+                    </div>
+                    <div class="tx-amount" style="color: #ef4444; font-size: 0.8rem;">Blocked</div>
                 </div>
             `;
         } else if (item.actionType === 'UNKNOWN_SCAN') {
@@ -420,7 +468,7 @@ function renderFeed() {
                     <div class="tx-icon tx-remove" style="background: rgba(59, 130, 246, 0.15); color: #3b82f6;"><i class="fa-solid fa-question"></i></div>
                     <div class="tx-details">
                         <h4>Unknown Card Scanned</h4>
-                        <span>UID: ${item.uid} · ${timeString}</span>
+                        <span>UID: ${item.uid} · ${trolleyLabel} · ${timeString}</span>
                     </div>
                     <div class="tx-amount" style="color: #3b82f6; font-size: 0.8rem;">Register needed</div>
                 </div>
@@ -430,10 +478,21 @@ function renderFeed() {
                 <div class="transaction-item">
                     <div class="tx-icon tx-reset"><i class="fa-solid fa-rotate-left"></i></div>
                     <div class="tx-details">
-                        <h4>Cart Reset</h4>
-                        <span>Trolley #1 · ${timeString}</span>
+                        <h4>Cart Reset (${trolleyLabel})</h4>
+                        <span>${timeString}</span>
                     </div>
-                    <div class="tx-amount negative">-Rs.${item.total.toFixed(2)}</div>
+                    <div class="tx-amount negative">-Rs.${totalStr}</div>
+                </div>
+            `;
+        } else if (item.actionType === 'PRODUCT_REGISTERED') {
+            return `
+                <div class="transaction-item" style="border-color: rgba(16, 185, 129, 0.3);">
+                    <div class="tx-icon tx-add" style="background: rgba(16, 185, 129, 0.15); color: #10b981;"><i class="fa-solid fa-box-open"></i></div>
+                    <div class="tx-details">
+                        <h4>Catalog: ${item.productName || 'New Item'}</h4>
+                        <span>UID: ${item.uid || '-'} · ${timeString}</span>
+                    </div>
+                    <div class="tx-amount positive">Rs.${priceStr}</div>
                 </div>
             `;
         }
@@ -465,11 +524,12 @@ function updateSimulatorModeUI() {
 
 // Set scanner mode (ADD or REMOVE) via backend API
 async function setSimulatorMode(mode) {
+    const targetTrolley = els.simTrolleySelect ? els.simTrolleySelect.value : 'TROLLEY-001';
     try {
         const res = await fetch('/api/simulator/mode', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mode })
+            body: JSON.stringify({ mode, trolley_id: targetTrolley })
         });
         const data = await res.json();
         if (data.success) {
@@ -486,8 +546,9 @@ async function setSimulatorMode(mode) {
 }
 
 // Reset cart API call — clears all active cart items
-async function resetCart() {
-    if (!confirm('Reset the cart? All scanned items will be removed.')) return;
+async function resetCart(trolleyId) {
+    const targetTrolley = (typeof trolleyId === 'string' && trolleyId) ? trolleyId : (els.simTrolleySelect ? els.simTrolleySelect.value : 'TROLLEY-001');
+    if (!confirm(`Reset the cart for ${targetTrolley}? All scanned items will be removed.`)) return;
 
     // Disable ALL reset buttons during the request
     const allResetBtns = document.querySelectorAll('#reset-btn, #main-reset-btn, #sim-reset-btn');
@@ -496,14 +557,15 @@ async function resetCart() {
     try {
         const res = await fetch('/api/reset', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ trolley_id: targetTrolley })
         });
         const data = await res.json();
         if (data.success) {
             await fetchDashboard();
             triggerLcdFeedback("Cart Reset!", "Total: Rs.0.00", 3000);
             triggerBuzzerFeedback(2);
-            if (window.showToast) window.showToast("Cart Reset", "All items cleared from the active cart.", "info");
+            if (window.showToast) window.showToast("Cart Reset", `All items cleared from ${targetTrolley}.`, "info");
         } else {
             if (window.showToast) window.showToast("Reset Failed", data.message || "Could not reset cart.", "error");
         }
@@ -520,8 +582,9 @@ async function resetCart() {
 let currentBill = null;
 
 // Checkout cart API call (Generate Bill)
-async function checkoutCart() {
-    const cart = State.activeCarts[0];
+async function checkoutCart(trolleyId) {
+    const targetTrolley = (typeof trolleyId === 'string' && trolleyId) ? trolleyId : (els.simTrolleySelect ? els.simTrolleySelect.value : (State.activeCarts[0]?.trolley_id || 'TROLLEY-001'));
+    const cart = State.activeCarts.find(c => (c.trolley_id === targetTrolley || c.id === targetTrolley || `TROLLEY-00${c.id}` === targetTrolley)) || State.activeCarts[0];
     if (!cart || cart.itemsContained === 0) {
         if (window.showToast) window.showToast("Cart Empty", "Scan items before generating a bill.", "warning");
         else alert('Cart is empty. Scan items before generating bill.');
@@ -530,7 +593,11 @@ async function checkoutCart() {
 
     if (els.checkoutBtn) els.checkoutBtn.disabled = true;
     try {
-        const res  = await fetch('/api/cart/generate-bill', { method: 'POST' });
+        const res  = await fetch('/api/cart/generate-bill', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ trolley_id: cart.trolley_id || targetTrolley })
+        });
         const data = await res.json();
 
         if (data.success) {
@@ -606,8 +673,13 @@ function showBillingModal(billData) {
 
 // Cancel bill & release cart
 async function cancelBill() {
+    const targetTrolley = (currentBill && currentBill.trolley_id) ? currentBill.trolley_id : (els.simTrolleySelect ? els.simTrolleySelect.value : 'TROLLEY-001');
     try {
-        const res = await fetch('/api/cart/cancel-bill', { method: 'POST' });
+        const res = await fetch('/api/cart/cancel-bill', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ trolley_id: targetTrolley })
+        });
         const data = await res.json();
         if (data.success) {
             if (els.receiptModal) els.receiptModal.classList.remove('active');
@@ -696,6 +768,7 @@ function setupPaymentModalListeners() {
     document.querySelectorAll('.btn-pay-success').forEach(btn => {
         btn.addEventListener('click', async () => {
             const method = btn.dataset.method;
+            const targetTrolley = (currentBill && currentBill.trolley_id) ? currentBill.trolley_id : (els.simTrolleySelect ? els.simTrolleySelect.value : 'TROLLEY-001');
             btn.disabled = true;
             const origText = btn.innerHTML;
             btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Processing...`;
@@ -704,7 +777,7 @@ function setupPaymentModalListeners() {
                 const res = await fetch('/api/cart/pay', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ paymentMethod: method })
+                    body: JSON.stringify({ paymentMethod: method, trolley_id: targetTrolley })
                 });
                 const data = await res.json();
                 if (data.success) {
@@ -800,6 +873,7 @@ async function triggerSimulatorScan() {
     const selectedUid = els.simProductSelect.value;
     const customUid = els.simCustomUid.value.trim();
     const uid = customUid || selectedUid;
+    const targetTrolley = els.simTrolleySelect ? els.simTrolleySelect.value : 'TROLLEY-001';
 
     if (!uid) {
         alert("Please select a product or enter a custom RFID tag UID.");
@@ -814,7 +888,8 @@ async function triggerSimulatorScan() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 action: State.currentMode,
-                uid: uid
+                uid: uid,
+                trolley_id: targetTrolley
             })
         });
         
@@ -850,9 +925,14 @@ async function triggerSimulatorScan() {
 
 // Trigger simulated physical reset button press
 async function triggerSimulatorReset() {
+    const targetTrolley = els.simTrolleySelect ? els.simTrolleySelect.value : 'TROLLEY-001';
     els.simResetBtn.disabled = true;
     try {
-        const res = await fetch('/api/reset', { method: 'POST' });
+        const res = await fetch('/api/reset', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ trolley_id: targetTrolley })
+        });
         const data = await res.json();
         if (data.success) {
             triggerLcdFeedback("Cart Reset!", "Total: Rs.0.00");
@@ -868,7 +948,8 @@ async function triggerSimulatorReset() {
 
 // Trigger simulated checkout process
 async function triggerSimulatorCheckout() {
-    const cart = State.activeCarts[0];
+    const targetTrolley = els.simTrolleySelect ? els.simTrolleySelect.value : 'TROLLEY-001';
+    const cart = State.activeCarts.find(c => (c.trolley_id === targetTrolley || c.id === targetTrolley || `TROLLEY-00${c.id}` === targetTrolley)) || State.activeCarts[0];
     if (!cart || cart.itemsContained === 0) {
         triggerLcdFeedback("Cart is Empty!", "Scan items first");
         triggerBuzzerFeedback(3);
@@ -877,7 +958,11 @@ async function triggerSimulatorCheckout() {
 
     els.simCheckoutBtn.disabled = true;
     try {
-        const res = await fetch('/api/cart/generate-bill', { method: 'POST' });
+        const res = await fetch('/api/cart/generate-bill', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ trolley_id: cart.trolley_id || targetTrolley })
+        });
         const data = await res.json();
         if (data.success) {
             triggerLcdFeedback("Bill Generated", `Total: Rs.${data.total.toFixed(2)}`);

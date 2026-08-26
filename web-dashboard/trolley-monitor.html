@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Trolley - Trolley Monitor</title>
+    <title>Smart Trolley - Trolley Telemetry Monitor</title>
+    <meta name="description" content="Live telemetry and cart details for individual smart trolleys. Shows hardware health, battery, Wi-Fi, IP, and active cart items.">
     <!-- Google Fonts: Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12,6 +13,8 @@
     <link rel="stylesheet" href="styles.css">
     <!-- Font Awesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Auth Guard -->
+    <script src="auth.js"></script>
 </head>
 <body class="dark-theme">
     <div class="app-container">
@@ -21,12 +24,14 @@
         <!-- Main Content Area -->
         <main class="main-content">
             <header class="top-header glass-panel">
-                <div style="display: flex; align-items: center; gap: 16px;">
-                    <span style="font-weight: 600; font-size: 1.1rem; color: var(--text-primary);">
+                <div style="display:flex;align-items:center;gap:16px;">
+                    <span style="font-weight:600;font-size:1.1rem;color:var(--text-primary);">
+                        <i class="fa-solid fa-satellite-dish" style="margin-right:8px;color:var(--accent-cyan);"></i>
                         Trolley Telemetry Monitor
                     </span>
-                    <select id="monitor-trolley-select" class="form-input" style="width: 160px; margin: 0; padding: 6px 12px; font-size: 0.85rem;">
-                        <!-- Options will be populated dynamically -->
+                    <select id="monitor-trolley-select" class="form-input"
+                            style="width:180px;margin:0;padding:6px 12px;font-size:0.85rem;">
+                        <!-- Options populated dynamically -->
                     </select>
                 </div>
                 <div class="header-actions">
@@ -39,38 +44,48 @@
             </header>
 
             <!-- Monitor Grid Layout -->
-            <div class="dashboard-grid" style="grid-template-rows: auto auto;">
-                <!-- Left: Hardware Status and Customer Info -->
-                <div style="display: flex; flex-direction: column; gap: 24px;">
-                    <!-- Hardware Health -->
-                    <div class="glass-panel" style="padding: 24px;">
-                        <h3 style="font-weight:600; font-size:1.1rem; margin-bottom:16px;"><i class="fa-solid fa-microchip" style="margin-right: 8px; color: var(--accent-cyan);"></i>Hardware Health Telemetry</h3>
-                        
-                        <div style="display: flex; flex-direction: column; gap: 12px;" id="hw-telemetry-container">
+            <div class="dashboard-grid" style="grid-template-rows:auto auto;">
+                <!-- Left: Hardware Status -->
+                <div style="display:flex;flex-direction:column;gap:24px;">
+                    <!-- Hardware Health Panel -->
+                    <div class="glass-panel" style="padding:24px;">
+                        <h3 style="font-weight:600;font-size:1.1rem;margin-bottom:16px;">
+                            <i class="fa-solid fa-microchip" style="margin-right:8px;color:var(--accent-cyan);"></i>
+                            Hardware Health Telemetry
+                        </h3>
+                        <div style="display:flex;flex-direction:column;gap:12px;" id="hw-telemetry-container">
                             <!-- Injected dynamically -->
                         </div>
                     </div>
 
-                    <!-- Customer Info -->
-                    <div class="glass-panel" style="padding: 24px;">
-                        <h3 style="font-weight:600; font-size:1.1rem; margin-bottom:16px;"><i class="fa-solid fa-user-circle" style="margin-right: 8px; color: var(--accent-purple);"></i>Shopper Profile</h3>
-                        <div id="customer-profile-card" style="display: flex; gap: 16px; align-items: center;">
+                    <!-- Device Info Panel -->
+                    <div class="glass-panel" style="padding:24px;">
+                        <h3 style="font-weight:600;font-size:1.1rem;margin-bottom:16px;">
+                            <i class="fa-solid fa-wifi" style="margin-right:8px;color:var(--accent-purple);"></i>
+                            Network & Device Info
+                        </h3>
+                        <div style="display:flex;flex-direction:column;gap:12px;" id="device-info-container">
                             <!-- Injected dynamically -->
                         </div>
                     </div>
                 </div>
 
-                <!-- Right: Active Bill Scans -->
-                <div class="glass-panel" style="padding: 24px; display: flex; flex-direction: column;">
+                <!-- Right: Active Cart -->
+                <div class="glass-panel" style="padding:24px;display:flex;flex-direction:column;">
                     <div class="panel-header">
-                        <h3>Active Cart Items</h3>
-                        <div style="text-align: right;">
-                            <span style="font-size: 0.85rem; color: var(--text-secondary); display: block;">Running Total</span>
-                            <strong style="font-size: 1.8rem; color: var(--accent-green);" id="monitor-cart-total">Rs.0.00</strong>
+                        <div>
+                            <h3>Active Cart Items</h3>
+                            <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:2px;" id="monitor-cart-status-label">
+                                Mode: ADD
+                            </div>
+                        </div>
+                        <div style="text-align:right;">
+                            <span style="font-size:0.85rem;color:var(--text-secondary);display:block;">Running Total</span>
+                            <strong style="font-size:1.8rem;color:var(--accent-green);" id="monitor-cart-total">Rs.0.00</strong>
                         </div>
                     </div>
-                    
-                    <div class="table-responsive" style="flex: 1; max-height: 400px; overflow-y: auto;">
+
+                    <div class="table-responsive" style="flex:1;max-height:400px;overflow-y:auto;">
                         <table class="transactions-table">
                             <thead>
                                 <tr>
@@ -84,6 +99,14 @@
                                 <!-- Injected dynamically -->
                             </tbody>
                         </table>
+                    </div>
+
+                    <!-- Cart Actions -->
+                    <div style="display:flex;gap:10px;margin-top:16px;" id="monitor-cart-actions">
+                        <button id="monitor-reset-btn" class="btn btn-outline"
+                                style="flex:1;font-size:0.82rem;padding:8px 0;color:var(--accent-red);">
+                            <i class="fa-solid fa-trash" style="margin-right:6px;"></i>Reset Cart
+                        </button>
                     </div>
                 </div>
             </div>

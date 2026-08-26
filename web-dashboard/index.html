@@ -13,6 +13,8 @@
     <link rel="stylesheet" href="styles.css">
     <!-- Font Awesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Auth Guard -->
+    <script src="auth.js"></script>
 </head>
 <body class="dark-theme">
     <div class="app-container">
@@ -306,6 +308,15 @@
         </div>
         
         <div class="sim-group">
+            <label>Target Smart Trolley</label>
+            <select id="sim-trolley-select" class="form-input">
+                <option value="TROLLEY-001">TROLLEY-001 (Trolley 1)</option>
+                <option value="TROLLEY-002">TROLLEY-002 (Trolley 2)</option>
+                <option value="TROLLEY-003">TROLLEY-003 (Trolley 3)</option>
+            </select>
+        </div>
+        
+        <div class="sim-group">
             <label>Scanner Action Mode</label>
             <div class="sim-mode-toggle">
                 <div class="sim-mode-opt active" data-mode="ADD">ADD ITEM</div>
@@ -348,7 +359,7 @@
     </aside>
 
     <!-- Application Logic -->
-    <script src="shared.js?v=1.0.1"></script>
-    <script src="dashboard.js?v=1.0.1"></script>
+    <script src="shared.js?v=1.0.2"></script>
+    <script src="dashboard.js?v=1.0.2"></script>
 </body>
 </html>

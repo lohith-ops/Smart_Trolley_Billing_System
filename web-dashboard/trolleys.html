@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Trolley - Live Trolleys</title>
+    <title>Smart Trolley - Multi-Trolley Fleet Monitor</title>
+    <meta name="description" content="Real-time fleet monitor for all active Smart Trolleys. View battery, Wi-Fi signal, cart value and device health.">
     <!-- Google Fonts: Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12,6 +13,8 @@
     <link rel="stylesheet" href="styles.css">
     <!-- Font Awesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Auth Guard -->
+    <script src="auth.js"></script>
 </head>
 <body class="dark-theme">
     <div class="app-container">
@@ -21,7 +24,8 @@
         <!-- Main Content Area -->
         <main class="main-content">
             <header class="top-header glass-panel">
-                <div style="font-weight: 600; font-size: 1.1rem; color: var(--text-primary);">
+                <div style="font-weight:600;font-size:1.1rem;color:var(--text-primary);">
+                    <i class="fa-solid fa-cart-shopping" style="margin-right:10px;color:var(--accent-cyan);"></i>
                     Multi-Trolley Fleet Monitor
                 </div>
                 <div class="header-actions">
@@ -33,18 +37,56 @@
                 </div>
             </header>
 
-            <!-- Filters & Search Toolbar -->
-            <div class="glass-panel" style="padding: 16px 24px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px;">
-                <div style="display: flex; gap: 10px;" id="filter-container">
-                    <button class="btn btn-outline active-filter" data-filter="all" style="padding: 6px 12px; font-size: 0.85rem;">All Trolleys</button>
-                    <button class="btn btn-outline" data-filter="active" style="padding: 6px 12px; font-size: 0.85rem;">Active</button>
-                    <button class="btn btn-outline" data-filter="idle" style="padding: 6px 12px; font-size: 0.85rem;">Idle</button>
-                    <button class="btn btn-outline" data-filter="offline" style="padding: 6px 12px; font-size: 0.85rem;">Offline</button>
+            <!-- Fleet Summary Stats Bar -->
+            <div class="glass-panel" style="padding:16px 24px;display:flex;flex-wrap:wrap;gap:24px;align-items:center;margin-bottom:4px;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <div style="width:38px;height:38px;border-radius:10px;background:rgba(16,185,129,0.15);display:flex;align-items:center;justify-content:center;">
+                        <i class="fa-solid fa-circle-check" style="color:var(--accent-green);font-size:1rem;"></i>
+                    </div>
+                    <div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:2px;">Online Trolleys</div>
+                        <div style="font-size:1.4rem;font-weight:700;color:var(--accent-green);" id="stat-online-count">—</div>
+                    </div>
                 </div>
-                
-                <div class="header-search" style="margin: 0; width: 280px;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <div style="width:38px;height:38px;border-radius:10px;background:rgba(99,102,241,0.15);display:flex;align-items:center;justify-content:center;">
+                        <i class="fa-solid fa-cart-shopping" style="color:var(--accent-purple);font-size:1rem;"></i>
+                    </div>
+                    <div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:2px;">Total Trolleys</div>
+                        <div style="font-size:1.4rem;font-weight:700;color:var(--accent-purple);" id="stat-total-count">—</div>
+                    </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <div style="width:38px;height:38px;border-radius:10px;background:rgba(251,191,36,0.15);display:flex;align-items:center;justify-content:center;">
+                        <i class="fa-solid fa-battery-half" style="color:#f59e0b;font-size:1rem;"></i>
+                    </div>
+                    <div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:2px;">Avg. Battery</div>
+                        <div style="font-size:1.4rem;font-weight:700;color:#f59e0b;" id="stat-avg-battery">—</div>
+                    </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <div style="width:38px;height:38px;border-radius:10px;background:rgba(6,182,212,0.15);display:flex;align-items:center;justify-content:center;">
+                        <i class="fa-solid fa-basket-shopping" style="color:var(--accent-cyan);font-size:1rem;"></i>
+                    </div>
+                    <div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:2px;">Trolleys with Items</div>
+                        <div style="font-size:1.4rem;font-weight:700;color:var(--accent-cyan);" id="stat-active-count">—</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filters & Search Toolbar -->
+            <div class="glass-panel" style="padding:16px 24px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:16px;">
+                <div style="display:flex;gap:10px;" id="filter-container">
+                    <button class="btn btn-outline active-filter" data-filter="all" style="padding:6px 12px;font-size:0.85rem;">All Trolleys</button>
+                    <button class="btn btn-outline" data-filter="online"  style="padding:6px 12px;font-size:0.85rem;">Online</button>
+                    <button class="btn btn-outline" data-filter="offline" style="padding:6px 12px;font-size:0.85rem;">Offline</button>
+                </div>
+                <div class="header-search" style="margin:0;width:280px;">
                     <i class="fa-solid fa-search search-icon"></i>
-                    <input type="text" id="trolley-search" placeholder="Search by ID or customer...">
+                    <input type="text" id="trolley-search" placeholder="Search by trolley ID or name...">
                 </div>
             </div>
 
