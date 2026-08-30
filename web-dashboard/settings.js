@@ -12,15 +12,33 @@ document.addEventListener('DOMContentLoaded', () => {
         seedDbBtn: document.getElementById('seed-db-btn'),
         clearTxBtn: document.getElementById('clear-tx-btn'),
         backupDbBtn: document.getElementById('backup-db-btn'),
-        restoreDbBtn: document.getElementById('restore-db-btn')
+        restoreDbBtn: document.getElementById('restore-db-btn'),
+
+        // Payment Configuration Elements
+        paymentForm: document.getElementById('settings-payment-form'),
+        storeNameInput: document.getElementById('store-name-input'),
+        upiIdInput: document.getElementById('upi-id-input'),
+        qrModeDynamic: document.getElementById('qr-mode-dynamic'),
+        qrModeCustom: document.getElementById('qr-mode-custom'),
+        qrFileInput: document.getElementById('qr-file-input'),
+        chooseQrBtn: document.getElementById('choose-qr-btn'),
+        removeQrBtn: document.getElementById('remove-qr-btn'),
+        qrPreviewContainer: document.getElementById('qr-preview-container'),
+        qrPreviewImg: document.getElementById('qr-preview-img'),
+        qrPreviewFilename: document.getElementById('qr-preview-filename')
     };
+
+    let currentQrBase64 = "";
 
     // Initialize Settings
     async function initSettings() {
         await fetchSettings();
+        await fetchPaymentSettings();
         await fetchAvailablePorts();
+        setupQrUploadEvents();
         setInterval(fetchSettings, 3000); // Poll settings state
 
+        if (els.paymentForm) els.paymentForm.addEventListener('submit', handlePaymentSubmit);
         if (els.hwForm) els.hwForm.addEventListener('submit', saveHardwareConfig);
         if (els.refreshPortsBtn) els.refreshPortsBtn.addEventListener('click', fetchAvailablePorts);
         if (els.portsSelect) {
@@ -265,6 +283,141 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
             els.restoreDbBtn.disabled = false;
             els.restoreDbBtn.innerHTML = origHtml;
+        }
+    }
+
+    // ── Payment & UPI Configuration ───────────────────────────────────────────
+    async function fetchPaymentSettings() {
+        try {
+            const res = await fetch('/api/settings/payment');
+            if (res.ok) {
+                const data = await res.json();
+                if (els.storeNameInput) els.storeNameInput.value = data.storeName || 'Smart Supermarket';
+                if (els.upiIdInput) els.upiIdInput.value = data.upiId || 'smartsupermarket@okaxis';
+                
+                if (data.useCustomQr) {
+                    if (els.qrModeCustom) els.qrModeCustom.checked = true;
+                } else {
+                    if (els.qrModeDynamic) els.qrModeDynamic.checked = true;
+                }
+
+                if (data.customQrImage) {
+                    currentQrBase64 = data.customQrImage;
+                    if (els.qrPreviewImg) els.qrPreviewImg.src = data.customQrImage;
+                    if (els.qrPreviewContainer) els.qrPreviewContainer.style.display = 'flex';
+                    if (els.removeQrBtn) els.removeQrBtn.style.display = 'inline-flex';
+                    if (els.qrPreviewFilename) els.qrPreviewFilename.textContent = "Uploaded Standee QR Image";
+                }
+            }
+        } catch (e) {
+            console.error("Failed to load payment settings:", e);
+        }
+    }
+
+    function setupQrUploadEvents() {
+        if (els.chooseQrBtn && els.qrFileInput) {
+            els.chooseQrBtn.addEventListener('click', () => {
+                els.qrFileInput.click();
+            });
+        }
+
+        if (els.qrFileInput) {
+            els.qrFileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                if (!file.type.startsWith('image/')) {
+                    if (window.showToast) window.showToast('Invalid File', 'Please select a valid PNG or JPG image file.', 'warning');
+                    else alert('Please select a valid image file.');
+                    return;
+                }
+
+                // Check file size (< 3MB)
+                if (file.size > 3 * 1024 * 1024) {
+                    if (window.showToast) window.showToast('File Too Large', 'Please select an image smaller than 3MB.', 'warning');
+                    else alert('Please select an image smaller than 3MB.');
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = (loadEvt) => {
+                    currentQrBase64 = loadEvt.target.result;
+                    if (els.qrPreviewImg) els.qrPreviewImg.src = currentQrBase64;
+                    if (els.qrPreviewContainer) els.qrPreviewContainer.style.display = 'flex';
+                    if (els.removeQrBtn) els.removeQrBtn.style.display = 'inline-flex';
+                    if (els.qrPreviewFilename) els.qrPreviewFilename.textContent = file.name;
+                    if (els.qrModeCustom) els.qrModeCustom.checked = true;
+                    if (window.showToast) window.showToast('QR Loaded', `Loaded ${file.name}. Click Save Configuration to apply.`, 'info');
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        if (els.removeQrBtn) {
+            els.removeQrBtn.addEventListener('click', () => {
+                currentQrBase64 = "";
+                if (els.qrFileInput) els.qrFileInput.value = "";
+                if (els.qrPreviewImg) els.qrPreviewImg.src = "";
+                if (els.qrPreviewContainer) els.qrPreviewContainer.style.display = 'none';
+                els.removeQrBtn.style.display = 'none';
+                if (els.qrModeDynamic) els.qrModeDynamic.checked = true;
+                if (window.showToast) window.showToast('QR Removed', 'Custom QR image cleared. Switched to Dynamic Amount QR.', 'info');
+            });
+        }
+    }
+
+    async function handlePaymentSubmit(e) {
+        e.preventDefault();
+        const submitBtn = document.getElementById('save-payment-btn');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+        }
+
+        const useCustomQr = els.qrModeCustom ? els.qrModeCustom.checked : false;
+
+        if (useCustomQr && !currentQrBase64) {
+            if (window.showToast) window.showToast('Upload Required', 'Please choose a QR image file or select Dynamic Amount QR mode.', 'warning');
+            else alert('Please choose a QR image file or select Dynamic Amount QR mode.');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fa-solid fa-save"></i> Save Payment Configuration';
+            }
+            return;
+        }
+
+        const payload = {
+            storeName: els.storeNameInput ? els.storeNameInput.value.trim() : 'Smart Supermarket',
+            upiId: els.upiIdInput ? els.upiIdInput.value.trim() : 'smartsupermarket@okaxis',
+            useCustomQr: useCustomQr,
+            customQrImage: currentQrBase64
+        };
+
+        try {
+            const token = (typeof getAuthToken === 'function') ? getAuthToken() : localStorage.getItem('smart_trolley_jwt_token');
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
+            const res = await fetch('/api/settings/payment', {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                if (window.showToast) window.showToast('Payment Config Saved', data.message || 'Payment settings updated successfully!', 'success');
+                else alert(data.message || 'Payment settings updated successfully!');
+            } else {
+                alert(data.message || 'Failed to save payment settings.');
+            }
+        } catch (err) {
+            console.error('Payment save error:', err);
+            alert('Network error while saving payment settings.');
+        } finally {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fa-solid fa-save"></i> Save Payment Configuration';
+            }
         }
     }
 

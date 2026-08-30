@@ -757,16 +757,45 @@ function setupPaymentModalListeners() {
     // Stage 1 -> Stage 2
     const proceedBtn = document.getElementById('btn-proceed-to-payment');
     if (proceedBtn) {
-        proceedBtn.addEventListener('click', () => {
+        proceedBtn.addEventListener('click', async () => {
             document.querySelectorAll('.payment-stage').forEach(el => el.style.display = 'none');
             const stage2 = document.getElementById('payment-stage-2');
             if (stage2) stage2.style.display = 'block';
             
             const upiQrImg = document.getElementById('payment-upi-qr');
+            const vpaLabel = document.getElementById('payment-upi-vpa-label');
+            const subLabel = document.getElementById('payment-upi-sub-label');
+
             if (upiQrImg && currentBill) {
                 const totalAmount = currentBill.total.toFixed(2);
-                const upiString = `upi://pay?pa=smartsupermarket@okaxis&pn=SmartSupermarket&am=${totalAmount}&cu=INR&tn=SmartTrolleySettle`;
-                upiQrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(upiString)}`;
+                let upiId = 'smartsupermarket@okaxis';
+                let storeName = 'Smart Supermarket';
+                let useCustomQr = false;
+                let customQrImage = '';
+
+                try {
+                    const payRes = await fetch('/api/settings/payment');
+                    if (payRes.ok) {
+                        const payData = await payRes.json();
+                        upiId = payData.upiId || upiId;
+                        storeName = payData.storeName || storeName;
+                        useCustomQr = Boolean(payData.useCustomQr);
+                        customQrImage = payData.customQrImage || '';
+                    }
+                } catch (e) {
+                    console.error('Failed to load live payment settings:', e);
+                }
+
+                if (useCustomQr && customQrImage) {
+                    upiQrImg.src = customQrImage;
+                    if (vpaLabel) vpaLabel.textContent = `${storeName} (Standee QR)`;
+                    if (subLabel) subLabel.textContent = `Scan Standee QR and pay Rs.${totalAmount}`;
+                } else {
+                    const upiString = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(storeName)}&am=${totalAmount}&cu=INR&tn=SmartTrolleyBill`;
+                    upiQrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(upiString)}`;
+                    if (vpaLabel) vpaLabel.textContent = `UPI VPA: ${upiId}`;
+                    if (subLabel) subLabel.textContent = `Scan to Pay Rs.${totalAmount} (Auto-filled amount)`;
+                }
             }
         });
     }

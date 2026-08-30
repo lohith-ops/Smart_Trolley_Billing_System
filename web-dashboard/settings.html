@@ -36,6 +36,69 @@
             </header>
 
             <div class="settings-grid">
+                <!-- Payment & UPI Configuration -->
+                <div class="glass-panel settings-card">
+                    <h3><i class="fa-solid fa-qrcode" style="color: var(--accent-cyan);"></i> Payment & UPI Configuration</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.4;">
+                        Configure your merchant UPI VPA, Store Name, or upload a custom Standee QR code for checkout payments.
+                    </p>
+
+                    <form id="settings-payment-form">
+                        <div class="form-group" style="margin-bottom: 14px;">
+                            <label style="font-weight: 500; font-size: 0.85rem; display: block; margin-bottom: 6px;">Supermarket / Store Name</label>
+                            <input type="text" id="store-name-input" placeholder="e.g. Smart Supermarket" required class="form-input" style="width: 100%;">
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 14px;">
+                            <label style="font-weight: 500; font-size: 0.85rem; display: block; margin-bottom: 6px;">Merchant UPI ID (VPA)</label>
+                            <input type="text" id="upi-id-input" placeholder="e.g. yourname@okaxis or 9876543210@paytm" required class="form-input" style="width: 100%;">
+                            <span style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px; display: block;">
+                                Dynamic QR automatically embeds the exact real-time bill amount for GPay, PhonePe, Paytm, BHIM.
+                            </span>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 14px;">
+                            <label style="font-weight: 500; font-size: 0.85rem; display: block; margin-bottom: 8px;">QR Code Display Mode</label>
+                            <div style="display: flex; gap: 14px; flex-wrap: wrap;">
+                                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer; color: var(--text-primary);">
+                                    <input type="radio" name="qr-mode" id="qr-mode-dynamic" value="dynamic" checked>
+                                    Dynamic Amount QR (Recommended)
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer; color: var(--text-primary);">
+                                    <input type="radio" name="qr-mode" id="qr-mode-custom" value="custom">
+                                    Uploaded Standee QR Image
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Custom QR Upload Box -->
+                        <div id="custom-qr-box" class="form-group" style="margin-bottom: 16px; padding: 14px; background: rgba(0,0,0,0.25); border: 1px dashed rgba(255,255,255,0.15); border-radius: 8px;">
+                            <label style="font-weight: 500; font-size: 0.85rem; display: block; margin-bottom: 8px;">Upload Merchant QR Image</label>
+                            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                                <input type="file" id="qr-file-input" accept="image/*" style="display: none;">
+                                <button type="button" id="choose-qr-btn" class="btn btn-outline" style="padding: 6px 14px; font-size: 0.85rem;">
+                                    <i class="fa-solid fa-cloud-arrow-up"></i> Choose QR Image File
+                                </button>
+                                <button type="button" id="remove-qr-btn" class="btn btn-outline" style="padding: 6px 14px; font-size: 0.85rem; color: var(--accent-red); border-color: rgba(239,68,68,0.4); display: none;">
+                                    <i class="fa-solid fa-trash"></i> Remove Image
+                                </button>
+                            </div>
+                            <!-- Live Preview -->
+                            <div id="qr-preview-container" style="margin-top: 12px; display: none; align-items: center; gap: 12px;">
+                                <img id="qr-preview-img" src="" alt="QR Preview" style="width: 100px; height: 100px; object-fit: contain; background: #fff; padding: 4px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">
+                                <div style="font-size: 0.8rem; color: var(--text-secondary);">
+                                    <span id="qr-preview-filename" style="color: var(--text-primary); font-weight: 600; display: block;">custom_qr.png</span>
+                                    <span>Ready to display on checkout modal.</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button type="submit" id="save-payment-btn" class="btn btn-checkout" style="width: 100%; background: var(--grad-primary);">
+                            <i class="fa-solid fa-save"></i> Save Payment Configuration
+                        </button>
+                    </form>
+                </div>
+
                 <!-- Hardware Integration -->
                 <div class="glass-panel settings-card">
                     <h3><i class="fa-solid fa-microchip"></i> Hardware Settings</h3>

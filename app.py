@@ -32,7 +32,11 @@ CONFIG_FILE = "config.json"
 
 def load_config():
     defaults = {
-        "serialPort": "COM3"
+        "serialPort": "COM3",
+        "upiId": "smartsupermarket@okaxis",
+        "storeName": "Smart Supermarket",
+        "useCustomQr": False,
+        "customQrImage": ""
     }
     if os.path.exists(CONFIG_FILE):
         try:
@@ -1599,6 +1603,42 @@ def update_settings():
         "success":        True,
         "serialPort":     SERIAL_PORT,
         "arduinoConnected": global_ser is not None and global_ser.is_open
+    })
+
+@app.route("/api/settings/payment", methods=["GET"])
+def get_payment_settings():
+    cfg = load_config()
+    return jsonify({
+        "success":       True,
+        "upiId":         cfg.get("upiId", "smartsupermarket@okaxis"),
+        "storeName":     cfg.get("storeName", "Smart Supermarket"),
+        "useCustomQr":   bool(cfg.get("useCustomQr", False)),
+        "customQrImage": cfg.get("customQrImage", "")
+    })
+
+@app.route("/api/settings/payment", methods=["POST"])
+@require_auth(roles=["admin", "manager"])
+def update_payment_settings():
+    data = request.json or {}
+    cfg = load_config()
+    if "upiId" in data:
+        cfg["upiId"] = (data["upiId"] or "").strip()
+    if "storeName" in data:
+        cfg["storeName"] = (data["storeName"] or "").strip()
+    if "useCustomQr" in data:
+        cfg["useCustomQr"] = bool(data["useCustomQr"])
+    if "customQrImage" in data:
+        cfg["customQrImage"] = data["customQrImage"]
+    save_config(cfg)
+    return jsonify({
+        "success": True,
+        "message": "Payment & UPI settings saved successfully!",
+        "settings": {
+            "upiId":         cfg.get("upiId"),
+            "storeName":     cfg.get("storeName"),
+            "useCustomQr":   cfg.get("useCustomQr"),
+            "customQrImage": cfg.get("customQrImage")
+        }
     })
 
 @app.route("/api/settings/database", methods=["POST"])
