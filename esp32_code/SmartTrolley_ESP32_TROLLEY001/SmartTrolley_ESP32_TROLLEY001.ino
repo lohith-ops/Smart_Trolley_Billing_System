@@ -1,15 +1,15 @@
 /*
  * Smart Trolley Billing System — ESP32 Multi-Trolley Firmware v2.0
  * ================================================================
- * TROLLEY-003 — Flash this file to the THIRD trolley's ESP32.
+ * TROLLEY-001 — Flash this file to the FIRST trolley's ESP32.
  *
- * ► To create TROLLEY-001 or TROLLEY-002, open the corresponding
- *   SmartTrolley_ESP32_TROLLEY001.ino / SmartTrolley_ESP32_TROLLEY002.ino
- *   file instead. The ONLY difference between the three files is the
+ * ► To create TROLLEY-002 or TROLLEY-003, open the corresponding
+ *   SmartTrolley_ESP32_TROLLEY002.ino / SmartTrolley_ESP32_TROLLEY003.ino
+ *   file instead.  The ONLY difference between the three files is the
  *   TROLLEY_ID constant below.
  *
  * ► To add TROLLEY-004, copy this file, change TROLLEY_ID to "TROLLEY-004"
- *   and flash it. No backend or frontend changes are required.
+ *   and flash it.  No backend or frontend changes are required.
  *
  * Required Arduino IDE Libraries:
  *   1. MFRC522 (by GithubCommunity)
@@ -51,8 +51,8 @@
 // ══════════════════════════════════════════════════════════════════════════════
 // ► TROLLEY IDENTITY — Change ONLY this line when creating a new trolley file
 // ══════════════════════════════════════════════════════════════════════════════
-const String TROLLEY_ID   = "TROLLEY-003";
-const String TROLLEY_NAME = "Smart Trolley 003";
+const String TROLLEY_ID   = "TROLLEY-001";
+const String TROLLEY_NAME = "Smart Trolley 001";
 const String FW_VERSION   = "2.0";
 
 // ── Wi-Fi Configuration ────────────────────────────────────────────────────

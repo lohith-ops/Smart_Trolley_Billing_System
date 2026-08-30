@@ -22,6 +22,20 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // 1.1 Demo Mode Collapsible Toggle
+    const toggleDemoBtn = document.getElementById('toggle-demo-btn');
+    const demoPresetsContainer = document.getElementById('demo-presets-container');
+    const demoChevron = document.getElementById('demo-chevron');
+    if (toggleDemoBtn && demoPresetsContainer) {
+        toggleDemoBtn.addEventListener('click', () => {
+            const isHidden = demoPresetsContainer.style.display === 'none' || !demoPresetsContainer.style.display;
+            demoPresetsContainer.style.display = isHidden ? 'grid' : 'none';
+            if (demoChevron) {
+                demoChevron.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+            }
+        });
+    }
+
     // 2. Preset Buttons Quick Fill & Auto-Login
     presetBtns.forEach(btn => {
         btn.addEventListener('click', () => {

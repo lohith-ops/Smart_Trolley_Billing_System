@@ -88,8 +88,90 @@ def run_tests():
     assert new_user_data["user"]["name"] == "Alex Smith"
     print("[PASS] Newly registered user authenticated successfully.")
 
-    # Clean up test user
+    # 10. Test Public Customer Self-Registration (/api/auth/signup)
+    print("\n[TEST 10] Testing Public Customer Self-Registration (/api/auth/signup)...")
+    res = client.post("/api/auth/signup", json={
+        "username": "customer_jane",
+        "password": "custpassword123",
+        "name": "Jane Doe",
+        "email": "jane@example.com",
+        "phone": "9876543210"
+    })
+    assert res.status_code == 200, f"Expected 200, got {res.status_code}: {res.data}"
+    signup_data = res.get_json()
+    assert signup_data.get("success") is True
+    assert signup_data["user"]["role"] == "customer"
+    cust_token = signup_data.get("token")
+    assert cust_token is not None
+    print("[PASS] Customer registered successfully with auto-generated JWT token.")
+
+    # 11. Test Privilege Escalation Prevention (Passing role='admin' in /api/auth/signup must be ignored)
+    print("\n[TEST 11] Testing Privilege Escalation Prevention on /api/auth/signup...")
+    res = client.post("/api/auth/signup", json={
+        "username": "hacker_bob",
+        "password": "secretpass123",
+        "name": "Bob FakeAdmin",
+        "role": "admin"  # Attempt to escalate role to admin
+    })
+    assert res.status_code == 200
+    hacker_data = res.get_json()
+    assert hacker_data["user"]["role"] == "customer", f"Role was not locked! Got: {hacker_data['user']['role']}"
+    print("[PASS] Privilege escalation prevented: Role was strictly locked to 'customer'.")
+
+    # 12. Test Customer Access Restriction (Customer attempting admin endpoint)
+    print("\n[TEST 12] Testing Customer Access Restriction to Admin Endpoints...")
+    res = client.post("/api/settings/update", json={"serialPort": "COM9"}, headers={"Authorization": f"Bearer {cust_token}"})
+    assert res.status_code == 403, f"Expected 403 Forbidden for customer, got {res.status_code}"
+    print("[PASS] Customer access to Admin endpoint correctly blocked with 403 Forbidden.")
+
+    # 13. Test Password Length Validation (< 6 chars)
+    print("\n[TEST 13] Testing Short Password Validation on /api/auth/signup...")
+    res = client.post("/api/auth/signup", json={
+        "username": "shortpassuser",
+        "password": "123",
+        "name": "Short Pass User"
+    })
+    assert res.status_code == 400
+    print("[PASS] Short password correctly rejected with 400 Bad Request.")
+
+    # 14. Test Admin Resetting Employee Password (/api/auth/users/<username>/password)
+    print("\n[TEST 14] Testing Admin Password Reset for Employee...")
+    res = client.put("/api/auth/users/supercashier1/password", json={"password": "newpass789"}, headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 200, f"Expected 200, got {res.status_code}: {res.data}"
+    print("[PASS] Admin successfully reset employee password.")
+
+    # 15. Test Login with New Password
+    print("\n[TEST 15] Testing Login with Newly Reset Password...")
+    res = client.post("/api/auth/login", json={"username": "supercashier1", "password": "newpass789"})
+    assert res.status_code == 200
+    new_token = res.get_json()["token"]
+    print("[PASS] Employee logged in with newly reset password.")
+
+    # 16. Test User Self Password Change (/api/auth/change-password)
+    print("\n[TEST 16] Testing User Changing Own Password...")
+    res = client.post("/api/auth/change-password", json={
+        "current_password": "newpass789",
+        "new_password": "selfchangedpassword123"
+    }, headers={"Authorization": f"Bearer {new_token}"})
+    assert res.status_code == 200
+    print("[PASS] User successfully changed their own password.")
+
+    # 17. Test RBAC: Non-admin attempting to reset another user's password
+    print("\n[TEST 17] Testing RBAC on Password Reset (Cashier attempting reset)...")
+    res = client.put("/api/auth/users/admin/password", json={"password": "hackpassword"}, headers={"Authorization": f"Bearer {new_token}"})
+    assert res.status_code == 403, f"Expected 403 Forbidden, got {res.status_code}"
+    print("[PASS] Non-admin password reset attempt blocked with 403 Forbidden.")
+
+    # 18. Test Admin resetting password via Employee ID (/api/employees/<emp_id>/password)
+    print("\n[TEST 18] Testing Admin Password Reset via Employee ID...")
+    res = client.put("/api/employees/E001/password", json={"password": "empcustompass123"}, headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 200
+    print("[PASS] Admin successfully reset password via Employee ID.")
+
+    # Clean up test users
     client.delete("/api/auth/users/supercashier1", headers={"Authorization": f"Bearer {admin_token}"})
+    client.delete("/api/auth/users/customer_jane", headers={"Authorization": f"Bearer {admin_token}"})
+    client.delete("/api/auth/users/hacker_bob", headers={"Authorization": f"Bearer {admin_token}"})
 
     print("\n==================================================")
     print("      ALL AUTHENTICATION & RBAC TESTS PASSED!     ")

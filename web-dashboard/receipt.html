@@ -123,6 +123,30 @@
                 <i class="fa-solid fa-circle-xmark"></i> Close Window
             </button>
         </div>
+
+        <!-- Post-Purchase Feedback Widget -->
+        <div class="glass-panel" id="receipt-feedback-card" style="margin-top: 24px; padding: 20px; border-radius: 12px; text-align: center; max-width: 480px; margin-left: auto; margin-right: auto;">
+            <h4 style="color: var(--text-primary); margin-bottom: 6px;"><i class="fa-solid fa-star" style="color: #f59e0b; margin-right: 6px;"></i> Rate Your Shopping Experience</h4>
+            <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 12px;">How fast and easy was your Smart Trolley billing?</p>
+            
+            <div class="rating-stars" id="receipt-stars" style="font-size: 1.5rem; cursor: pointer; display: flex; justify-content: center; gap: 8px; margin-bottom: 12px;">
+                <i class="fa-solid fa-star" data-rating="1" style="color: #f59e0b;"></i>
+                <i class="fa-solid fa-star" data-rating="2" style="color: #f59e0b;"></i>
+                <i class="fa-solid fa-star" data-rating="3" style="color: #f59e0b;"></i>
+                <i class="fa-solid fa-star" data-rating="4" style="color: #f59e0b;"></i>
+                <i class="fa-solid fa-star" data-rating="5" style="color: #f59e0b;"></i>
+            </div>
+            
+            <div id="receipt-feedback-form-row" style="display: flex; gap: 8px;">
+                <input type="text" id="receipt-feedback-comment" placeholder="Leave a short comment (e.g. Great speed!)..." class="form-input" style="font-size: 0.85rem;">
+                <button type="button" id="btn-submit-receipt-feedback" class="btn btn-primary" style="background: var(--accent-cyan); color: #000; font-weight: 600; font-size: 0.85rem; white-space: nowrap;">
+                    Send Review
+                </button>
+            </div>
+            <div id="receipt-feedback-thankyou" style="display: none; color: #34d399; font-size: 0.9rem; margin-top: 10px; font-weight: 600;">
+                <i class="fa-solid fa-circle-check"></i> Thank you! Your feedback has been recorded.
+            </div>
+        </div>
     </div>
 
     <!-- jsPDF CDN -->

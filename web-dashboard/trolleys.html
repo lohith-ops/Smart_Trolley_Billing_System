@@ -29,6 +29,9 @@
                     Multi-Trolley Fleet Monitor
                 </div>
                 <div class="header-actions">
+                    <button class="btn btn-outline" id="add-trolley-btn" style="color: var(--accent-cyan); border-color: rgba(6, 182, 212, 0.4); padding: 6px 14px; font-size: 0.85rem;">
+                        <i class="fa-solid fa-plus"></i> Add Trolley
+                    </button>
                     <button class="icon-btn"><i class="fa-regular fa-bell"></i></button>
                     <div class="user-profile">
                         <img src="https://ui-avatars.com/api/?name=Admin&background=10b981&color=fff" alt="Admin">
@@ -95,6 +98,49 @@
                 <!-- Cards injected dynamically by trolleys.js -->
             </div>
         </main>
+    </div>
+
+    <!-- Add / Register Trolley Modal -->
+    <div class="modal-overlay" id="trolley-modal">
+        <div class="modal-box glass-panel" style="max-width: 460px;">
+            <div class="modal-icon" style="color: var(--accent-cyan);">
+                <i class="fa-solid fa-cart-plus"></i>
+            </div>
+            <h2>Register Smart Trolley</h2>
+            <p class="modal-sub">Add a new IoT shopping trolley to the supermarket fleet</p>
+            
+            <form id="trolley-form" class="register-form" style="margin-top: 15px;">
+                <div class="form-group">
+                    <label>Trolley ID</label>
+                    <input type="text" id="modal-trolley-id" required placeholder="e.g. TROLLEY-004" class="form-input" style="text-transform: uppercase;">
+                </div>
+                <div class="form-group">
+                    <label>Display Name</label>
+                    <input type="text" id="modal-trolley-name" placeholder="e.g. Smart Trolley 004" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label>Assigned Store Section</label>
+                    <select id="modal-trolley-section" class="form-input">
+                        <option value="Ground Floor - Main Entrance">Ground Floor - Main Entrance</option>
+                        <option value="Aisle A - Grocery & Grains">Aisle A - Grocery & Grains</option>
+                        <option value="Aisle B - Bakery & Snacks">Aisle B - Bakery & Snacks</option>
+                        <option value="Aisle C - Dairy & Beverages">Aisle C - Dairy & Beverages</option>
+                        <option value="First Floor - Electronics & Home">First Floor - Electronics & Home</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Firmware Version</label>
+                    <input type="text" id="modal-trolley-fw" value="2.0" class="form-input">
+                </div>
+                
+                <div class="form-actions" style="margin-top: 20px;">
+                    <button type="button" class="btn btn-outline" id="modal-trolley-cancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="modal-trolley-submit" style="background: var(--grad-primary);">
+                        <i class="fa-solid fa-check"></i> Save Trolley
+                    </button>
+                </div>
+            </form>
+        </div>
     </div>
 
     <!-- Application Logic -->

@@ -60,7 +60,11 @@
                 </div>
                 <div class="form-group">
                     <label>Full Name</label>
-                    <input type="text" id="emp-name" required placeholder="e.g. Rahul Gupta" class="form-input">
+                    <input type="text" id="emp-name" required placeholder="e.g. Lohith Kumar" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label>Username / Login ID</label>
+                    <input type="text" id="emp-username" placeholder="e.g. lohi or cashier1" class="form-input" autocomplete="username">
                 </div>
                 <div class="form-group">
                     <label>Assigned Role</label>
@@ -70,6 +74,10 @@
                         <option value="Cashier">Cashier</option>
                         <option value="Inventory Staff">Inventory Staff</option>
                     </select>
+                </div>
+                <div class="form-group" id="emp-password-group">
+                    <label>Assign Login Password</label>
+                    <input type="password" id="emp-password" placeholder="e.g. staff123 (min 6 characters)" class="form-input" autocomplete="new-password">
                 </div>
                 <div class="form-group">
                     <label>Working Shift</label>
@@ -91,6 +99,41 @@
                 <div class="form-actions">
                     <button type="button" class="btn btn-outline" id="emp-cancel-btn">Cancel</button>
                     <button type="submit" class="btn btn-checkout" id="emp-submit-btn" style="background:var(--grad-primary);">Save Employee</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Reset Password Modal -->
+    <div class="modal-overlay" id="reset-password-modal">
+        <div class="modal-box glass-panel" style="max-width: 440px;">
+            <div class="modal-icon" style="color: var(--accent-cyan);">
+                <i class="fa-solid fa-key"></i>
+            </div>
+            <h2>Reset Password</h2>
+            <p class="modal-sub" id="reset-modal-sub">Assign a new login password for this employee</p>
+            
+            <form id="reset-password-form" class="register-form" style="margin-top: 15px;">
+                <input type="hidden" id="reset-emp-id">
+                <div class="form-group">
+                    <label>Employee Name</label>
+                    <input type="text" id="reset-emp-name" readonly class="form-input readonly-input">
+                </div>
+                <div class="form-group">
+                    <label>New Password (min 6 characters)</label>
+                    <div style="position: relative;">
+                        <input type="password" id="reset-new-password" required minlength="6" placeholder="Enter new secure password" class="form-input" style="padding-right: 40px;">
+                        <button type="button" id="toggle-reset-pass" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer;">
+                            <i class="fa-solid fa-eye" id="toggle-reset-icon"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="form-actions" style="margin-top: 20px;">
+                    <button type="button" class="btn btn-outline" id="reset-cancel-btn">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="reset-submit-btn" style="background: var(--accent-cyan); color: #000; font-weight: 600;">
+                        <i class="fa-solid fa-check"></i> Update Password
+                    </button>
                 </div>
             </form>
         </div>

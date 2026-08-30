@@ -1,13 +1,15 @@
 /*
- * Smart Trolley Billing System — ESP32 Wireless Firmware (Robust & Non-Blocking)
- * ==============================================================================
- * Communicates with the Flask REST API over Wi-Fi.
+ * Smart Trolley Billing System — ESP32 Multi-Trolley Firmware v2.0
+ * ================================================================
+ * Default Template (TROLLEY-001)
  * 
+ * ► To assign a specific ID, edit TROLLEY_ID and TROLLEY_NAME below.
+ *
  * Required Arduino IDE Libraries:
  *   1. MFRC522 (by GithubCommunity)
  *   2. LiquidCrystal_I2C (by Frank de Brabander)
  *   3. ArduinoJson (by Benoit Blanchon) - Version 6 or 7
- * 
+ *
  * Hardware Connections (ESP32 Dev Board):
  *   - MFRC522 RFID:
  *       VCC  -> 3.3V (DO NOT CONNECT TO 5V!)
@@ -23,12 +25,12 @@
  *       SDA  -> GPIO 21
  *       SCL  -> GPIO 22
  *   - Push Buttons (Internal Pull-Up enabled):
- *       ADD Button    -> GPIO 13 (Connect other leg to GND)
- *       REMOVE Button -> GPIO 12 (Connect other leg to GND)
- *       RESET Button  -> GPIO 14 (Connect other leg to GND)
+ *       ADD Button    -> GPIO 13 (other leg to GND)
+ *       REMOVE Button -> GPIO 12 (other leg to GND)
+ *       RESET Button  -> GPIO 14 (other leg to GND)
  *   - Buzzer:
- *       Positive (+) -> GPIO 15 (Connect through 220-ohm resistor)
- *       Negative (-) -> GND
+ *       Positive (+)  -> GPIO 15 (through 220-ohm resistor)
+ *       Negative (-)  -> GND
  */
 
 #include <WiFi.h>
@@ -40,17 +42,26 @@
 #include <LiquidCrystal_I2C.h>
 #include <ArduinoJson.h>
 
-// ── Wi-Fi Configuration ────────────────────────────────────────────────────
-const char* ssid     = "Redmi 13C 5G";       // Matches your Hotspot SSID exactly
-const char* password = "111111111";          // Change to your Wi-Fi Password
-const String serverIP = "10.83.19.241";       // Current PC Local IP on Wi-Fi/Hotspot
-const int serverPort = 5000;                 // Flask Server Port
+// ══════════════════════════════════════════════════════════════════════════════
+// ► TROLLEY IDENTITY
+// ══════════════════════════════════════════════════════════════════════════════
+const String TROLLEY_ID   = "TROLLEY-001";
+const String TROLLEY_NAME = "Smart Trolley 001";
+const String FW_VERSION   = "2.0";
 
-// API Endpoints
-const String apiAction    = "http://" + serverIP + ":" + String(serverPort) + "/api/cart/action";
-const String apiReset     = "http://" + serverIP + ":" + String(serverPort) + "/api/reset";
-const String apiMode      = "http://" + serverIP + ":" + String(serverPort) + "/api/simulator/mode";
-const String apiDashboard = "http://" + serverIP + ":" + String(serverPort) + "/api/dashboard";
+// ── Wi-Fi Configuration ────────────────────────────────────────────────────
+const char* ssid       = "Redmi 13C 5G";       // Your Wi-Fi SSID
+const char* password   = "111111111";           // Your Wi-Fi Password
+const String serverIP  = "10.50.17.241";        // Flask server local IP
+const int   serverPort = 5000;                  // Flask server port
+
+// ── API Endpoints (all include TROLLEY_ID in JSON body) ─────────────────────
+const String BASE_URL     = "http://" + serverIP + ":" + String(serverPort);
+const String apiAction    = BASE_URL + "/api/cart/action";
+const String apiReset     = BASE_URL + "/api/reset";
+const String apiMode      = BASE_URL + "/api/simulator/mode";
+const String apiHeartbeat = BASE_URL + "/api/trolley/heartbeat";
+const String apiRegister  = BASE_URL + "/api/trolley/register";
 
 // ── Pin Definitions ────────────────────────────────────────────────────────
 const int ADD_BTN    = 13;
@@ -64,43 +75,49 @@ const int BUZZER_PIN = 15;
 #define I2C_SCL  22
 
 // ── Global Objects ─────────────────────────────────────────────────────────
-LiquidCrystal_I2C lcd(0x27, 16, 2); // Change address to 0x3F if LCD screen is blank
+LiquidCrystal_I2C lcd(0x27, 16, 2); // Change to 0x3F if LCD is blank
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 
 // ── State Variables ────────────────────────────────────────────────────────
-String currentMode = "ADD"; // "ADD" or "REMOVE"
-bool wifiConnected = false;
-unsigned long lastPingTime = 0;
-const unsigned long PING_INTERVAL_MS = 10000; // Ping server every 10s
+String currentMode    = "ADD";
+bool   wifiConnected  = false;
 
-// Debounce timings
+// Heartbeat timing
+unsigned long lastHeartbeatTime = 0;
+const unsigned long HEARTBEAT_INTERVAL_MS = 15000; // Send heartbeat every 15 s
+
+// Wi-Fi reconnect timing
+unsigned long lastWifiCheckTime = 0;
+const unsigned long WIFI_CHECK_INTERVAL_MS = 10000;
+
+// Duplicate scan protection
+String        lastScannedUID  = "";
+unsigned long lastScanTime    = 0;
+const unsigned long SCAN_COOLDOWN_MS = 2500; // Block same card within 2.5 s
+
+// Button idle states (auto-detected on boot)
+int addIdleState    = HIGH;
+int removeIdleState = HIGH;
+int resetIdleState  = HIGH;
+
+// Button debounce
 unsigned long lastDebounceAdd    = 0;
 unsigned long lastDebounceRemove = 0;
 unsigned long lastDebounceReset  = 0;
-const unsigned long DEBOUNCE_MS  = 300;
+const unsigned long DEBOUNCE_MS  = 250;
 
-// ── Audio Indicator Helper Functions ───────────────────────────────────────
+// ── Audio Helpers ──────────────────────────────────────────────────────────
 void beepOnce() {
-  digitalWrite(BUZZER_PIN, HIGH);
-  delay(120);
-  digitalWrite(BUZZER_PIN, LOW);
+  digitalWrite(BUZZER_PIN, HIGH); delay(120); digitalWrite(BUZZER_PIN, LOW);
 }
-
 void beepDouble() {
-  beepOnce();
-  delay(80);
-  beepOnce();
+  beepOnce(); delay(80); beepOnce();
 }
-
 void beepTriple() {
-  beepOnce();
-  delay(80);
-  beepOnce();
-  delay(80);
-  beepOnce();
+  beepOnce(); delay(80); beepOnce(); delay(80); beepOnce();
 }
 
-// ── LCD Output Helper ──────────────────────────────────────────────────────
+// ── LCD Helper ─────────────────────────────────────────────────────────────
 void lcdShow(String line1, String line2 = "") {
   lcd.clear();
   lcd.setCursor(0, 0);
@@ -111,105 +128,17 @@ void lcdShow(String line1, String line2 = "") {
   }
 }
 
-// ── Sync Mode to Web Simulator ─────────────────────────────────────────────
-void syncModeWithServer(String mode) {
-  if (WiFi.status() != WL_CONNECTED) return;
-  
-  HTTPClient http;
-  http.begin(apiMode);
-  http.addHeader("Content-Type", "application/json");
-  http.setTimeout(2000);
-  
-  String jsonDoc = "{\"mode\":\"" + mode + "\"}";
-  http.POST(jsonDoc);
-  http.end();
-}
+// ── Wi-Fi Reconnect ────────────────────────────────────────────────────────
+void reconnectWiFi() {
+  if (WiFi.status() == WL_CONNECTED) return;
 
-// ── Initialize Setup ───────────────────────────────────────────────────────
-void setup() {
-  // Config Pin Modes with Internal Pull-Ups
-  pinMode(ADD_BTN,    INPUT_PULLUP);
-  pinMode(REMOVE_BTN, INPUT_PULLUP);
-  pinMode(RESET_BTN,  INPUT_PULLUP);
-  pinMode(BUZZER_PIN, OUTPUT);
-  digitalWrite(BUZZER_PIN, LOW);
+  Serial.println("[WiFi] Connection lost — attempting reconnect...");
+  lcdShow("WiFi: Reconnect", "Please wait...");
 
-  Serial.begin(115200);
-  delay(500);
-  Serial.println("\n==========================================");
-  Serial.println("   Smart Trolley System — ESP32 Starting  ");
-  Serial.println("==========================================");
-
-  // 1. Initialize I2C Bus & LCD
-  Wire.begin(I2C_SDA, I2C_SCL);
-  lcd.init();
-  lcd.backlight();
-  lcdShow("Smart Trolley", "Wireless ESP32");
-  beepOnce();
-  delay(1500);
-
-  // 2. Initialize SPI & MFRC522 RFID Reader
-  SPI.begin(18, 19, 23, 5); // SCK=18, MISO=19, MOSI=23, SS=5
-  mfrc522.PCD_Init();
-  mfrc522.PCD_SetAntennaGain(mfrc522.RxGain_max); // Set max gain for reliable card reading
-  
-  byte v = mfrc522.PCD_ReadRegister(mfrc522.VersionReg);
-  Serial.print("[RFID] MFRC522 Version: 0x");
-  Serial.println(v, HEX);
-  if (v == 0x91 || v == 0x92) {
-    Serial.println("[RFID] Reader initialized successfully!");
-    lcdShow("RFID Status: OK", "Mode: ADD");
-  } else {
-    Serial.println("[RFID WARNING] Unknown RFID chip or wiring issue! Check 3.3V power.");
-    lcdShow("RFID Check Wire", "Power must be 3V3");
-    delay(2000);
-  }
-
-  // 3. Connect to Wi-Fi Network
-  WiFi.mode(WIFI_STA);
-  wifi_country_t country = {
-    .cc = "IN",
-    .schan = 1,
-    .nchan = 13,
-    .policy = WIFI_COUNTRY_POLICY_AUTO
-  };
-  esp_wifi_set_country(&country);
   WiFi.disconnect();
-  delay(100);
-
-  Serial.println("[WiFi] Scanning nearby 2.4GHz networks...");
-  lcdShow("Scanning WiFi..", "Please wait");
-  int n = WiFi.scanNetworks();
-  Serial.print("[WiFi Scan] Found ");
-  Serial.print(n);
-  Serial.println(" networks:");
-  bool targetFound = false;
-  for (int i = 0; i < n; ++i) {
-    String foundSSID = WiFi.SSID(i);
-    int rssi = WiFi.RSSI(i);
-    Serial.print("   ");
-    Serial.print(i + 1);
-    Serial.print(": ");
-    Serial.print(foundSSID);
-    Serial.print(" (");
-    Serial.print(rssi);
-    Serial.println(" dBm)");
-    if (foundSSID == ssid) {
-      targetFound = true;
-    }
-  }
-
-  if (!targetFound) {
-    Serial.println("[WiFi WARNING] Target SSID '" + String(ssid) + "' was NOT found in 2.4GHz scan!");
-    Serial.println("[HINT] If using a phone hotspot, change AP Band from 5.0 GHz to 2.4 GHz in Hotspot Settings!");
-  }
-
-  Serial.print("[WiFi] Connecting to: ");
-  Serial.println(ssid);
-  lcdShow("Connecting WiFi", ssid);
-  
+  delay(500);
   WiFi.begin(ssid, password);
-  
+
   int attempts = 0;
   while (WiFi.status() != WL_CONNECTED && attempts < 20) {
     delay(500);
@@ -219,19 +148,188 @@ void setup() {
 
   if (WiFi.status() == WL_CONNECTED) {
     wifiConnected = true;
-    Serial.println("\n[WiFi] Connected successfully!");
-    Serial.print("[WiFi] IP: ");
-    Serial.println(WiFi.localIP());
-    lcdShow("WiFi Connected!", WiFi.localIP().toString());
+    Serial.println("\n[WiFi] Reconnected! IP: " + WiFi.localIP().toString());
+    lcdShow("WiFi Reconnected", WiFi.localIP().toString());
     beepOnce();
+    delay(1200);
+    lcdShow("Mode: " + currentMode, "Scan card...");
   } else {
     wifiConnected = false;
-    Serial.println("\n[WiFi] Connection failed! Operating in standalone/retry mode.");
-    lcdShow("WiFi Offline", "Mode: ADD");
+    Serial.println("\n[WiFi] Reconnect failed. Will retry later.");
+    lcdShow("WiFi Failed", "Retrying soon...");
+    delay(1000);
+    lcdShow("Mode: " + currentMode, "Scan card...");
+  }
+}
+
+// ── Register Trolley on Server ─────────────────────────────────────────────
+void registerWithServer() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  WiFiClient client;
+  HTTPClient http;
+  http.begin(client, apiRegister);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("Connection", "close");
+  http.setTimeout(5000);
+
+  StaticJsonDocument<200> doc;
+  doc["trolley_id"]       = TROLLEY_ID;
+  doc["name"]             = TROLLEY_NAME;
+  doc["firmware_version"] = FW_VERSION;
+  doc["ip_address"]       = WiFi.localIP().toString();
+  String payload;
+  serializeJson(doc, payload);
+
+  int code = http.POST(payload);
+  Serial.println("[REGISTER] Server response code: " + String(code));
+  http.end();
+}
+
+// ── Send Heartbeat ─────────────────────────────────────────────────────────
+void sendHeartbeat() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  WiFiClient client;
+  HTTPClient http;
+  http.begin(client, apiHeartbeat);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("Connection", "close");
+  http.setTimeout(5000);
+
+  int batteryPct = 85;
+
+  StaticJsonDocument<200> doc;
+  doc["trolley_id"]       = TROLLEY_ID;
+  doc["battery"]          = batteryPct;
+  doc["wifi_rssi"]        = WiFi.RSSI();
+  doc["ip_address"]       = WiFi.localIP().toString();
+  doc["firmware_version"] = FW_VERSION;
+  String payload;
+  serializeJson(doc, payload);
+
+  int code = http.POST(payload);
+  if (code == 200) {
+    Serial.println("[HEARTBEAT] OK — Battery: " + String(batteryPct) + "%, RSSI: " + String(WiFi.RSSI()) + " dBm");
+  } else {
+    Serial.println("[HEARTBEAT] Code: " + String(code));
+  }
+  http.end();
+}
+
+// ── Sync Mode with Server ──────────────────────────────────────────────────
+void syncModeWithServer(String mode) {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  WiFiClient client;
+  HTTPClient http;
+  http.begin(client, apiMode);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("Connection", "close");
+  http.setTimeout(3000);
+
+  StaticJsonDocument<128> doc;
+  doc["mode"]       = mode;
+  doc["trolley_id"] = TROLLEY_ID;
+  String payload;
+  serializeJson(doc, payload);
+  http.POST(payload);
+  http.end();
+}
+
+// ── Setup ──────────────────────────────────────────────────────────────────
+void setup() {
+  pinMode(ADD_BTN,    INPUT_PULLUP);
+  pinMode(REMOVE_BTN, INPUT_PULLUP);
+  pinMode(RESET_BTN,  INPUT_PULLUP);
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, LOW);
+
+  Serial.begin(115200);
+  delay(100);
+  addIdleState    = digitalRead(ADD_BTN);
+  removeIdleState = digitalRead(REMOVE_BTN);
+  resetIdleState  = digitalRead(RESET_BTN);
+
+  delay(400);
+  Serial.println("\n==========================================");
+  Serial.println("  Smart Trolley System — " + TROLLEY_ID + "  ");
+  Serial.println("==========================================");
+
+  // 1. LCD Init
+  Wire.begin(I2C_SDA, I2C_SCL);
+  lcd.init();
+  lcd.backlight();
+  lcdShow(TROLLEY_ID, "Starting v" + FW_VERSION);
+  beepOnce();
+  delay(1500);
+
+  // 2. RFID Init
+  SPI.begin(18, 19, 23, 5);
+  mfrc522.PCD_Init();
+  mfrc522.PCD_SetAntennaGain(mfrc522.RxGain_max);
+  byte v = mfrc522.PCD_ReadRegister(mfrc522.VersionReg);
+  Serial.print("[RFID] MFRC522 Version: 0x");
+  Serial.println(v, HEX);
+  if (v == 0x91 || v == 0x92) {
+    Serial.println("[RFID] Reader initialized successfully!");
+    lcdShow("RFID Status: OK", "Mode: ADD");
+  } else {
+    Serial.println("[RFID WARNING] Check 3.3V power and wiring!");
+    lcdShow("RFID Check Wire", "Power must be 3V3");
+    delay(2000);
+  }
+
+  // 3. Wi-Fi Connect
+  WiFi.mode(WIFI_STA);
+  wifi_country_t country = { .cc = "IN", .schan = 1, .nchan = 13, .policy = WIFI_COUNTRY_POLICY_AUTO };
+  esp_wifi_set_country(&country);
+  WiFi.disconnect();
+  delay(100);
+
+  Serial.println("[WiFi] Scanning networks...");
+  lcdShow("Scanning WiFi..", "Please wait");
+  int n = WiFi.scanNetworks();
+  Serial.print("[WiFi Scan] Found "); Serial.print(n); Serial.println(" networks:");
+  bool targetFound = false;
+  for (int i = 0; i < n; ++i) {
+    String foundSSID = WiFi.SSID(i);
+    Serial.print("   "); Serial.print(i + 1); Serial.print(": ");
+    Serial.print(foundSSID); Serial.print(" ("); Serial.print(WiFi.RSSI(i)); Serial.println(" dBm)");
+    if (foundSSID == ssid) targetFound = true;
+  }
+  if (!targetFound) {
+    Serial.println("[WiFi WARNING] SSID '" + String(ssid) + "' not found! Ensure 2.4GHz AP.");
+  }
+
+  Serial.print("[WiFi] Connecting to: "); Serial.println(ssid);
+  lcdShow("Connecting WiFi", ssid);
+  WiFi.begin(ssid, password);
+
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+    delay(500);
+    Serial.print(".");
+    attempts++;
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    wifiConnected = true;
+    Serial.println("\n[WiFi] Connected! IP: " + WiFi.localIP().toString());
+    lcdShow("WiFi Connected!", WiFi.localIP().toString());
+    beepOnce();
+    delay(1500);
+    // Register with server and send first heartbeat
+    registerWithServer();
+    sendHeartbeat();
+  } else {
+    wifiConnected = false;
+    Serial.println("\n[WiFi] Failed. Operating in offline/retry mode.");
+    lcdShow("WiFi Offline", "Retrying...");
     beepDouble();
   }
-  
-  delay(1500);
+
+  delay(1000);
   lcdShow("Mode: ADD", "Scan card...");
 }
 
@@ -239,32 +337,38 @@ void setup() {
 void loop() {
   unsigned long now = millis();
 
-  // ── 1. Non-Blocking Wi-Fi Status & Health Check ─────────────────────────
-  if (now - lastPingTime > PING_INTERVAL_MS) {
-    lastPingTime = now;
+  // ── 1. Wi-Fi Health Check & Reconnect ────────────────────────────────────
+  if (now - lastWifiCheckTime > WIFI_CHECK_INTERVAL_MS) {
+    lastWifiCheckTime = now;
     if (WiFi.status() != WL_CONNECTED) {
       wifiConnected = false;
-      Serial.println("[WiFi] Reconnecting in background...");
-      WiFi.disconnect();
-      WiFi.reconnect();
+      reconnectWiFi();
     } else {
       wifiConnected = true;
     }
   }
 
-  // ── 2. Button Inputs (Always active, non-blocking) ───────────────────────
-  static unsigned long lastBtnDiag = 0;
-  if (now - lastBtnDiag > 3000) {
-    lastBtnDiag = now;
-    Serial.print("[BTN DIAGNOSTIC] ADD(GPIO13)=");
-    Serial.print(digitalRead(ADD_BTN));
-    Serial.print(" | REMOVE(GPIO12)=");
-    Serial.print(digitalRead(REMOVE_BTN));
-    Serial.print(" | RESET(GPIO14)=");
-    Serial.println(digitalRead(RESET_BTN));
+  // ── 2. Periodic Heartbeat ─────────────────────────────────────────────────
+  if (now - lastHeartbeatTime > HEARTBEAT_INTERVAL_MS) {
+    lastHeartbeatTime = now;
+    sendHeartbeat();
   }
 
-  if (digitalRead(ADD_BTN) == LOW && (now - lastDebounceAdd > DEBOUNCE_MS)) {
+  // ── 3. Button Diagnostic (every 2s) ──────────────────────────────────────
+  static unsigned long lastBtnDiag = 0;
+  if (now - lastBtnDiag > 2000) {
+    lastBtnDiag = now;
+    Serial.print("[BTN DIAG] ADD(GPIO13)="); Serial.print(digitalRead(ADD_BTN));
+    Serial.print(" | REMOVE(GPIO12)="); Serial.print(digitalRead(REMOVE_BTN));
+    Serial.print(" | RESET(GPIO14)="); Serial.println(digitalRead(RESET_BTN));
+  }
+
+  // ── 4. Button Inputs ──────────────────────────────────────────────────────
+  bool addActive    = (digitalRead(ADD_BTN)    != addIdleState);
+  bool removeActive = (digitalRead(REMOVE_BTN) != removeIdleState);
+  bool resetActive  = (digitalRead(RESET_BTN)  != resetIdleState);
+
+  if (addActive && (now - lastDebounceAdd > DEBOUNCE_MS)) {
     lastDebounceAdd = now;
     currentMode = "ADD";
     Serial.println("[BTN] ADD button pressed");
@@ -273,7 +377,7 @@ void loop() {
     syncModeWithServer("ADD");
   }
 
-  if (digitalRead(REMOVE_BTN) == LOW && (now - lastDebounceRemove > DEBOUNCE_MS)) {
+  if (removeActive && (now - lastDebounceRemove > DEBOUNCE_MS)) {
     lastDebounceRemove = now;
     currentMode = "REMOVE";
     Serial.println("[BTN] REMOVE button pressed");
@@ -282,38 +386,48 @@ void loop() {
     syncModeWithServer("REMOVE");
   }
 
-  if (digitalRead(RESET_BTN) == LOW && (now - lastDebounceReset > DEBOUNCE_MS)) {
+  if (resetActive && (now - lastDebounceReset > DEBOUNCE_MS)) {
     lastDebounceReset = now;
     Serial.println("[BTN] RESET button pressed");
     beepDouble();
     lcdShow("Resetting Cart", "Please wait...");
-    
+
     if (WiFi.status() == WL_CONNECTED) {
+      WiFiClient client;
       HTTPClient http;
-      http.begin(apiReset);
-      http.setTimeout(2000);
-      int responseCode = http.POST("{}");
+      http.begin(client, apiReset);
+      http.addHeader("Content-Type", "application/json");
+      http.addHeader("Connection", "close");
+      http.setTimeout(5000);
+
+      StaticJsonDocument<128> doc;
+      doc["trolley_id"] = TROLLEY_ID;
+      String payload;
+      serializeJson(doc, payload);
+
+      int responseCode = http.POST(payload);
       if (responseCode == 200) {
         lcdShow("Cart Reset!", "Total: Rs.0.00");
+        beepOnce();
       } else {
-        lcdShow("Reset Local", "Total: Rs.0.00");
+        lcdShow("Reset Local", "Err: " + String(responseCode));
       }
       http.end();
     } else {
-      lcdShow("Reset Local", "Total: Rs.0.00");
+      lcdShow("Reset Local", "WiFi offline");
     }
-    
+
     delay(1500);
     currentMode = "ADD";
     lcdShow("Mode: ADD", "Scan card...");
   }
 
-  // ── 3. RFID Card Reader (Always active, non-blocking) ────────────────────
+  // ── 5. RFID Card Reader ───────────────────────────────────────────────────
   if (!mfrc522.PICC_IsNewCardPresent() || !mfrc522.PICC_ReadCardSerial()) {
     return;
   }
 
-  // Format Tag UID to "XX XX XX XX" Hex string
+  // Format UID as "XX XX XX XX"
   String uid = "";
   for (byte i = 0; i < mfrc522.uid.size; i++) {
     if (i > 0) uid += " ";
@@ -322,13 +436,23 @@ void loop() {
   }
   uid.toUpperCase();
 
-  Serial.println("[RFID] Scanned Tag UID: " + uid);
+  // ── Duplicate scan protection ─────────────────────────────────────────────
+  if (uid == lastScannedUID && (now - lastScanTime) < SCAN_COOLDOWN_MS) {
+    Serial.println("[RFID] Duplicate scan blocked for UID: " + uid);
+    mfrc522.PICC_HaltA();
+    mfrc522.PCD_StopCrypto1();
+    return;
+  }
+  lastScannedUID = uid;
+  lastScanTime   = now;
+
+  Serial.println("[RFID] Scanned Tag UID: " + uid + " (" + TROLLEY_ID + ")");
   lcdShow("Scanning Tag...", uid);
   beepOnce();
 
-  // If Wi-Fi is disconnected, show scanned UID on LCD so user knows RFID hardware is working!
+  // Handle offline mode
   if (WiFi.status() != WL_CONNECTED) {
-    lcdShow("Tag: " + uid, "WiFi Disconnected");
+    lcdShow("Tag: " + uid, "WiFi Offline");
     beepDouble();
     mfrc522.PICC_HaltA();
     mfrc522.PCD_StopCrypto1();
@@ -337,16 +461,18 @@ void loop() {
     return;
   }
 
-  // Send request to Flask REST API Server
+  // ── Send scan request to Flask ────────────────────────────────────────────
+  WiFiClient client;
   HTTPClient http;
-  http.begin(apiAction);
+  http.begin(client, apiAction);
   http.addHeader("Content-Type", "application/json");
-  http.setTimeout(3000); // 3s HTTP timeout
+  http.addHeader("Connection", "close");
+  http.setTimeout(5000);
 
-  // Create JSON Payload
-  StaticJsonDocument<128> doc;
-  doc["action"] = currentMode;
-  doc["uid"] = uid;
+  StaticJsonDocument<200> doc;
+  doc["trolley_id"] = TROLLEY_ID;
+  doc["action"]     = currentMode;
+  doc["uid"]        = uid;
   String requestPayload;
   serializeJson(doc, requestPayload);
 
@@ -354,52 +480,41 @@ void loop() {
 
   if (httpCode == 200) {
     String response = http.getString();
-    Serial.println("[API] Server Response: " + response);
+    Serial.println("[API] Response: " + response);
 
     StaticJsonDocument<256> resDoc;
     DeserializationError error = deserializeJson(resDoc, response);
 
     if (!error && resDoc["success"].as<bool>()) {
-      String pName = resDoc["product"]["name"].as<String>();
-      float total  = resDoc["cart"]["total"].as<float>();
-      
+      String pName  = resDoc["product"]["name"].as<String>();
+      float  total  = resDoc["cart"]["total"].as<float>();
       String symbol = (currentMode == "ADD") ? "+" : "-";
-      String line1 = symbol + " " + pName;
-      String line2 = "Total: Rs." + String(total, 2);
-      
-      lcdShow(line1, line2);
+      lcdShow(symbol + " " + pName, "Total: Rs." + String(total, 2));
       beepOnce();
     } else {
       lcdShow("Scan Error!", "Try Again");
       beepTriple();
     }
-  } 
-  else if (httpCode == 404) {
-    // Unregistered / Unknown Product scanned
-    Serial.println("[API] Unknown Card Scanned: " + uid);
+  } else if (httpCode == 404) {
+    Serial.println("[API] Unknown card: " + uid);
     lcdShow("Unknown Card!", "Check Dashboard");
     beepTriple();
-  } 
-  else if (httpCode == 400) {
-    // Cart is locked because bill was generated
-    Serial.println("[API] Cart Locked (Status 400)");
+  } else if (httpCode == 400) {
+    Serial.println("[API] Cart locked (HTTP 400)");
     lcdShow("Cart Locked!", "Pay/Cancel Bill");
     beepTriple();
-  }
-  else if (httpCode < 0) {
-    // Wi-Fi / TCP / IP connection failure
-    Serial.println("[API Error] Server connection failed, Code: " + String(httpCode));
-    lcdShow("Connection Error", "Check Server IP");
+  } else if (httpCode < 0) {
+    Serial.println("[API Error] Connection failed, code: " + String(httpCode));
+    lcdShow("Connection Error", "IP: " + serverIP);
     beepTriple();
-  }
-  else {
-    // Other server errors (HTTP 500, etc.)
-    Serial.println("[API Error] Code: " + String(httpCode));
+  } else {
+    Serial.println("[API Error] HTTP " + String(httpCode));
     lcdShow("Server Error!", "Code: " + String(httpCode));
     beepTriple();
   }
 
+  http.end();
   mfrc522.PICC_HaltA();
   mfrc522.PCD_StopCrypto1();
-  delay(1500); // Cooldown delay to prevent rapid double-scanning of the same card
+  delay(1200); // Post-scan cooldown
 }

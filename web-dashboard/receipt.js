@@ -63,6 +63,9 @@ document.addEventListener('DOMContentLoaded', () => {
         
         els.invoiceNo.textContent = txHash;
         els.invoiceDate.textContent = dateString;
+        if (els.invoiceTrolley) {
+            els.invoiceTrolley.textContent = transaction.trolley_id ? transaction.trolley_id.replace('TROLLEY-00', 'Trolley #').replace('TROLLEY-', 'Trolley #') : 'Trolley #1';
+        }
         
         // Calculate mathematics
         const total = transaction.total;
@@ -171,6 +174,64 @@ document.addEventListener('DOMContentLoaded', () => {
             doc.text("* THANK YOU FOR SHOPPING *", 40, y, { align: 'center' });
 
             doc.save(`Invoice_${txHash}.pdf`);
+        });
+    }
+
+    // ── Post-Checkout Feedback Interaction ───────────────────────────────────
+    let currentRating = 5;
+    const starEls = document.querySelectorAll('#receipt-stars i');
+    const commentInput = document.getElementById('receipt-feedback-comment');
+    const submitFeedbackBtn = document.getElementById('btn-submit-receipt-feedback');
+    const formRow = document.getElementById('receipt-feedback-form-row');
+    const thankYouMsg = document.getElementById('receipt-feedback-thankyou');
+
+    starEls.forEach(star => {
+        star.addEventListener('click', () => {
+            currentRating = parseInt(star.getAttribute('data-rating'));
+            starEls.forEach(s => {
+                const r = parseInt(s.getAttribute('data-rating'));
+                if (r <= currentRating) {
+                    s.classList.remove('fa-regular');
+                    s.classList.add('fa-solid');
+                    s.style.color = '#f59e0b';
+                } else {
+                    s.classList.remove('fa-solid');
+                    s.classList.add('fa-regular');
+                    s.style.color = 'var(--text-secondary)';
+                }
+            });
+        });
+    });
+
+    if (submitFeedbackBtn) {
+        submitFeedbackBtn.addEventListener('click', async () => {
+            const comment = commentInput ? commentInput.value.trim() : '';
+            submitFeedbackBtn.disabled = true;
+            submitFeedbackBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+
+            try {
+                const res = await fetch('/api/feedback', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        rating: currentRating,
+                        comments: comment || "Great smart checkout experience!"
+                    })
+                });
+
+                if (res.ok) {
+                    if (formRow) formRow.style.display = 'none';
+                    if (thankYouMsg) thankYouMsg.style.display = 'block';
+                } else {
+                    alert("Could not submit feedback. Please try again.");
+                    submitFeedbackBtn.disabled = false;
+                    submitFeedbackBtn.textContent = 'Send Review';
+                }
+            } catch (err) {
+                console.error("Feedback submit error:", err);
+                submitFeedbackBtn.disabled = false;
+                submitFeedbackBtn.textContent = 'Send Review';
+            }
         });
     }
 

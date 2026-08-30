@@ -66,6 +66,7 @@ async function initDashboard() {
     refreshEls();
 
     await fetchProducts();
+    await fetchSimulatorTrolleys();
     await fetchDashboard();
     
     // Start dashboard polling
@@ -138,6 +139,30 @@ function populateSimulatorProducts() {
         opt.textContent = `${p.name} (Rs.${p.price.toFixed(2)})`;
         els.simProductSelect.appendChild(opt);
     });
+}
+
+// Dynamically fetch and populate fleet trolleys for simulator
+async function fetchSimulatorTrolleys() {
+    if (!els.simTrolleySelect) return;
+    try {
+        const res = await fetch('/api/trolleys');
+        if (res.ok) {
+            const trolleys = await res.json();
+            if (trolleys && trolleys.length > 0) {
+                const currentVal = els.simTrolleySelect.value;
+                els.simTrolleySelect.innerHTML = '';
+                trolleys.forEach(t => {
+                    const opt = document.createElement('option');
+                    opt.value = t.id;
+                    opt.textContent = `${t.id} (${t.name || t.id})`;
+                    if (t.id === currentVal) opt.selected = true;
+                    els.simTrolleySelect.appendChild(opt);
+                });
+            }
+        }
+    } catch (e) {
+        console.error("Failed to populate simulator trolleys:", e);
+    }
 }
 
 // Fetch dashboard statistics
@@ -253,12 +278,16 @@ function renderActiveCartAndItems() {
 
         return `
             <div class="active-cart" style="padding: 16px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; margin-bottom: 16px;">
-                <div class="cart-header-row" style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="cart-header-row" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                     <div class="cart-info">
                         <h4 style="font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; gap: 8px;"><div class="cart-status"></div> ${trolleyId}</h4>
                         <p style="font-size: 0.8rem; color: var(--text-secondary);">${cart.itemsContained} items · ${cart.lastActive}</p>
                     </div>
-                    <div class="cart-total" style="font-size: 1.3rem; font-weight: 700; color: var(--accent-green);">Rs.${cart.total.toFixed(2)}</div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div class="cart-total" style="font-size: 1.3rem; font-weight: 700; color: var(--accent-green);">Rs.${cart.total.toFixed(2)}</div>
+                        <button class="btn btn-outline btn-cart-reset" data-trolley-id="${trolleyId}" title="Reset ${trolleyId}" style="padding: 4px 8px; font-size: 0.75rem;"><i class="fa-solid fa-rotate-left"></i> Reset</button>
+                        <button class="btn btn-checkout btn-cart-bill" data-trolley-id="${trolleyId}" title="Generate bill for ${trolleyId}" style="padding: 4px 10px; font-size: 0.75rem;"><i class="fa-solid fa-receipt"></i> Bill</button>
+                    </div>
                 </div>
 
                 ${itemsHtml}
@@ -339,6 +368,24 @@ function bindCartControlListeners() {
                 if (window.showToast) window.showToast("Select Product", "Please choose a product from the dropdown to remove.", "warning");
                 else alert("Please choose a product from the dropdown.");
             }
+        });
+    });
+
+    // Individual Cart Reset button
+    document.querySelectorAll('.btn-cart-reset').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const trolleyId = btn.getAttribute('data-trolley-id');
+            resetCart(trolleyId);
+        });
+    });
+
+    // Individual Cart Bill button
+    document.querySelectorAll('.btn-cart-bill').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const trolleyId = btn.getAttribute('data-trolley-id');
+            checkoutCart(trolleyId);
         });
     });
 }

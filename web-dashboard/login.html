@@ -62,13 +62,18 @@
                         <i class="fa-solid fa-arrow-right"></i>
                     </button>
                 </div>
+
+                <div class="signup-prompt" style="margin-top: 14px; text-align: center; font-size: 0.9rem; color: var(--text-muted);">
+                    New customer? <a href="register.html" style="color: var(--accent-cyan); font-weight: 600; text-decoration: none; margin-left: 4px;">Create an Account <i class="fa-solid fa-arrow-right" style="font-size: 0.75rem;"></i></a>
+                </div>
             </form>
 
             <div class="preset-section">
-                <div class="preset-label">
-                    <span>Quick Demo Login Presets</span>
-                </div>
-                <div class="preset-grid">
+                <button type="button" id="toggle-demo-btn" class="demo-toggle-btn" style="background: rgba(255,255,255,0.04); border: 1px dashed var(--border-subtle); border-radius: 8px; width: 100%; padding: 8px 12px; color: var(--text-muted); font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; justify-content: space-between; transition: all 0.2s;">
+                    <span><i class="fa-solid fa-flask" style="color: var(--accent-cyan); margin-right: 6px;"></i> Evaluation & Demo Logins</span>
+                    <i class="fa-solid fa-chevron-down" id="demo-chevron" style="transition: transform 0.3s;"></i>
+                </button>
+                <div id="demo-presets-container" class="preset-grid" style="display: none; margin-top: 12px;">
                     <button type="button" class="preset-btn" data-user="admin" data-pass="admin123" title="Full system administration & settings">
                         <i class="fa-solid fa-shield-halved" style="color: var(--accent-red);"></i>
                         <div class="preset-info">

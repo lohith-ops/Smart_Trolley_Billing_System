@@ -26,46 +26,22 @@
                 <div style="font-weight: 600; font-size: 1.1rem; color: var(--text-primary);" id="portal-header-title">
                     Shopper Member Hub
                 </div>
-                <div class="header-actions">
+                <div class="header-actions" id="portal-header-actions">
+                    <a href="login.html" class="btn btn-outline" id="portal-login-nav-btn" style="display: none; padding: 6px 12px; font-size: 0.85rem; text-decoration: none;">
+                        <i class="fa-solid fa-right-to-bracket"></i> Sign In / Register
+                    </a>
                     <button class="btn btn-outline" id="portal-logout-btn" style="display: none; padding: 6px 12px; font-size: 0.85rem;">
                         <i class="fa-solid fa-sign-out-alt"></i> Logout
                     </button>
-                    <div class="user-profile" id="portal-user-profile" style="display: none;">
-                        <img src="https://ui-avatars.com/api/?name=Lohith+Kumar&background=06b6d4&color=fff" alt="User">
-                        <span>Lohith Kumar</span>
+                    <div class="user-profile" id="portal-user-profile" style="display: flex;">
+                        <img id="portal-avatar-img" src="https://ui-avatars.com/api/?name=User&background=06b6d4&color=fff" alt="User">
+                        <span id="portal-header-username">Guest Shopper</span>
                     </div>
                 </div>
             </header>
 
-            <!-- 1. Simulated Login Form -->
-            <div id="login-container" class="glass-panel portal-login-box">
-                <div style="text-align: center; margin-bottom: 24px;">
-                    <i class="fa-solid fa-user-lock" style="font-size: 2.2rem; color: var(--accent-cyan); margin-bottom: 12px;"></i>
-                    <h3>Shopper Login</h3>
-                    <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">Access your digital invoices and rewards statement</p>
-                </div>
-                
-                <form id="portal-login-form" class="register-form">
-                    <div class="form-group">
-                        <label>Member Username</label>
-                        <input type="text" id="login-username" required placeholder="customer123" class="form-input">
-                    </div>
-                    <div class="form-group">
-                        <label>Password</label>
-                        <input type="password" id="login-password" required placeholder="••••••••" class="form-input">
-                    </div>
-                    
-                    <button type="submit" class="btn btn-checkout" style="width: 100%; margin-top: 12px; background: var(--grad-primary);">
-                        Authenticate Portal
-                    </button>
-                </form>
-                <div style="text-align: center; margin-top: 16px; font-size: 0.75rem; color: var(--text-secondary);">
-                    Use test credentials: <strong style="color:var(--text-primary);">customer123</strong> / <strong style="color:var(--text-primary);">password</strong>
-                </div>
-            </div>
-
-            <!-- 2. Portal Dashboard (Logged In) -->
-            <div id="portal-dashboard-container" class="portal-grid" style="display: none;">
+            <!-- Customer Portal Dashboard -->
+            <div id="portal-dashboard-container" class="portal-grid" style="display: grid;">
                 <!-- Left: Profile Summary -->
                 <div class="glass-panel profile-sidebar">
                     <img src="https://ui-avatars.com/api/?name=Lohith+Kumar&background=06b6d4&color=fff" alt="Lohith Kumar">
@@ -80,6 +56,10 @@
                         <span><strong style="color: var(--text-primary);">Email:</strong> <span id="portal-email">lohith.k@gmail.com</span></span>
                         <span><strong style="color: var(--text-primary);">Phone:</strong> <span id="portal-phone">+91 98765 43210</span></span>
                     </div>
+
+                    <a href="feedback.html" class="btn btn-outline" style="margin-top: 16px; width: 100%; text-align: center; text-decoration: none; font-size: 0.85rem; color: #f59e0b; border-color: rgba(245, 158, 11, 0.4);">
+                        <i class="fa-solid fa-star" style="margin-right: 6px;"></i> Rate Shopping Experience
+                    </a>
                 </div>
 
                 <!-- Right: Active Cart and History -->

@@ -211,6 +211,10 @@ function renderSidebar() {
             <i class="fa-solid fa-map-location-dot"></i>
             <span>Store Directory</span>
         </a>
+        <a href="feedback.html" class="nav-item" id="nav-feedback">
+            <i class="fa-solid fa-comment-dots"></i>
+            <span>Give Feedback</span>
+        </a>
     `;
 
     sidebar.innerHTML = `

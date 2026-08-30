@@ -1,7 +1,7 @@
 /**
  * Multi-Trolley Fleet Dashboard — trolleys.js v2.0
  * Displays real-time cards for every trolley registered in MongoDB.
- * Data source: GET /api/trolleys
+ * Allows Store Admins to dynamically add or decommission trolleys from the UI.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -16,7 +16,18 @@ document.addEventListener('DOMContentLoaded', () => {
         statOnline:    document.getElementById('stat-online-count'),
         statTotal:     document.getElementById('stat-total-count'),
         statBattery:   document.getElementById('stat-avg-battery'),
-        statActive:    document.getElementById('stat-active-count')
+        statActive:    document.getElementById('stat-active-count'),
+
+        // Modal Elements
+        addBtn:        document.getElementById('add-trolley-btn'),
+        modal:         document.getElementById('trolley-modal'),
+        form:          document.getElementById('trolley-form'),
+        trolleyId:     document.getElementById('modal-trolley-id'),
+        trolleyName:   document.getElementById('modal-trolley-name'),
+        trolleySection:document.getElementById('modal-trolley-section'),
+        trolleyFw:     document.getElementById('modal-trolley-fw'),
+        cancelBtn:     document.getElementById('modal-trolley-cancel'),
+        submitBtn:     document.getElementById('modal-trolley-submit')
     };
 
     // ── Fetch & render ──────────────────────────────────────────────────────
@@ -171,12 +182,127 @@ document.addEventListener('DOMContentLoaded', () => {
 
             <div style="margin-top:10px;display:flex;gap:8px;">
                 <a href="trolley-monitor.html?id=${t.id}" class="btn btn-outline"
-                   style="flex:1;text-align:center;font-size:0.8rem;padding:6px 0;text-decoration:none;">
+                   style="flex:2;text-align:center;font-size:0.8rem;padding:6px 0;text-decoration:none;">
                     <i class="fa-solid fa-desktop" style="margin-right:6px;"></i>Monitor Details
                 </a>
+                <button class="btn btn-danger delete-trolley-btn" data-id="${t.id}" title="Remove Trolley from Fleet"
+                   style="flex:1;font-size:0.8rem;padding:6px 0;">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
             </div>`;
 
         els.container.appendChild(card);
+    }
+
+    // Delegate delete trolley action
+    if (els.container) {
+        els.container.addEventListener('click', async (e) => {
+            const delBtn = e.target.closest('.delete-trolley-btn');
+            if (delBtn) {
+                const tid = delBtn.getAttribute('data-id');
+                if (confirm(`Are you sure you want to remove "${tid}" from the active fleet?`)) {
+                    try {
+                        const res = await fetch(`/api/trolleys/${encodeURIComponent(tid)}`, {
+                            method: 'DELETE'
+                        });
+                        const data = await res.json();
+                        if (res.ok && data.success) {
+                            if (window.showToast) {
+                                window.showToast("Trolley Removed", data.message || `Removed ${tid}.`, "info");
+                            }
+                            await fetchTrolleys();
+                        } else {
+                            alert(data.message || "Failed to remove trolley.");
+                        }
+                    } catch (err) {
+                        console.error("Delete trolley error:", err);
+                        alert("Unable to reach server to delete trolley.");
+                    }
+                }
+            }
+        });
+    }
+
+    // ── Modal Handling ──────────────────────────────────────────────────────
+    function openModal() {
+        if (!els.modal) return;
+        els.trolleyId.value = '';
+        els.trolleyName.value = '';
+        if (els.trolleyFw) els.trolleyFw.value = '2.0';
+        els.modal.classList.add('active');
+        setTimeout(() => els.trolleyId.focus(), 100);
+    }
+
+    function closeModal() {
+        if (els.modal) els.modal.classList.remove('active');
+    }
+
+    if (els.addBtn) els.addBtn.addEventListener('click', openModal);
+    if (els.cancelBtn) els.cancelBtn.addEventListener('click', closeModal);
+
+    if (els.modal) {
+        els.modal.addEventListener('click', (e) => {
+            if (e.target === els.modal) closeModal();
+        });
+    }
+
+    // Auto-fill friendly name as ID is typed
+    if (els.trolleyId && els.trolleyName) {
+        els.trolleyId.addEventListener('input', () => {
+            const raw = els.trolleyId.value.trim().toUpperCase();
+            if (raw.startsWith('TROLLEY-') || raw.startsWith('TROLLEY')) {
+                const num = raw.replace(/\D/g, '');
+                if (num && !els.trolleyName.dataset.userEdited) {
+                    els.trolleyName.value = `Smart Trolley ${num.padStart(3, '0')}`;
+                }
+            }
+        });
+        els.trolleyName.addEventListener('input', () => {
+            els.trolleyName.dataset.userEdited = 'true';
+        });
+    }
+
+    // Handle Form Submit
+    if (els.form) {
+        els.form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const tid = els.trolleyId.value.trim().toUpperCase();
+            const name = els.trolleyName.value.trim() || tid;
+            const section = els.trolleySection ? els.trolleySection.value : 'General';
+            const fw = els.trolleyFw ? els.trolleyFw.value.trim() : '2.0';
+
+            if (!tid) {
+                alert("Please specify a Trolley ID (e.g. TROLLEY-004).");
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/trolleys', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        trolley_id: tid,
+                        name: name,
+                        section: section,
+                        firmware_version: fw
+                    })
+                });
+
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    closeModal();
+                    if (window.showToast) {
+                        window.showToast("Trolley Registered", `Added ${tid} (${name}) to active fleet.`, "success");
+                    }
+                    await fetchTrolleys();
+                } else {
+                    alert(data.message || "Failed to register trolley.");
+                }
+            } catch (err) {
+                console.error("Save trolley error:", err);
+                alert("Unable to reach server to save trolley.");
+            }
+        });
     }
 
     // ── Filter buttons ──────────────────────────────────────────────────────

@@ -5,7 +5,7 @@
 const AUTH_CONFIG = {
     TOKEN_KEY: 'smart_trolley_jwt_token',
     USER_KEY:  'smart_trolley_user_profile',
-    PUBLIC_PAGES: ['login.html', 'product-search.html', 'customer-portal.html', 'navigation.html', 'receipt.html'],
+    PUBLIC_PAGES: ['login.html', 'register.html', 'product-search.html', 'customer-portal.html', 'navigation.html', 'receipt.html'],
     ROLE_PERMISSIONS: {
         'admin': ['*'],
         'manager': ['index.html', 'trolleys.html', 'trolley-monitor.html', 'inventory.html', 'transactions.html', 'analytics.html', 'reports.html', 'feedback.html', 'customer-portal.html', 'product-search.html', 'navigation.html', 'receipt.html'],
@@ -151,8 +151,8 @@ async function authFetch(url, options = {}) {
     const loggedIn = isAuthenticated();
     const user = getAuthUser();
 
-    // 1. If user is on login page and already logged in, send them to their dashboard
-    if (currentPath === 'login.html' && loggedIn) {
+    // 1. If user is on login/register page and already logged in, send them to their dashboard
+    if ((currentPath === 'login.html' || currentPath === 'register.html') && loggedIn) {
         if (user && user.role === 'customer') {
             window.location.href = 'customer-portal.html';
         } else {

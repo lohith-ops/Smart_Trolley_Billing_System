@@ -4,6 +4,7 @@ import datetime
 import serial
 import os
 import json
+import re
 from functools import wraps
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
@@ -274,7 +275,7 @@ DEFAULT_USERS = [
 ]
 
 def init_users():
-    """Seed default administrative & staff users on startup."""
+    """Seed default administrative & staff users on startup and sync existing employees."""
     for u in DEFAULT_USERS:
         existing = users_collection.find_one({"username": u["username"]})
         if not existing:
@@ -288,6 +289,39 @@ def init_users():
                 "status":        "Active"
             })
             print(f"[AUTH] Seeded user account: {u['username']} ({u['role']})")
+
+    # Sync existing employees in db['employees'] to users_collection
+    try:
+        employees_collection = db["employees"]
+        for emp in employees_collection.find({}):
+            emp_name = (emp.get("name") or "").strip()
+            emp_id = (emp.get("id") or "").strip()
+            emp_role = (emp.get("role") or "Cashier").strip().lower()
+            if emp_role not in ["admin", "manager", "cashier", "customer"]:
+                emp_role = "cashier"
+
+            usernames_to_check = []
+            if emp.get("username"):
+                usernames_to_check.append(emp["username"].lower())
+            if emp_name:
+                usernames_to_check.append(emp_name.lower().replace(" ", ""))
+            if emp_id:
+                usernames_to_check.append(emp_id.lower())
+
+            for uname in usernames_to_check:
+                if uname and not users_collection.find_one({"username": uname}):
+                    default_pw = f"{uname}123"
+                    users_collection.insert_one({
+                        "username":      uname,
+                        "password_hash": generate_password_hash(default_pw),
+                        "name":          emp_name or uname,
+                        "role":          emp_role,
+                        "status":        emp.get("status", "Active"),
+                        "created_at":    time.time()
+                    })
+                    print(f"[AUTH] Auto-synced employee account: {uname} (Role: {emp_role}, Initial PW: {default_pw})")
+    except Exception as ex:
+        print(f"[AUTH WARN] Error auto-syncing employee accounts: {ex}")
 
 def generate_token(user):
     """Generate signed JWT token valid for JWT_EXPIRATION_HOURS."""
@@ -639,13 +673,36 @@ def perform_reset(trolley_id="TROLLEY-001"):
 @app.route("/api/auth/login", methods=["POST"])
 def auth_login():
     data = request.json or {}
-    username = (data.get("username") or "").strip().lower()
+    raw_user = (data.get("username") or "").strip()
+    username = raw_user.lower()
     password = data.get("password") or ""
 
     if not username or not password:
         return jsonify({"success": False, "message": "Username and password are required."}), 400
 
-    user = users_collection.find_one({"username": username})
+    # Look up user by username, employee ID, or case-insensitive full name
+    user = users_collection.find_one({
+        "$or": [
+            {"username": username},
+            {"id": {"$regex": f"^{re.escape(raw_user)}$", "$options": "i"}},
+            {"name": {"$regex": f"^{re.escape(raw_user)}$", "$options": "i"}}
+        ]
+    })
+
+    # If user not in users_collection, check db['employees']
+    if not user:
+        emp = db['employees'].find_one({
+            "$or": [
+                {"username": username},
+                {"id": {"$regex": f"^{re.escape(raw_user)}$", "$options": "i"}},
+                {"name": {"$regex": f"^{re.escape(raw_user)}$", "$options": "i"}}
+            ]
+        })
+        if emp:
+            # Check if there is an account under their ID or username
+            emp_user = emp.get("username", emp.get("id", "").lower())
+            user = users_collection.find_one({"username": emp_user})
+
     if not user or not check_password_hash(user.get("password_hash", ""), password):
         return jsonify({"success": False, "message": "Invalid username or password."}), 401
 
@@ -681,6 +738,84 @@ def auth_me():
         return jsonify({"success": True, "user": request.current_user})
     return jsonify({"success": True, "user": user})
 
+EMAIL_REGEX = re.compile(r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$')
+USERNAME_REGEX = re.compile(r'^[a-zA-Z0-9_]{3,30}$')
+PHONE_REGEX = re.compile(r'^(\+91[\-\s]?)?[0-9]{10}$')
+
+@app.route("/api/auth/signup", methods=["POST"])
+def auth_signup():
+    """Public customer self-registration endpoint (role is locked to customer)."""
+    data = request.json or {}
+    username = (data.get("username") or "").strip().lower()
+    password = data.get("password") or ""
+    name     = (data.get("name") or "").strip()
+    email    = (data.get("email") or "").strip()
+    phone    = (data.get("phone") or "").strip()
+
+    if not username or not password or not name:
+        return jsonify({"success": False, "message": "Username, password, and full name are required."}), 400
+
+    if not USERNAME_REGEX.match(username):
+        return jsonify({"success": False, "message": "Username must be 3-30 characters long and contain only letters, numbers, or underscores."}), 400
+
+    if len(password) < 6:
+        return jsonify({"success": False, "message": "Password must be at least 6 characters long."}), 400
+
+    if email and not EMAIL_REGEX.match(email):
+        return jsonify({"success": False, "message": "Please enter a valid email address (e.g. admin@gmail.com)."}), 400
+
+    if phone and not PHONE_REGEX.match(phone):
+        return jsonify({"success": False, "message": "Please enter a valid 10-digit phone number."}), 400
+
+    # Check for existing username
+    existing = users_collection.find_one({"username": username})
+    if existing:
+        return jsonify({"success": False, "message": f"Username '{username}' is already taken. Please choose another."}), 400
+
+    # Check for existing email if provided
+    if email:
+        existing_email = users_collection.find_one({"email": email})
+        if existing_email:
+            return jsonify({"success": False, "message": f"An account with email '{email}' already exists."}), 400
+
+    # Role is strictly enforced to 'customer'
+    new_user = {
+        "username":      username,
+        "password_hash": generate_password_hash(password),
+        "name":          name,
+        "role":          "customer",
+        "email":         email,
+        "phone":         phone,
+        "created_at":    time.time(),
+        "status":        "Active"
+    }
+
+    users_collection.insert_one(new_user)
+
+    # Automatically generate JWT token for instant session login
+    token = generate_token(new_user)
+
+    # Activity log
+    db['feed'].insert_one({
+        "actionType": "CUSTOMER_REGISTER",
+        "username":   username,
+        "role":       "customer",
+        "timestamp":  time.time()
+    })
+
+    return jsonify({
+        "success": True,
+        "message": "Account created successfully!",
+        "token": token,
+        "user": {
+            "username": username,
+            "name":     name,
+            "role":     "customer",
+            "email":    email,
+            "phone":    phone
+        }
+    })
+
 @app.route("/api/auth/register", methods=["POST"])
 @require_auth(roles=["admin"])
 def auth_register():
@@ -694,8 +829,17 @@ def auth_register():
     if not username or not password or not name:
         return jsonify({"success": False, "message": "Username, password, and full name are required."}), 400
 
+    if not USERNAME_REGEX.match(username):
+        return jsonify({"success": False, "message": "Username must be 3-30 characters long and contain only letters, numbers, or underscores."}), 400
+
+    if len(password) < 6:
+        return jsonify({"success": False, "message": "Password must be at least 6 characters long."}), 400
+
     if role not in ["admin", "manager", "cashier", "customer"]:
         return jsonify({"success": False, "message": "Invalid role specified."}), 400
+
+    if email and not EMAIL_REGEX.match(email):
+        return jsonify({"success": False, "message": "Please enter a valid email address."}), 400
 
     existing = users_collection.find_one({"username": username})
     if existing:
@@ -731,6 +875,79 @@ def delete_auth_user(username):
         return jsonify({"success": True, "message": f"User '{username}' deleted successfully."})
     return jsonify({"success": False, "message": "User not found."}), 404
 
+@app.route("/api/auth/users/<username>/password", methods=["PUT"])
+@require_auth(roles=["admin"])
+def admin_reset_user_password(username):
+    """Admin endpoint to set or reset a password for any user/employee."""
+    username = username.strip().lower()
+    data = request.json or {}
+    new_password = data.get("password") or data.get("new_password") or ""
+
+    if not new_password:
+        return jsonify({"success": False, "message": "New password is required."}), 400
+
+    if len(new_password) < 6:
+        return jsonify({"success": False, "message": "Password must be at least 6 characters long."}), 400
+
+    user = users_collection.find_one({"username": username})
+    if not user:
+        return jsonify({"success": False, "message": f"User '{username}' not found."}), 404
+
+    users_collection.update_one(
+        {"username": username},
+        {"$set": {
+            "password_hash": generate_password_hash(new_password),
+            "updated_at": time.time()
+        }}
+    )
+
+    db['feed'].insert_one({
+        "actionType": "ADMIN_PASSWORD_RESET",
+        "target_user": username,
+        "reset_by": request.current_user.get("username", "admin"),
+        "timestamp": time.time()
+    })
+
+    return jsonify({"success": True, "message": f"Password for '{username}' updated successfully."})
+
+@app.route("/api/auth/change-password", methods=["POST"])
+@require_auth()
+def auth_change_own_password():
+    """Endpoint for any logged-in user to change their own password."""
+    data = request.json or {}
+    current_password = data.get("current_password") or ""
+    new_password = data.get("new_password") or ""
+
+    if not current_password or not new_password:
+        return jsonify({"success": False, "message": "Both current password and new password are required."}), 400
+
+    if len(new_password) < 6:
+        return jsonify({"success": False, "message": "New password must be at least 6 characters long."}), 400
+
+    username = request.current_user["username"]
+    user = users_collection.find_one({"username": username})
+    if not user:
+        return jsonify({"success": False, "message": "User account not found."}), 404
+
+    if not check_password_hash(user.get("password_hash", ""), current_password):
+        return jsonify({"success": False, "message": "Current password is incorrect."}), 400
+
+    users_collection.update_one(
+        {"username": username},
+        {"$set": {
+            "password_hash": generate_password_hash(new_password),
+            "updated_at": time.time()
+        }}
+    )
+
+    db['feed'].insert_one({
+        "actionType": "USER_PASSWORD_CHANGE",
+        "username": username,
+        "timestamp": time.time()
+    })
+
+    return jsonify({"success": True, "message": "Your password has been changed successfully."})
+
 @app.route("/api/auth/logout", methods=["POST"])
 def auth_logout():
     return jsonify({"success": True, "message": "Logged out successfully."})
@@ -745,19 +962,36 @@ def get_products():
 @app.route("/api/products/register", methods=["POST"])
 @require_auth(roles=["admin", "manager"])
 def register_product():
-    data = request.json
-    uid = data.get("uid")
-    name = data.get("name")
+    data = request.json or {}
+    uid = (data.get("uid") or "").strip()
+    name = (data.get("name") or "").strip()
     price = data.get("price")
+    stock = data.get("stock", 20)
 
     if not uid or not name or price is None:
-        return jsonify({"success": False, "message": "Missing required fields"}), 400
+        return jsonify({"success": False, "message": "RFID UID, Product Name, and Price are required."}), 400
+
+    if len(name) < 2:
+        return jsonify({"success": False, "message": "Product name must be at least 2 characters long."}), 400
+
     try:
         price_float = float(price)
-    except ValueError:
-        return jsonify({"success": False, "message": "Price must be a number"}), 400
+        if price_float <= 0:
+            return jsonify({"success": False, "message": "Price must be greater than Rs. 0.00."}), 400
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "message": "Price must be a valid positive number."}), 400
+
+    try:
+        stock_int = int(stock)
+        if stock_int < 0:
+            return jsonify({"success": False, "message": "Stock quantity cannot be negative."}), 400
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "message": "Stock must be a valid integer."}), 400
 
     uid_norm = normalize_uid(uid)
+    if len(uid_norm) < 4:
+        return jsonify({"success": False, "message": "Invalid RFID UID format (must have at least 4 hex characters)."}), 400
+
     products_collection.update_one(
         {"uid_norm": uid_norm},
         {"$set": {
@@ -765,7 +999,7 @@ def register_product():
             "name":     name,
             "price":    price_float,
             "uid_norm": uid_norm,
-            "stock":    int(data.get("stock", 20)),
+            "stock":    stock_int,
             "category": data.get("category", "Grocery"),
             "shelf":    data.get("shelf", "Aisle A - Shelf 1"),
             "offer":    data.get("offer", "No Active Offers")
@@ -779,7 +1013,8 @@ def register_product():
         "uid":          uid,
         "timestamp":    time.time()
     })
-    return jsonify({"success": True, "message": f"Registered {name}"})
+    print(f"[PRODUCT] Registered: {name} (Rs.{price_float}) -> {uid_norm} (Stock: {stock_int})")
+    return jsonify({"success": True, "message": f"Product '{name}' saved successfully."})
 
 @app.route("/api/products/<uid>", methods=["DELETE"])
 @require_auth(roles=["admin", "manager"])
@@ -1163,26 +1398,53 @@ def get_trolley_cart(trolley_id):
         "lastActive":     cart.get("lastActive", "")
     })
 
+@app.route("/api/trolleys", methods=["POST"])
 @app.route("/api/trolley/register", methods=["POST"])
 def register_trolley():
-    """Register or update a trolley in the registry. Auto-called by ESP32 on boot."""
+    """Register or update a trolley in the registry. Can be called from Web UI or ESP32."""
     data = request.json or {}
-    trolley_id = data.get("trolley_id")
-    if not trolley_id:
-        return jsonify({"success": False, "message": "trolley_id is required"}), 400
+    trolley_id = (data.get("trolley_id") or data.get("id") or "").strip().upper()
+    name = (data.get("name") or trolley_id).strip()
+    fw_ver = data.get("firmware_version", "2.0")
+    ip_addr = data.get("ip_address", "")
+    section = data.get("section", "General")
 
+    if not trolley_id:
+        return jsonify({"success": False, "message": "Trolley ID is required (e.g. TROLLEY-004)"}), 400
+
+    now_ts = time.time()
     trolleys_collection.update_one(
         {"_id": trolley_id},
         {"$set": {
-            "name":             data.get("name", trolley_id),
-            "firmware_version": data.get("firmware_version", "2.0"),
-            "ip_address":       data.get("ip_address", ""),
+            "_id":              trolley_id,
+            "name":             name,
+            "firmware_version": fw_ver,
+            "ip_address":       ip_addr,
+            "section":          section,
+            "status":           data.get("status", "offline"),
+            "battery":          data.get("battery", 100),
+            "wifi_rssi":        data.get("wifi_rssi", -50),
+            "cart_value":       0.0,
+            "item_count":       0,
+            "current_mode":     "ADD",
+            "last_seen":        now_ts if data.get("status") == "online" else 0
         }},
         upsert=True
     )
     init_cart(trolley_id)
-    print(f"[TROLLEY] Registered: {trolley_id}")
-    return jsonify({"success": True, "message": f"Trolley {trolley_id} registered"})
+    print(f"[TROLLEY] Registered: {trolley_id} ({name})")
+    return jsonify({"success": True, "message": f"Trolley {trolley_id} ({name}) registered successfully!"})
+
+@app.route("/api/trolleys/<trolley_id>", methods=["DELETE"])
+@require_auth(roles=["admin", "manager"])
+def delete_trolley(trolley_id):
+    """Decommission / remove a trolley from the fleet."""
+    trolley_id = trolley_id.strip().upper()
+    res = trolleys_collection.delete_one({"_id": trolley_id})
+    carts_collection.delete_one({"_id": _trolley_cart_id(trolley_id)})
+    if res.deleted_count > 0:
+        return jsonify({"success": True, "message": f"Trolley {trolley_id} removed from fleet."})
+    return jsonify({"success": False, "message": f"Trolley {trolley_id} not found."}), 404
 
 @app.route("/api/trolley/heartbeat", methods=["POST"])
 def trolley_heartbeat():
@@ -1430,27 +1692,133 @@ def get_employees():
 @require_auth(roles=["admin", "manager"])
 def save_employee():
     employees_collection = db["employees"]
-    data = request.json
-    emp_id = data.get("id")
-    if not emp_id:
-        return jsonify({"success": False, "message": "Employee ID required"}), 400
+    data = request.json or {}
+    emp_id = (data.get("id") or "").strip().upper()
+    name = (data.get("name") or "").strip()
+    role = (data.get("role") or "Cashier").strip()
+    shift = data.get("shift", "Morning (08:00 AM - 04:00 PM)")
+    status = data.get("status", "Active")
+    password = data.get("password") or ""
+    username = (data.get("username") or emp_id.lower()).strip().lower()
+
+    if not emp_id or not name:
+        return jsonify({"success": False, "message": "Employee ID and Full Name are required."}), 400
+
+    if len(name) < 2:
+        return jsonify({"success": False, "message": "Employee name must be at least 2 characters long."}), 400
+
+    if role.lower() not in ["admin", "manager", "cashier"]:
+        return jsonify({"success": False, "message": "Role must be Admin, Manager, or Cashier."}), 400
+
+    if password and len(password) < 6:
+        return jsonify({"success": False, "message": "Password must be at least 6 characters long."}), 400
+
     employees_collection.update_one(
         {"id": emp_id},
         {"$set": {
-            "id":     emp_id,
-            "name":   data.get("name", "Unknown Name"),
-            "role":   data.get("role", "Staff"),
-            "shift":  data.get("shift", "Morning"),
-            "status": data.get("status", "Active")
+            "id":       emp_id,
+            "username": username,
+            "name":     name,
+            "role":     role,
+            "shift":    shift,
+            "status":   status
         }},
         upsert=True
     )
-    return jsonify({"success": True, "message": "Employee saved successfully"})
+
+    # If a password is provided (or when creating a new employee), sync with users_collection
+    if password:
+        user_role = role.lower()
+        users_collection.update_one(
+            {"username": username},
+            {"$set": {
+                "username":      username,
+                "password_hash": generate_password_hash(password),
+                "name":          name,
+                "role":          user_role,
+                "status":        status,
+                "updated_at":    time.time()
+            }},
+            upsert=True
+        )
+
+    return jsonify({"success": True, "message": f"Employee {name} ({emp_id}) saved successfully."})
+
+@app.route("/api/employees/<emp_id>/password", methods=["PUT"])
+@require_auth(roles=["admin"])
+def reset_employee_password(emp_id):
+    """Admin endpoint to reset an employee's password by their employee ID."""
+    data = request.json or {}
+    new_password = data.get("password") or data.get("new_password") or ""
+
+    if not new_password:
+        return jsonify({"success": False, "message": "New password is required."}), 400
+
+    if len(new_password) < 6:
+        return jsonify({"success": False, "message": "Password must be at least 6 characters long."}), 400
+
+    employees_collection = db["employees"]
+    emp = employees_collection.find_one({"id": emp_id})
+    target_username = emp.get("username", emp_id.lower()) if emp else emp_id.lower()
+    name = emp.get("name", target_username) if emp else target_username
+    role = (emp.get("role", "cashier") if emp else "cashier").lower()
+    if role not in ["admin", "manager", "cashier"]:
+        role = "cashier"
+
+    new_hash = generate_password_hash(new_password)
+
+    # Collect all possible identifier aliases for this employee
+    aliases = [emp_id.lower(), target_username.lower()]
+    if emp and emp.get("name"):
+        aliases.append(emp["name"].lower().replace(" ", ""))
+
+    # Update ALL matched user accounts in users_collection so old password is completely invalidated
+    update_filter = {
+        "$or": [
+            {"username": {"$in": aliases}},
+            {"id": emp_id},
+            {"name": name}
+        ]
+    }
+
+    result = users_collection.update_many(
+        update_filter,
+        {"$set": {
+            "password_hash": new_hash,
+            "role": role,
+            "status": "Active",
+            "updated_at": time.time()
+        }}
+    )
+
+    # If no existing document matched, insert a canonical user document
+    if result.matched_count == 0:
+        users_collection.insert_one({
+            "username": target_username,
+            "password_hash": new_hash,
+            "name": name,
+            "role": role,
+            "status": "Active",
+            "created_at": time.time()
+        })
+
+    db['feed'].insert_one({
+        "actionType": "EMPLOYEE_PASSWORD_RESET",
+        "employee_id": emp_id,
+        "username": target_username,
+        "reset_by": request.current_user.get("username", "admin"),
+        "timestamp": time.time()
+    })
+
+    return jsonify({"success": True, "message": f"Password for {name} ({target_username}) updated successfully."})
 
 @app.route("/api/employees/<emp_id>", methods=["DELETE"])
 @require_auth(roles=["admin", "manager"])
 def delete_employee(emp_id):
     employees_collection = db["employees"]
+    emp = employees_collection.find_one({"id": emp_id})
+    if emp and "username" in emp:
+        users_collection.delete_one({"username": emp["username"]})
     result = employees_collection.delete_one({"id": emp_id})
     if result.deleted_count > 0:
         return jsonify({"success": True, "message": "Employee deleted"})
@@ -1469,14 +1837,24 @@ def manage_feedback():
             "totalResponses": len(feedbacks)
         })
     elif request.method == "POST":
-        data = request.json
-        rating   = data.get("rating", 5)
-        comments = data.get("comments", "")
+        data = request.json or {}
+        try:
+            rating = int(data.get("rating", 5))
+            if rating < 1 or rating > 5:
+                return jsonify({"success": False, "message": "Rating must be between 1 and 5 stars."}), 400
+        except (ValueError, TypeError):
+            return jsonify({"success": False, "message": "Rating must be a valid number between 1 and 5."}), 400
+
+        comments = (data.get("comments") or "").strip()
+        if not comments:
+            comments = "Great shopping experience!"
+
         feedback_collection.insert_one({
-            "rating":   int(rating),
+            "rating":   rating,
             "comments": comments,
             "date":     datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         })
+        return jsonify({"success": True, "message": "Feedback submitted successfully"})
         return jsonify({"success": True, "message": "Feedback submitted successfully"})
 
 # ── Customer Portal API ───────────────────────────────────────────────────────
