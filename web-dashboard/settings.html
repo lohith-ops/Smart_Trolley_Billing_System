@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Trolley - System Settings</title>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="styles.css">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Auth Guard -->
+    <script src="auth.js"></script>
+</head>
+<body class="dark-theme">
+    <div class="app-container">
+        <!-- Sidebar Navigation (populated dynamically by shared.js) -->
+        <aside class="sidebar glass-panel"></aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="top-header glass-panel">
+                <div style="font-weight: 600; font-size: 1.1rem; color: var(--text-primary);">
+                    System Configuration
+                </div>
+                <div class="header-actions">
+                    <button class="icon-btn"><i class="fa-regular fa-bell"></i></button>
+                    <div class="user-profile">
+                        <img src="https://ui-avatars.com/api/?name=Admin&background=10b981&color=fff" alt="Admin">
+                        <span>Admin</span>
+                    </div>
+                </div>
+            </header>
+
+            <div class="settings-grid">
+                <!-- Payment & UPI Configuration -->
+                <div class="glass-panel settings-card">
+                    <h3><i class="fa-solid fa-qrcode" style="color: var(--accent-cyan);"></i> Payment & UPI Configuration</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.4;">
+                        Configure your merchant UPI VPA, Store Name, or upload a custom Standee QR code for checkout payments.
+                    </p>
+
+                    <form id="settings-payment-form">
+                        <div class="form-group" style="margin-bottom: 14px;">
+                            <label style="font-weight: 500; font-size: 0.85rem; display: block; margin-bottom: 6px;">Supermarket / Store Name</label>
+                            <input type="text" id="store-name-input" placeholder="e.g. Smart Supermarket" required class="form-input" style="width: 100%;">
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 14px;">
+                            <label style="font-weight: 500; font-size: 0.85rem; display: block; margin-bottom: 6px;">Merchant UPI ID (VPA)</label>
+                            <input type="text" id="upi-id-input" placeholder="e.g. yourname@okaxis or 9876543210@paytm" required class="form-input" style="width: 100%;">
+                            <span style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px; display: block;">
+                                Dynamic QR automatically embeds the exact real-time bill amount for GPay, PhonePe, Paytm, BHIM.
+                            </span>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 14px;">
+                            <label style="font-weight: 500; font-size: 0.85rem; display: block; margin-bottom: 8px;">QR Code Display Mode</label>
+                            <div style="display: flex; gap: 14px; flex-wrap: wrap;">
+                                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer; color: var(--text-primary);">
+                                    <input type="radio" name="qr-mode" id="qr-mode-dynamic" value="dynamic" checked>
+                                    Dynamic Amount QR (Recommended)
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer; color: var(--text-primary);">
+                                    <input type="radio" name="qr-mode" id="qr-mode-custom" value="custom">
+                                    Uploaded Standee QR Image
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Custom QR Upload Box -->
+                        <div id="custom-qr-box" class="form-group" style="margin-bottom: 16px; padding: 14px; background: rgba(0,0,0,0.25); border: 1px dashed rgba(255,255,255,0.15); border-radius: 8px;">
+                            <label style="font-weight: 500; font-size: 0.85rem; display: block; margin-bottom: 8px;">Upload Merchant QR Image</label>
+                            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                                <input type="file" id="qr-file-input" accept="image/*" style="display: none;">
+                                <button type="button" id="choose-qr-btn" class="btn btn-outline" style="padding: 6px 14px; font-size: 0.85rem;">
+                                    <i class="fa-solid fa-cloud-arrow-up"></i> Choose QR Image File
+                                </button>
+                                <button type="button" id="remove-qr-btn" class="btn btn-outline" style="padding: 6px 14px; font-size: 0.85rem; color: var(--accent-red); border-color: rgba(239,68,68,0.4); display: none;">
+                                    <i class="fa-solid fa-trash"></i> Remove Image
+                                </button>
+                            </div>
+                            <!-- Live Preview -->
+                            <div id="qr-preview-container" style="margin-top: 12px; display: none; align-items: center; gap: 12px;">
+                                <img id="qr-preview-img" src="" alt="QR Preview" style="width: 100px; height: 100px; object-fit: contain; background: #fff; padding: 4px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">
+                                <div style="font-size: 0.8rem; color: var(--text-secondary);">
+                                    <span id="qr-preview-filename" style="color: var(--text-primary); font-weight: 600; display: block;">custom_qr.png</span>
+                                    <span>Ready to display on checkout modal.</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button type="submit" id="save-payment-btn" class="btn btn-checkout" style="width: 100%; background: var(--grad-primary);">
+                            <i class="fa-solid fa-save"></i> Save Payment Configuration
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Hardware Integration -->
+                <div class="glass-panel settings-card">
+                    <h3><i class="fa-solid fa-microchip"></i> Hardware Settings</h3>
+                    
+                    <div class="hardware-status-panel">
+                        <span>Connection Status</span>
+                        <div id="hw-status" class="status-text offline">
+                            <span class="pulse-dot" style="animation:none; background:#ef4444;"></span>
+                            <span>Offline</span>
+                        </div>
+                    </div>
+
+                    <form id="settings-hw-form" style="margin-top: 16px;">
+                        <div class="form-group">
+                            <label>Detected Serial Ports</label>
+                            <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                                <select id="available-ports-select" class="form-input" style="flex: 1;">
+                                    <option value="">-- Scanning connected COM ports... --</option>
+                                </select>
+                                <button type="button" id="refresh-ports-btn" class="btn btn-outline" style="padding: 0 14px;" title="Refresh COM Ports">
+                                    <i class="fa-solid fa-rotate"></i>
+                                </button>
+                            </div>
+                            <label>Active Serial Port (COM)</label>
+                            <input type="text" id="serial-port-input" placeholder="e.g. COM3" required class="form-input">
+                            <span style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 6px; display: block;">
+                                Select a detected port above or type manually. System auto-reconnects on change.
+                            </span>
+                        </div>
+                        <button type="submit" class="btn btn-outline" style="width: 100%; margin-top: 8px;">
+                            <i class="fa-solid fa-save"></i> Save Port Configuration
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Database Maintenance -->
+                <div class="glass-panel settings-card">
+                    <h3><i class="fa-solid fa-database"></i> Database Maintenance</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.4;">
+                        Perform catalog maintenance or wipe transaction history data.
+                    </p>
+                    
+                    <div class="form-group" style="display: flex; flex-direction: column; gap: 14px;">
+                        <button id="seed-db-btn" class="btn btn-outline" style="text-align: left; display: flex; align-items: center; gap: 12px;">
+                            <i class="fa-solid fa-folder-open" style="color: var(--accent-cyan);"></i>
+                            <div>
+                                <strong style="display: block; font-size: 0.9rem;">Reset & Re-Seed Catalog</strong>
+                                <span style="font-size: 0.75rem; color: var(--text-secondary); font-weight: normal;">Restore default products list (Rice, Sugar, Milk, Cheddar).</span>
+                            </div>
+                        </button>
+
+                        <button id="clear-tx-btn" class="btn btn-danger" style="text-align: left; display: flex; align-items: center; gap: 12px; background: rgba(244,63,94,0.05);">
+                            <i class="fa-solid fa-trash-can" style="color: var(--accent-red);"></i>
+                            <div>
+                                <strong style="display: block; font-size: 0.9rem;">Wipe Transaction History</strong>
+                                <span style="font-size: 0.75rem; color: var(--text-secondary); font-weight: normal;">Deletes transaction receipts and dashboard feed lists.</span>
+                            </div>
+                        </button>
+
+                        <button id="backup-db-btn" class="btn btn-outline" style="text-align: left; display: flex; align-items: center; gap: 12px;">
+                            <i class="fa-solid fa-cloud-arrow-up" style="color: var(--accent-green);"></i>
+                            <div>
+                                <strong style="display: block; font-size: 0.9rem;">Backup Database</strong>
+                                <span style="font-size: 0.75rem; color: var(--text-secondary); font-weight: normal;">Export all products & transactions to backup.json.</span>
+                            </div>
+                        </button>
+
+                        <button id="restore-db-btn" class="btn btn-outline" style="text-align: left; display: flex; align-items: center; gap: 12px;">
+                            <i class="fa-solid fa-cloud-arrow-down" style="color: var(--accent-purple);"></i>
+                            <div>
+                                <strong style="display: block; font-size: 0.9rem;">Restore from Backup</strong>
+                                <span style="font-size: 0.75rem; color: var(--text-secondary); font-weight: normal;">Import products & transactions from backup.json.</span>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Application Logic -->
+    <script src="shared.js"></script>
+    <script src="settings.js"></script>
+</body>
+</html>

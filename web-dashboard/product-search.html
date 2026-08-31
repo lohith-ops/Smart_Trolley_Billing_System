@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Trolley - Product Search</title>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="styles.css">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Auth Guard -->
+    <script src="auth.js"></script>
+</head>
+<body class="dark-theme">
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar glass-panel"></aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="top-header glass-panel">
+                <div class="header-search" style="width: 320px;">
+                    <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                    <input type="text" id="prod-search-input" placeholder="Search products by name or category...">
+                </div>
+                <div class="header-actions">
+                    <button class="icon-btn"><i class="fa-regular fa-bell"></i></button>
+                    <div class="user-profile">
+                        <img src="https://ui-avatars.com/api/?name=Guest&background=a78bfa&color=fff" alt="User">
+                        <span>Guest Shopper</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Filters Toolbar -->
+            <div class="glass-panel" style="padding: 16px 24px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px;">
+                <div style="display: flex; gap: 10px;" id="prod-filter-container">
+                    <button class="btn btn-outline active-filter" data-filter="all" style="padding: 6px 12px; font-size: 0.85rem;">All Categories</button>
+                    <button class="btn btn-outline" data-filter="Dairy" style="padding: 6px 12px; font-size: 0.85rem;">Dairy</button>
+                    <button class="btn btn-outline" data-filter="Grains" style="padding: 6px 12px; font-size: 0.85rem;">Grains</button>
+                    <button class="btn btn-outline" data-filter="Bakery" style="padding: 6px 12px; font-size: 0.85rem;">Bakery</button>
+                    <button class="btn btn-outline" data-filter="Produce" style="padding: 6px 12px; font-size: 0.85rem;">Produce</button>
+                </div>
+            </div>
+
+            <!-- Products Results Grid -->
+            <div class="trolleys-grid" id="search-results-grid">
+                <!-- Product Cards dynamically loaded here -->
+            </div>
+        </main>
+    </div>
+
+    <!-- Application Logic -->
+    <script src="shared.js"></script>
+    <script src="product-search.js"></script>
+</body>
+</html>

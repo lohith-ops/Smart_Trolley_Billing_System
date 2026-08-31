@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Trolley - Digital Invoice Receipt</title>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="styles.css">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Auth Guard -->
+    <script src="auth.js"></script>
+</head>
+<body class="dark-theme" style="padding: 40px 0;">
+    <div style="max-width: 600px; margin: 0 auto; padding: 0 16px;">
+        <!-- Receipt Sheet Container -->
+        <div class="receipt-paper" id="receipt-print-area">
+            <div class="receipt-header">
+                <div class="receipt-logo">SUPERMARKET POS</div>
+                <div style="font-size: 0.8rem; margin-top: 4px; color:#555;">SMART SHOPPING EXPERIENCE</div>
+                <div style="font-size: 0.8rem; color:#555;">OUTER RING ROAD, BANGALORE</div>
+            </div>
+
+            <!-- Meta details -->
+            <div class="receipt-line">
+                <strong>INVOICE NO:</strong>
+                <span id="invoice-no">TXN-8719280</span>
+            </div>
+            <div class="receipt-line">
+                <strong>DATE / TIME:</strong>
+                <span id="invoice-date">07/07/2026 19:15:30</span>
+            </div>
+            <div class="receipt-line">
+                <strong>CUSTOMER ID:</strong>
+                <span id="invoice-customer">MEM-872910 (Gold)</span>
+            </div>
+            <div class="receipt-line">
+                <strong>TROLLEY ID:</strong>
+                <span id="invoice-trolley">Trolley-01</span>
+            </div>
+
+            <div class="receipt-divider"></div>
+
+            <!-- Items Table -->
+            <table class="receipt-items-table">
+                <thead>
+                    <tr>
+                        <th style="width: 50%;">ITEM</th>
+                        <th style="text-align: right;">PRICE</th>
+                        <th style="text-align: center;">QTY</th>
+                        <th style="text-align: right;">SUBTOTAL</th>
+                    </tr>
+                </thead>
+                <tbody id="invoice-items-body">
+                    <!-- Dynamic invoice rows -->
+                </tbody>
+            </table>
+
+            <div class="receipt-divider"></div>
+
+            <!-- Summary Totals -->
+            <div class="receipt-line" style="font-size: 0.85rem;">
+                <span>Total Items Count:</span>
+                <span id="invoice-qty-total">0 units</span>
+            </div>
+            <div class="receipt-line" style="font-size: 0.85rem;">
+                <span>Subtotal amount:</span>
+                <span id="invoice-subtotal">Rs.0.00</span>
+            </div>
+            <div class="receipt-line" style="font-size: 0.85rem;">
+                <span>CGST (9.0%):</span>
+                <span id="invoice-cgst">Rs.0.00</span>
+            </div>
+            <div class="receipt-line" style="font-size: 0.85rem;">
+                <span>SGST (9.0%):</span>
+                <span id="invoice-sgst">Rs.0.00</span>
+            </div>
+            
+            <div class="receipt-divider"></div>
+            
+            <div class="receipt-line" style="font-size: 1.2rem; font-weight: bold;">
+                <span>GRAND TOTAL:</span>
+                <span id="invoice-grand-total">Rs.0.00</span>
+            </div>
+
+            <div class="receipt-divider"></div>
+
+            <!-- Loyalty Rewards details -->
+            <div class="receipt-line" style="font-size: 0.85rem;">
+                <span>Loyalty Points Gained:</span>
+                <span id="invoice-points-earned">+0 Points</span>
+            </div>
+            <div class="receipt-line" style="font-size: 0.85rem;">
+                <span>Payment Mode:</span>
+                <span>DIGITAL CARTS WALLET</span>
+            </div>
+
+            <div class="receipt-divider"></div>
+
+            <!-- Verification QR / Barcode -->
+            <div style="text-align: center; margin-top: 16px;">
+                <img id="invoice-qr" src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=TXN-8719280" alt="Verification QR" style="width: 100px; height: 100px;">
+                <div style="font-size: 0.75rem; color:#555; margin-top: 8px;">SCAN TO VERIFY DIGITAL RECEIPT</div>
+            </div>
+
+            <div class="receipt-barcode">||||| | | |||| || | || |||||</div>
+            <div style="text-align: center; font-size: 0.75rem; color: #555;">* THANK YOU FOR SHOPPING WITH US *</div>
+        </div>
+
+        <!-- Action Control Buttons -->
+        <div style="margin-top: 24px; display: flex; gap: 12px; justify-content: center;">
+            <button class="btn btn-checkout" id="btn-print-receipt">
+                <i class="fa-solid fa-print"></i> Print Invoice
+            </button>
+            <button class="btn btn-outline" id="btn-pdf-receipt">
+                <i class="fa-solid fa-file-pdf"></i> Download PDF
+            </button>
+            <button class="btn btn-outline" onclick="window.close()" id="btn-close-receipt">
+                <i class="fa-solid fa-circle-xmark"></i> Close Window
+            </button>
+        </div>
+
+        <!-- Post-Purchase Feedback Widget -->
+        <div class="glass-panel" id="receipt-feedback-card" style="margin-top: 24px; padding: 20px; border-radius: 12px; text-align: center; max-width: 480px; margin-left: auto; margin-right: auto;">
+            <h4 style="color: var(--text-primary); margin-bottom: 6px;"><i class="fa-solid fa-star" style="color: #f59e0b; margin-right: 6px;"></i> Rate Your Shopping Experience</h4>
+            <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 12px;">How fast and easy was your Smart Trolley billing?</p>
+            
+            <div class="rating-stars" id="receipt-stars" style="font-size: 1.5rem; cursor: pointer; display: flex; justify-content: center; gap: 8px; margin-bottom: 12px;">
+                <i class="fa-solid fa-star" data-rating="1" style="color: #f59e0b;"></i>
+                <i class="fa-solid fa-star" data-rating="2" style="color: #f59e0b;"></i>
+                <i class="fa-solid fa-star" data-rating="3" style="color: #f59e0b;"></i>
+                <i class="fa-solid fa-star" data-rating="4" style="color: #f59e0b;"></i>
+                <i class="fa-solid fa-star" data-rating="5" style="color: #f59e0b;"></i>
+            </div>
+            
+            <div id="receipt-feedback-form-row" style="display: flex; gap: 8px;">
+                <input type="text" id="receipt-feedback-comment" placeholder="Leave a short comment (e.g. Great speed!)..." class="form-input" style="font-size: 0.85rem;">
+                <button type="button" id="btn-submit-receipt-feedback" class="btn btn-primary" style="background: var(--accent-cyan); color: #000; font-weight: 600; font-size: 0.85rem; white-space: nowrap;">
+                    Send Review
+                </button>
+            </div>
+            <div id="receipt-feedback-thankyou" style="display: none; color: #34d399; font-size: 0.9rem; margin-top: 10px; font-weight: 600;">
+                <i class="fa-solid fa-circle-check"></i> Thank you! Your feedback has been recorded.
+            </div>
+        </div>
+    </div>
+
+    <!-- jsPDF CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="receipt.js"></script>
+</body>
+</html>

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Trolley - Store Navigation Map</title>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="styles.css">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Auth Guard -->
+    <script src="auth.js"></script>
+</head>
+<body class="dark-theme">
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar glass-panel"></aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="top-header glass-panel">
+                <div style="font-weight: 600; font-size: 1.1rem; color: var(--text-primary);">
+                    Supermarket Interactive Layout
+                </div>
+                <div class="header-actions">
+                    <button class="icon-btn"><i class="fa-regular fa-bell"></i></button>
+                    <div class="user-profile">
+                        <img src="https://ui-avatars.com/api/?name=Guest&background=a78bfa&color=fff" alt="User">
+                        <span>Guest Shopper</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Supermarket Layout Section -->
+            <div class="glass-panel" style="padding: 24px;">
+                <h3 style="font-weight: 600; font-size: 1.1rem; margin-bottom: 12px;">Store Floor Map</h3>
+                <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 20px;">
+                    Click on an aisle or section to view the items currently stocked there and check their availability.
+                </p>
+                
+                <div class="supermarket-grid">
+                    <div class="store-aisle glass-panel" id="aisle-Dairy" data-category="Dairy">
+                        <i class="fa-solid fa-cow" style="font-size: 1.5rem; color: var(--accent-cyan);"></i>
+                        <span class="aisle-label">Dairy Aisle</span>
+                        <span class="aisle-stock" id="stock-count-Dairy">Calculating...</span>
+                    </div>
+                    <div class="store-aisle glass-panel" id="aisle-Grains" data-category="Grains">
+                        <i class="fa-solid fa-wheat-awn" style="font-size: 1.5rem; color: var(--accent-purple);"></i>
+                        <span class="aisle-label">Grains & Rice</span>
+                        <span class="aisle-stock" id="stock-count-Grains">Calculating...</span>
+                    </div>
+                    <div class="store-aisle glass-panel" id="aisle-Bakery" data-category="Bakery">
+                        <i class="fa-solid fa-bread-slice" style="font-size: 1.5rem; color: #f59e0b;"></i>
+                        <span class="aisle-label">Bakery Section</span>
+                        <span class="aisle-stock" id="stock-count-Bakery">Calculating...</span>
+                    </div>
+                    <div class="store-aisle glass-panel" id="aisle-Produce" data-category="Produce">
+                        <i class="fa-solid fa-apple-whole" style="font-size: 1.5rem; color: var(--accent-green);"></i>
+                        <span class="aisle-label">Produce Aisle</span>
+                        <span class="aisle-stock" id="stock-count-Produce">Calculating...</span>
+                    </div>
+                    
+                    <div class="store-entrance">
+                        <i class="fa-solid fa-door-open"></i> Entrance Area
+                    </div>
+                    <div class="store-checkout-area">
+                        <i class="fa-solid fa-cash-register"></i> Smart Checkouts & POS
+                    </div>
+                </div>
+            </div>
+
+            <!-- Shelf Catalog Sidebar / Bottom details -->
+            <div class="glass-panel" style="padding: 24px; display: none;" id="aisle-products-card">
+                <h3 style="font-weight: 600; font-size: 1.1rem; margin-bottom: 16px;" id="aisle-products-title">Items in Aisle</h3>
+                <div class="table-responsive">
+                    <table class="transactions-table">
+                        <thead>
+                            <tr>
+                                <th>Product Name</th>
+                                <th>Shelf Row</th>
+                                <th>Stock Availability</th>
+                                <th>Unit Price</th>
+                            </tr>
+                        </thead>
+                        <tbody id="aisle-products-body">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Application Logic -->
+    <script src="shared.js"></script>
+    <script src="navigation.js"></script>
+</body>
+</html>
