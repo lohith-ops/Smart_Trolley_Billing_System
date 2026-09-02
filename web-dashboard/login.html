@@ -11,9 +11,9 @@
     <!-- FontAwesome 6 Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Main Styles -->
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=3.0.0">
     <!-- Auth Scripts -->
-    <script src="auth.js"></script>
+    <script src="auth.js?v=3.0.0"></script>
 </head>
 <body class="dark-theme login-body">
     <div class="login-bg-glow">
@@ -37,7 +37,7 @@
                 <span id="login-error-msg">Invalid username or password</span>
             </div>
 
-            <form id="login-form" class="login-form">
+            <form id="login-form" class="login-form" action="javascript:void(0)" method="POST">
                 <div class="form-group">
                     <label for="login-username"><i class="fa-solid fa-user"></i> Username</label>
                     <div class="input-with-icon">
@@ -47,7 +47,10 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="login-password"><i class="fa-solid fa-lock"></i> Password</label>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label for="login-password" style="margin-bottom: 0;"><i class="fa-solid fa-lock"></i> Password</label>
+                        <button type="button" id="forgot-password-trigger" class="forgot-pass-link">Forgot Password?</button>
+                    </div>
                     <div class="input-with-icon">
                         <input type="password" id="login-password" name="password" placeholder="••••••••" required autocomplete="current-password">
                         <button type="button" id="toggle-password" class="password-toggle-btn" aria-label="Toggle password visibility">
@@ -115,6 +118,121 @@
         </div>
     </div>
 
-    <script src="login.js"></script>
+    <!-- ── Forgot Password Modal ────────────────────────────────────────── -->
+    <div id="forgot-modal" class="modal-overlay hidden" aria-hidden="true" role="dialog">
+        <div class="modal-backdrop" id="modal-backdrop"></div>
+        <div class="modal-card glass-panel gradient-border">
+            <div class="modal-header">
+                <div class="modal-title-group">
+                    <div class="modal-icon">
+                        <i class="fa-solid fa-key"></i>
+                    </div>
+                    <div>
+                        <h2 class="modal-title">Reset Password</h2>
+                        <p class="modal-subtitle">Recover your account credentials</p>
+                    </div>
+                </div>
+                <button type="button" class="modal-close-btn" id="forgot-modal-close" aria-label="Close modal">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Feedback Alert -->
+            <div id="forgot-alert" class="login-alert hidden" style="margin: 0 0 16px 0;">
+                <i class="fa-solid fa-circle-info" id="forgot-alert-icon"></i>
+                <span id="forgot-alert-msg">Notification message</span>
+            </div>
+
+            <!-- Step 1: Identifier Input -->
+            <form id="forgot-step1-form" class="login-form">
+                <p style="font-size: 0.88rem; color: var(--text-secondary); line-height: 1.5; margin: 0;">
+                    Enter your <strong>Username</strong>, <strong>Registered Email</strong>, or <strong>Phone Number</strong> to receive a 6-digit verification code (OTP).
+                </p>
+
+                <div class="form-group" style="margin-top: 10px;">
+                    <label for="forgot-identifier"><i class="fa-solid fa-user-tag"></i> Account Identifier</label>
+                    <div class="input-with-icon">
+                        <input type="text" id="forgot-identifier" placeholder="e.g. customer, user@gmail.com, or +91..." required autocomplete="username">
+                        <i class="fa-solid fa-id-card input-icon"></i>
+                    </div>
+                </div>
+
+                <div class="form-actions" style="margin-top: 8px;">
+                    <button type="submit" id="forgot-send-btn" class="btn btn-primary login-btn">
+                        <span>Send Verification Code (OTP)</span>
+                        <i class="fa-solid fa-paper-plane"></i>
+                    </button>
+                </div>
+            </form>
+
+            <!-- Step 2: OTP & New Password -->
+            <form id="forgot-step2-form" class="login-form hidden">
+                <div class="step-info-badge">
+                    <i class="fa-solid fa-envelope-circle-check" style="color: var(--accent-cyan);"></i>
+                    <span id="step2-target-info">Verification code sent to your registered contact</span>
+                </div>
+
+                <div id="demo-otp-banner" class="demo-otp-chip" style="display: none; margin: 10px 0;">
+                    <span class="demo-otp-label"><i class="fa-solid fa-key"></i> Code:</span>
+                    <span class="demo-otp-code" id="demo-otp-val">123456</span>
+                    <button type="button" class="demo-otp-btn" id="demo-otp-fill-btn">Autofill</button>
+                </div>
+
+                <div class="form-group">
+                    <label for="forgot-otp"><i class="fa-solid fa-shield-halved"></i> 6-Digit Verification Code</label>
+                    <div class="input-with-icon">
+                        <input type="text" id="forgot-otp" maxlength="6" pattern="[0-9]{6}" placeholder="6-digit code (e.g. 123456)" required autocomplete="one-time-code" style="letter-spacing: 4px; font-weight: 700; font-size: 1.1rem; text-align: center;">
+                        <i class="fa-solid fa-hashtag input-icon"></i>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="forgot-new-pass"><i class="fa-solid fa-lock"></i> New Password</label>
+                    <div class="input-with-icon">
+                        <input type="password" id="forgot-new-pass" placeholder="Min. 6 characters" required autocomplete="new-password">
+                        <button type="button" id="toggle-forgot-pass" class="password-toggle-btn" aria-label="Toggle password visibility">
+                            <i class="fa-solid fa-eye" id="toggle-forgot-pass-icon"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="forgot-confirm-pass"><i class="fa-solid fa-lock-open"></i> Confirm New Password</label>
+                    <div class="input-with-icon">
+                        <input type="password" id="forgot-confirm-pass" placeholder="Re-enter new password" required autocomplete="new-password">
+                    </div>
+                </div>
+
+                <div class="form-actions" style="margin-top: 8px;">
+                    <button type="submit" id="forgot-verify-btn" class="btn btn-primary login-btn">
+                        <span>Confirm & Reset Password</span>
+                        <i class="fa-solid fa-check"></i>
+                    </button>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 0.85rem;">
+                    <button type="button" id="forgot-back-step1" class="text-link-btn"><i class="fa-solid fa-arrow-left"></i> Change User</button>
+                    <button type="button" id="forgot-resend-btn" class="text-link-btn"><i class="fa-solid fa-rotate-right"></i> Resend Code</button>
+                </div>
+            </form>
+
+            <!-- Step 3: Success State -->
+            <div id="forgot-success-state" class="reset-success-box hidden">
+                <div class="success-icon-circle">
+                    <i class="fa-solid fa-circle-check"></i>
+                </div>
+                <h3 style="color: #fff; margin: 12px 0 6px 0; font-size: 1.2rem;">Password Updated!</h3>
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 20px;">
+                    Your account password has been reset successfully. You can now log in with your new password.
+                </p>
+                <button type="button" id="forgot-done-btn" class="btn btn-primary login-btn" style="width: 100%;">
+                    <span>Go to Sign In</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="login.js?v=3.0.0"></script>
 </body>
 </html>

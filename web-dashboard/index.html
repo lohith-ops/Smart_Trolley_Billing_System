@@ -10,11 +10,11 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Stylesheet -->
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=3.0.0">
     <!-- Font Awesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Auth Guard -->
-    <script src="auth.js"></script>
+    <script src="auth.js?v=3.0.0"></script>
 </head>
 <body class="dark-theme">
     <div class="app-container">
@@ -101,7 +101,10 @@
                         </div>
                     </div>
                     
-                    <div style="display: flex; gap: 12px; align-items: center;">
+                    <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                        <button class="btn btn-outline" id="open-reg-modal-btn" style="padding: 8px 18px; font-size: 0.85rem; font-weight: 600; border-color: rgba(59, 130, 246, 0.4); color: #60a5fa; background: rgba(59, 130, 246, 0.1);">
+                            <i class="fa-solid fa-plus-circle" style="margin-right: 6px;"></i> Register Product
+                        </button>
                         <button class="btn btn-danger" id="main-reset-btn" style="padding: 8px 18px; font-size: 0.85rem; font-weight: 600; background: linear-gradient(135deg, #ef4444, #dc2626);">
                             <i class="fa-solid fa-rotate-left" style="margin-right: 6px;"></i> Clear / Reset Cart
                         </button>
@@ -147,7 +150,7 @@
             <button class="modal-close-x" id="modal-close-x-btn" style="position: absolute; top: 15px; right: 20px; background: none; border: none; color: var(--text-secondary); font-size: 1.25rem; cursor: pointer;"><i class="fa-solid fa-xmark"></i></button>
 
             <!-- STAGE 1: BILL BREAKDOWN -->
-            <div id="payment-stage-1" class="payment-stage active">
+            <div id="payment-stage-1" class="payment-stage" style="display: none;">
                 <div class="modal-icon" style="color: var(--accent-blue); margin-bottom: 10px;">
                     <i class="fa-solid fa-file-invoice-dollar"></i>
                 </div>
@@ -205,9 +208,8 @@
                     
                     <!-- UPI Panel -->
                     <div id="pay-panel-upi" class="pay-panel active" style="text-align: center; width: 100%;">
-                        <div class="qr-container" style="position: relative; display: inline-block; background: white; padding: 12px; border-radius: 12px; margin-bottom: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.15);">
-                            <img id="payment-upi-qr" src="" alt="UPI Payment QR Code" style="width: 150px; height: 150px; display: block; object-fit: contain;">
-                            <div class="scanner-line"></div>
+                        <div class="qr-container" style="position: relative; display: inline-block; background: #ffffff; padding: 14px; border-radius: 12px; margin-bottom: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.25);">
+                            <img id="payment-upi-qr" src="" alt="UPI Payment QR Code" style="width: 210px; height: 210px; display: block; object-fit: contain; image-rendering: pixelated;">
                         </div>
                         <div id="payment-upi-vpa-label" style="font-size: 0.82rem; color: var(--accent-cyan); font-weight: 600; margin-bottom: 6px;">smartsupermarket@okaxis</div>
                         <p id="payment-upi-sub-label" style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 12px;">Scan using any UPI App (GPay, PhonePe, Paytm, BHIM)</p>
@@ -263,21 +265,25 @@
                     </a>
                 </div>
             </div>
+        </div>
     </div>
 
     <!-- Registration Modal -->
     <div class="modal-overlay" id="register-modal">
-        <div class="modal-box glass-panel">
+        <div class="modal-box glass-panel" style="position: relative;">
+            <button type="button" class="modal-close" id="reg-close-x-btn" title="Close" style="position: absolute; top: 16px; right: 16px; background: none; border: none; color: var(--text-secondary); font-size: 1.25rem; cursor: pointer;">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
             <div class="modal-icon" style="color: #3b82f6;">
                 <i class="fa-solid fa-plus-circle"></i>
             </div>
-            <h2>Register New Product</h2>
-            <p class="modal-sub">Unknown RFID Card Scanned</p>
+            <h2>Register Product</h2>
+            <p class="modal-sub" id="reg-modal-sub">Assign RFID Card to Catalog</p>
             
             <form id="register-form" class="register-form">
                 <div class="form-group">
                     <label>Card UID</label>
-                    <input type="text" id="reg-uid" readonly class="form-input readonly-input">
+                    <input type="text" id="reg-uid" required placeholder="e.g. 5C 1E 7E 05" class="form-input">
                 </div>
                 <div class="form-group">
                     <label>Product Name</label>
@@ -360,7 +366,7 @@
     </aside>
 
     <!-- Application Logic -->
-    <script src="shared.js?v=1.0.2"></script>
-    <script src="dashboard.js?v=1.0.2"></script>
+    <script src="shared.js?v=3.1.0"></script>
+    <script src="dashboard.js?v=3.1.0"></script>
 </body>
 </html>

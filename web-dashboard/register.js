@@ -2,7 +2,7 @@
  * Customer Self-Registration Handling Script
  */
 
-document.addEventListener('DOMContentLoaded', () => {
+function initRegisterPage() {
     const form = document.getElementById('register-form');
     const nameInput = document.getElementById('reg-name');
     const usernameInput = document.getElementById('reg-username');
@@ -48,6 +48,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const password = passwordInput.value;
             const confirmPassword = confirmPassInput.value;
 
+            const phoneInput = document.getElementById('reg-phone');
+            const phone = phoneInput ? phoneInput.value.trim() : '';
+
             // Client-side validations
             if (!name || !username || !password) {
                 showError("Please fill in all required fields.");
@@ -64,6 +67,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (email && !emailPattern.test(email)) {
                 showError("Please enter a valid email address (e.g. admin@gmail.com).");
                 emailInput.focus();
+                return;
+            }
+
+            if (phone && !/^(\+91[\-\s]?)?[0-9]{10}$/.test(phone)) {
+                showError("Please enter a valid 10-digit mobile number.");
+                if (phoneInput) phoneInput.focus();
                 return;
             }
 
@@ -92,6 +101,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         name: name,
                         username: username,
                         email: email,
+                        phone: phone,
                         password: password
                     })
                 });
@@ -156,4 +166,12 @@ document.addEventListener('DOMContentLoaded', () => {
             submitBtn.style.boxShadow = '';
         }
     }
-});
+}
+
+// Initialize immediately if document is ready or wait for DOMContentLoaded
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initRegisterPage);
+} else {
+    initRegisterPage();
+}
+

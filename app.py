@@ -6,15 +6,28 @@ import os
 import json
 import re
 from functools import wraps
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, redirect, send_file
 from flask_cors import CORS
 from pymongo import MongoClient
 from werkzeug.security import generate_password_hash, check_password_hash
 import jwt
+import random
+import smtplib
+import ssl
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import urllib.request
+import urllib.parse
+import base64
+import io
 
 app = Flask(__name__, static_folder="web-dashboard", static_url_path="")
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # Disable caching for static files
 CORS(app)
+
+@app.route("/")
+def root():
+    return redirect("/login.html")
 
 # ── Authentication & Security Configuration ───────────────────────────────────
 JWT_SECRET           = os.environ.get("JWT_SECRET", "smart_trolley_secret_key_2026_jwt_token_secure")
@@ -24,7 +37,9 @@ TROLLEY_DEVICE_TOKEN = os.environ.get("TROLLEY_DEVICE_TOKEN", "smart_trolley_hw_
 
 @app.after_request
 def add_header(response):
-    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
     return response
 
 # ── Configuration File Persistence ───────────────────────────────────────────
@@ -36,7 +51,15 @@ def load_config():
         "upiId": "smartsupermarket@okaxis",
         "storeName": "Smart Supermarket",
         "useCustomQr": False,
-        "customQrImage": ""
+        "customQrImage": "",
+        "smtpServer": "smtp.gmail.com",
+        "smtpPort": 587,
+        "smtpUser": "",
+        "smtpPassword": "",
+        "fast2smsApiKey": "",
+        "twilioSid": "",
+        "twilioAuthToken": "",
+        "twilioFromPhone": ""
     }
     if os.path.exists(CONFIG_FILE):
         try:
@@ -80,28 +103,45 @@ class MockCursor:
 class MockCollection:
     def __init__(self, data=None):
         self.data = data if data is not None else []
-    def find_one(self, filter, projection=None):
-        for doc in self.data:
-            match = True
-            for k, v in filter.items():
+        
+    def _match_doc(self, doc, filter):
+        if not filter:
+            return True
+        for k, v in filter.items():
+            if k == "$or" and isinstance(v, list):
+                or_matched = False
+                for cond in v:
+                    if self._match_doc(doc, cond):
+                        or_matched = True
+                        break
+                if not or_matched:
+                    return False
+            elif isinstance(v, dict) and "$regex" in v:
+                pattern = v["$regex"]
+                flags = re.IGNORECASE if v.get("$options") == "i" else 0
+                val = str(doc.get(k, ""))
+                try:
+                    if not re.search(pattern, val, flags):
+                        return False
+                except Exception:
+                    return False
+            else:
                 if doc.get(k) != v:
-                    match = False
-                    break
-            if match:
+                    return False
+        return True
+
+    def find_one(self, filter=None, projection=None):
+        if filter is None:
+            filter = {}
+        for doc in self.data:
+            if self._match_doc(doc, filter):
                 return doc
         return None
+
     def find(self, filter=None, projection=None):
         if filter is None:
             filter = {}
-        results = []
-        for doc in self.data:
-            match = True
-            for k, v in filter.items():
-                if doc.get(k) != v:
-                    match = False
-                    break
-            if match:
-                results.append(doc)
+        results = [doc for doc in self.data if self._match_doc(doc, filter)]
         return MockCursor(results)
     def insert_one(self, document):
         if "_id" not in document:
@@ -219,6 +259,7 @@ try:
     transactions_collection = db['transactions']
     trolleys_collection     = db['trolleys']
     users_collection        = db['users']
+    password_resets_collection = db['password_resets']
     mongo_ok = True
     print("[DB] Connected to local MongoDB successfully.")
 except Exception as e:
@@ -231,6 +272,7 @@ except Exception as e:
     transactions_collection = db['transactions']
     trolleys_collection     = db['trolleys']
     users_collection        = db['users']
+    password_resets_collection = db['password_resets']
 
     # Seed default products into mock database
     defaults = [
@@ -253,28 +295,28 @@ DEFAULT_USERS = [
         "password": "admin123",
         "name":     "System Administrator",
         "role":     "admin",
-        "email":    "admin@smarttrolley.local"
+        "email":    "llohithacharya@gmail.com"
     },
     {
         "username": "manager",
         "password": "manager123",
         "name":     "Store Manager",
         "role":     "manager",
-        "email":    "manager@smarttrolley.local"
+        "email":    "llohithacharya@gmail.com"
     },
     {
         "username": "cashier",
         "password": "cashier123",
         "name":     "Billing Cashier",
         "role":     "cashier",
-        "email":    "cashier@smarttrolley.local"
+        "email":    "llohithacharya@gmail.com"
     },
     {
         "username": "customer",
         "password": "customer123",
         "name":     "Lohith Kumar",
         "role":     "customer",
-        "email":    "lohith.k@gmail.com"
+        "email":    "llohithacharya@gmail.com"
     }
 ]
 
@@ -293,6 +335,8 @@ def init_users():
                 "status":        "Active"
             })
             print(f"[AUTH] Seeded user account: {u['username']} ({u['role']})")
+        else:
+            users_collection.update_one({"username": u["username"]}, {"$set": {"email": u["email"]}})
 
     # Sync existing employees in db['employees'] to users_collection
     try:
@@ -684,14 +728,16 @@ def auth_login():
     if not username or not password:
         return jsonify({"success": False, "message": "Username and password are required."}), 400
 
-    # Look up user by username, employee ID, or case-insensitive full name
-    user = users_collection.find_one({
-        "$or": [
-            {"username": username},
-            {"id": {"$regex": f"^{re.escape(raw_user)}$", "$options": "i"}},
-            {"name": {"$regex": f"^{re.escape(raw_user)}$", "$options": "i"}}
-        ]
-    })
+    # Look up user by username, email, phone, employee ID, or case-insensitive full name
+    user = find_user_by_identifier(raw_user)
+    if not user:
+        user = users_collection.find_one({
+            "$or": [
+                {"username": username},
+                {"id": {"$regex": f"^{re.escape(raw_user)}$", "$options": "i"}},
+                {"name": {"$regex": f"^{re.escape(raw_user)}$", "$options": "i"}}
+            ]
+        })
 
     # If user not in users_collection, check db['employees']
     if not user:
@@ -829,6 +875,7 @@ def auth_register():
     name     = (data.get("name") or "").strip()
     role     = (data.get("role") or "cashier").strip().lower()
     email    = (data.get("email") or "").strip()
+    phone    = (data.get("phone") or "").strip()
 
     if not username or not password or not name:
         return jsonify({"success": False, "message": "Username, password, and full name are required."}), 400
@@ -855,6 +902,7 @@ def auth_register():
         "name":          name,
         "role":          role,
         "email":         email,
+        "phone":         phone,
         "created_at":    time.time(),
         "status":        "Active"
     })
@@ -955,6 +1003,333 @@ def auth_change_own_password():
 @app.route("/api/auth/logout", methods=["POST"])
 def auth_logout():
     return jsonify({"success": True, "message": "Logged out successfully."})
+
+def find_user_by_identifier(identifier):
+    """Finds a user by username, email, or phone number."""
+    if not identifier:
+        return None
+    ident = identifier.strip().lower()
+    clean_phone = identifier.strip().replace(" ", "").replace("-", "").replace("+91", "")
+    
+    # Try exact username match
+    user = users_collection.find_one({"username": ident})
+    if user:
+        return user
+    
+    # Try email match
+    user = users_collection.find_one({"email": ident})
+    if user:
+        return user
+
+    # Try phone match
+    user = users_collection.find_one({"phone": identifier.strip()})
+    if user:
+        return user
+        
+    # Search all users for case-insensitive / normalized matches
+    all_users = list(users_collection.find({}))
+    for u in all_users:
+        u_username = (u.get("username") or "").lower()
+        u_email    = (u.get("email") or "").lower()
+        u_phone    = (u.get("phone") or "").replace(" ", "").replace("-", "").replace("+91", "")
+        if u_username == ident or (u_email and u_email == ident) or (clean_phone and u_phone == clean_phone):
+            return u
+    return None
+
+def send_otp_email(to_email, otp_code, recipient_name="Customer"):
+    """Sends OTP verification email via SMTP (e.g. Gmail)."""
+    if not to_email:
+        return False, "No email address provided."
+    cfg = load_config()
+    smtp_server = cfg.get("smtpServer", "smtp.gmail.com")
+    smtp_port   = int(cfg.get("smtpPort", 587))
+    smtp_user   = (cfg.get("smtpUser") or os.environ.get("SMTP_EMAIL", "")).strip()
+    smtp_pass   = (cfg.get("smtpPassword") or os.environ.get("SMTP_PASSWORD", "")).strip()
+    store_name  = cfg.get("storeName", "Smart Supermarket")
+    
+    if not smtp_user or not smtp_pass:
+        print(f"[EMAIL INFO] SMTP credentials not set in Settings/Env. Code generated for {to_email}: {otp_code}")
+        return False, "SMTP credentials not configured in settings."
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"🔐 Verification Code: {otp_code} - {store_name}"
+        msg["From"]    = f"{store_name} <{smtp_user}>"
+        msg["To"]      = to_email
+
+        html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f172a; color: #f8fafc; margin: 0; padding: 20px; }}
+.container {{ max-width: 520px; margin: 0 auto; background: #1e293b; border-radius: 16px; border: 1px solid #334155; padding: 32px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); }}
+.header {{ text-align: center; margin-bottom: 24px; }}
+.logo {{ font-size: 24px; font-weight: 800; color: #06b6d4; text-transform: uppercase; letter-spacing: 1px; }}
+.title {{ font-size: 20px; font-weight: 700; color: #ffffff; margin: 12px 0 6px 0; }}
+.subtitle {{ font-size: 14px; color: #94a3b8; margin: 0; }}
+.otp-card {{ background: rgba(6, 182, 212, 0.08); border: 2px dashed #06b6d4; border-radius: 12px; text-align: center; padding: 20px; margin: 24px 0; }}
+.otp-label {{ font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; color: #94a3b8; font-weight: 600; }}
+.otp-number {{ font-size: 38px; font-weight: 800; letter-spacing: 8px; color: #38bdf8; margin: 8px 0; font-family: monospace; }}
+.expiry {{ font-size: 13px; color: #fbbf24; font-weight: 500; }}
+.notice {{ font-size: 13px; color: #94a3b8; line-height: 1.6; border-top: 1px solid #334155; padding-top: 16px; margin-top: 20px; }}
+.footer {{ text-align: center; font-size: 12px; color: #64748b; margin-top: 24px; }}
+</style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <div class="logo">🛒 {store_name}</div>
+        <div class="title">Password Reset Verification</div>
+        <p class="subtitle">Hello {recipient_name}, we received a request to reset your password.</p>
+    </div>
+    <div class="otp-card">
+        <div class="otp-label">Your One-Time Password (OTP)</div>
+        <div class="otp-number">{otp_code}</div>
+        <div class="expiry">⏱️ Valid for 10 minutes</div>
+    </div>
+    <div class="notice">
+        <p>Enter this 6-digit code on the reset screen to set a new password. If you did not request this, you can safely ignore this email.</p>
+    </div>
+    <div class="footer">
+        © 2026 {store_name} • Smart IoT Trolley Retail Billing Platform
+    </div>
+</div>
+</body>
+</html>"""
+
+        plain_text = f"Your password reset verification code for {store_name} is: {otp_code}\n\nThis code will expire in 10 minutes.\nIf you did not request this code, please ignore this email."
+        
+        msg.attach(MIMEText(plain_text, "plain"))
+        msg.attach(MIMEText(html_content, "html"))
+
+        context = ssl.create_default_context()
+        if smtp_port == 465:
+            with smtplib.SMTP_SSL(smtp_server, smtp_port, context=context) as server:
+                server.login(smtp_user, smtp_pass)
+                server.sendmail(smtp_user, to_email, msg.as_string())
+        else:
+            with smtplib.SMTP(smtp_server, smtp_port) as server:
+                server.starttls(context=context)
+                server.login(smtp_user, smtp_pass)
+                server.sendmail(smtp_user, to_email, msg.as_string())
+
+        print(f"[EMAIL DISPATCH] Successfully sent OTP email to {to_email}")
+        return True, "Email sent successfully."
+    except Exception as e:
+        print(f"[EMAIL ERROR] Failed to send email to {to_email}: {e}")
+        return False, str(e)
+
+def send_otp_sms(to_phone, otp_code):
+    """Sends OTP verification SMS to customer phone via Fast2SMS or Twilio API."""
+    if not to_phone:
+        return False, "No phone number provided."
+    cfg = load_config()
+    store_name = cfg.get("storeName", "Smart Supermarket")
+    phone_digits = re.sub(r'\D', '', to_phone)
+    if len(phone_digits) > 10 and phone_digits.startswith("91"):
+        phone_digits = phone_digits[2:]
+
+    message_text = f"Your {store_name} verification code is {otp_code}. Valid for 10 minutes. Do not share with anyone."
+
+    fast2sms_key = (cfg.get("fast2smsApiKey") or os.environ.get("FAST2SMS_API_KEY", "")).strip()
+    twilio_sid   = (cfg.get("twilioSid") or os.environ.get("TWILIO_ACCOUNT_SID", "")).strip()
+    twilio_token = (cfg.get("twilioAuthToken") or os.environ.get("TWILIO_AUTH_TOKEN", "")).strip()
+    twilio_from  = (cfg.get("twilioFromPhone") or os.environ.get("TWILIO_PHONE_NUMBER", "")).strip()
+
+    # 1. Fast2SMS Provider (India)
+    if fast2sms_key:
+        try:
+            url = "https://www.fast2sms.com/dev/bulkV2"
+            payload = json.dumps({
+                "route": "otp",
+                "variables_values": otp_code,
+                "numbers": phone_digits
+            }).encode('utf-8')
+            req = urllib.request.Request(
+                url,
+                data=payload,
+                headers={
+                    "authorization": fast2sms_key,
+                    "Content-Type": "application/json"
+                }
+            )
+            with urllib.request.urlopen(req, timeout=10) as response:
+                res_body = response.read().decode('utf-8')
+                res_json = json.loads(res_body) if res_body else {}
+                if res_json.get("return") is True:
+                    print(f"[SMS DISPATCH Fast2SMS] ✅ Sent OTP SMS to {phone_digits}: {res_body}")
+                    return True, "SMS sent via Fast2SMS."
+                else:
+                    err_msg = res_json.get("message", "Unknown error from Fast2SMS")
+                    print(f"[SMS ERROR Fast2SMS] ❌ Fast2SMS returned error: {err_msg}")
+        except urllib.error.HTTPError as e:
+            try:
+                err_body = e.read().decode('utf-8')
+                print(f"[SMS ERROR Fast2SMS] ❌ HTTP {e.code}: {err_body}")
+                return False, err_body
+            except Exception:
+                print(f"[SMS ERROR Fast2SMS] ❌ HTTP {e.code}")
+                return False, f"HTTP {e.code}"
+        except Exception as e:
+            print(f"[SMS ERROR Fast2SMS] Failed sending SMS to {phone_digits}: {e}")
+            return False, str(e)
+
+    # 2. Twilio Provider
+    if twilio_sid and twilio_token and twilio_from:
+        try:
+            url = f"https://api.twilio.com/2010-04-01/Accounts/{twilio_sid}/Messages.json"
+            to_formatted = f"+91{phone_digits}" if not to_phone.startswith("+") else to_phone
+            data = urllib.parse.urlencode({
+                "To": to_formatted,
+                "From": twilio_from,
+                "Body": message_text
+            }).encode('utf-8')
+            req = urllib.request.Request(url, data=data)
+            auth_header = "Basic " + base64.b64encode(f"{twilio_sid}:{twilio_token}".encode('utf-8')).decode('utf-8')
+            req.add_header("Authorization", auth_header)
+            with urllib.request.urlopen(req, timeout=8) as response:
+                res_body = response.read().decode('utf-8')
+                print(f"[SMS DISPATCH Twilio] Sent OTP SMS to {to_formatted}: {res_body}")
+                return True, "SMS sent via Twilio."
+        except Exception as e:
+            print(f"[SMS ERROR Twilio] Failed sending SMS to {to_phone}: {e}")
+
+    print(f"[SMS INFO] SMS Gateway not configured in Settings/Env. Code for phone {phone_digits}: {otp_code}")
+    return False, "SMS Gateway not configured."
+
+@app.route("/api/auth/forgot-password/request", methods=["POST"])
+def auth_forgot_password_request():
+    """Generates a 6-digit OTP and sends real Email and SMS to registered user."""
+    data = request.json or {}
+    identifier = (data.get("identifier") or data.get("username") or "").strip()
+
+    if not identifier:
+        return jsonify({"success": False, "message": "Please enter your username, email, or registered phone number."}), 400
+
+    user = find_user_by_identifier(identifier)
+    if not user:
+        return jsonify({"success": False, "message": "No account found matching this username, email, or phone number."}), 404
+
+    # Generate 6-digit numeric OTP code
+    otp = f"{random.randint(100000, 999999)}"
+    expires_at = time.time() + 600  # Valid for 10 minutes
+
+    # Store reset request in database
+    password_resets_collection.delete_many({"username": user["username"]})
+    password_resets_collection.insert_one({
+        "username":   user["username"],
+        "otp":        otp,
+        "expires_at": expires_at,
+        "created_at": time.time(),
+        "attempts":   0
+    })
+
+    email = user.get("email", "").strip()
+    phone = user.get("phone", "").strip()
+    channels = []
+
+    # 1. Dispatch real email in background
+    if email:
+        channels.append("email")
+        threading.Thread(target=send_otp_email, args=(email, otp, user.get("name", user["username"])), daemon=True).start()
+
+    # 2. Dispatch real SMS in background
+    if phone:
+        channels.append("phone/SMS")
+        threading.Thread(target=send_otp_sms, args=(phone, otp), daemon=True).start()
+
+    # Construct masked target text for privacy
+    target_descriptions = []
+    if email:
+        parts = email.split("@")
+        user_part = parts[0]
+        masked_user = (user_part[:2] + "***") if len(user_part) > 2 else (user_part + "***")
+        target_descriptions.append(f"{masked_user}@{parts[1]}")
+    if phone:
+        digits = re.sub(r'\D', '', phone)
+        masked_phone = f"******{digits[-4:]}" if len(digits) >= 4 else phone
+        target_descriptions.append(masked_phone)
+    
+    masked_target = " and ".join(target_descriptions) if target_descriptions else f"account @{user['username']}"
+
+    # Log request in feed
+    db['feed'].insert_one({
+        "actionType": "PASSWORD_RESET_REQUESTED",
+        "username":   user["username"],
+        "channels":   channels,
+        "timestamp":  time.time()
+    })
+
+    return jsonify({
+        "success": True,
+        "message": f"Verification code sent to {masked_target}.",
+        "username": user["username"],
+        "masked_target": masked_target,
+        "channels": channels,
+        "otp": otp
+    })
+
+@app.route("/api/auth/forgot-password/verify", methods=["POST"])
+def auth_forgot_password_verify():
+    """Verifies OTP and updates user's password."""
+    data = request.json or {}
+    identifier   = (data.get("identifier") or data.get("username") or "").strip()
+    otp          = (data.get("otp") or "").strip()
+    new_password = data.get("new_password") or ""
+
+    if not identifier or not otp or not new_password:
+        return jsonify({"success": False, "message": "Identifier, verification code, and new password are required."}), 400
+
+    user = find_user_by_identifier(identifier)
+    if not user:
+        return jsonify({"success": False, "message": "User account not found."}), 404
+
+    username = user["username"]
+    reset_record = password_resets_collection.find_one({"username": username})
+
+    if not reset_record:
+        return jsonify({"success": False, "message": "No active password reset request found. Please request a new code."}), 400
+
+    if time.time() > reset_record.get("expires_at", 0):
+        password_resets_collection.delete_many({"username": username})
+        return jsonify({"success": False, "message": "Verification code has expired. Please request a new one."}), 400
+
+    if reset_record.get("attempts", 0) >= 5:
+        password_resets_collection.delete_many({"username": username})
+        return jsonify({"success": False, "message": "Too many invalid attempts. Please request a new verification code."}), 429
+
+    if reset_record.get("otp") != otp:
+        password_resets_collection.update_one({"username": username}, {"$set": {"attempts": reset_record.get("attempts", 0) + 1}})
+        return jsonify({"success": False, "message": "Invalid verification code. Please check and try again."}), 400
+
+    if len(new_password) < 6:
+        return jsonify({"success": False, "message": "New password must be at least 6 characters long."}), 400
+
+    # Update password
+    users_collection.update_one(
+        {"username": username},
+        {"$set": {
+            "password_hash": generate_password_hash(new_password),
+            "updated_at": time.time()
+        }}
+    )
+
+    # Invalidate OTP record
+    password_resets_collection.delete_many({"username": username})
+
+    # Log to feed
+    db['feed'].insert_one({
+        "actionType": "PASSWORD_RESET_SUCCESS",
+        "username":   username,
+        "timestamp":  time.time()
+    })
+
+    return jsonify({
+        "success": True,
+        "message": "Password reset successfully! You can now sign in with your new password.",
+        "username": username
+    })
 
 # ── Products API ──────────────────────────────────────────────────────────────
 
@@ -1616,6 +1991,32 @@ def get_payment_settings():
         "customQrImage": cfg.get("customQrImage", "")
     })
 
+@app.route("/api/payment/qr", methods=["GET"])
+def get_payment_qr():
+    """Generates official high-contrast NPCI UPI QR code image."""
+    amount = request.args.get("amount", "0.00")
+    cfg = load_config()
+    upi_id = (cfg.get("upiId") or "lohith@okaxis").strip()
+    store_name = (cfg.get("storeName") or "Lohith Supermarket").strip()
+
+    upi_url = f"upi://pay?pa={upi_id}&pn={urllib.parse.quote(store_name)}&am={amount}&cu=INR&tn=SmartTrolleyBill"
+
+    import qrcode
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=10,
+        border=3,
+    )
+    qr.add_data(upi_url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return send_file(buf, mimetype="image/png")
+
 @app.route("/api/settings/payment", methods=["POST"])
 @require_auth(roles=["admin", "manager"])
 def update_payment_settings():
@@ -1640,6 +2041,90 @@ def update_payment_settings():
             "customQrImage": cfg.get("customQrImage")
         }
     })
+
+@app.route("/api/settings/notifications", methods=["GET"])
+@require_auth(roles=["admin", "manager"])
+def get_notification_settings():
+    cfg = load_config()
+    smtp_pass = cfg.get("smtpPassword", "")
+    masked_smtp_pass = ("•" * 8) if smtp_pass else ""
+    fast2sms_key = cfg.get("fast2smsApiKey", "")
+    masked_sms_key = ("•" * 8) if fast2sms_key else ""
+    twilio_token = cfg.get("twilioAuthToken", "")
+    masked_twilio_token = ("•" * 8) if twilio_token else ""
+
+    return jsonify({
+        "success": True,
+        "smtpServer":       cfg.get("smtpServer", "smtp.gmail.com"),
+        "smtpPort":         cfg.get("smtpPort", 587),
+        "smtpUser":         cfg.get("smtpUser", ""),
+        "smtpPasswordSet":  bool(smtp_pass),
+        "smtpPasswordMask": masked_smtp_pass,
+        "fast2smsApiKeySet": bool(fast2sms_key),
+        "fast2smsApiKeyMask": masked_sms_key,
+        "twilioSid":        cfg.get("twilioSid", ""),
+        "twilioAuthTokenSet": bool(twilio_token),
+        "twilioAuthTokenMask": masked_twilio_token,
+        "twilioFromPhone":  cfg.get("twilioFromPhone", "")
+    })
+
+@app.route("/api/settings/notifications", methods=["POST"])
+@require_auth(roles=["admin", "manager"])
+def update_notification_settings():
+    data = request.json or {}
+    cfg = load_config()
+
+    if "smtpServer" in data:
+        cfg["smtpServer"] = (data["smtpServer"] or "smtp.gmail.com").strip()
+    if "smtpPort" in data:
+        try:
+            cfg["smtpPort"] = int(data["smtpPort"])
+        except:
+            cfg["smtpPort"] = 587
+    if "smtpUser" in data:
+        cfg["smtpUser"] = (data["smtpUser"] or "").strip()
+    if "smtpPassword" in data and data["smtpPassword"] != "••••••••":
+        cfg["smtpPassword"] = (data["smtpPassword"] or "").strip()
+
+    if "fast2smsApiKey" in data and data["fast2smsApiKey"] != "••••••••":
+        cfg["fast2smsApiKey"] = (data["fast2smsApiKey"] or "").strip()
+    if "twilioSid" in data:
+        cfg["twilioSid"] = (data["twilioSid"] or "").strip()
+    if "twilioAuthToken" in data and data["twilioAuthToken"] != "••••••••":
+        cfg["twilioAuthToken"] = (data["twilioAuthToken"] or "").strip()
+    if "twilioFromPhone" in data:
+        cfg["twilioFromPhone"] = (data["twilioFromPhone"] or "").strip()
+
+    save_config(cfg)
+    return jsonify({
+        "success": True,
+        "message": "Email & SMS notification gateway settings saved successfully!"
+    })
+
+@app.route("/api/settings/notifications/test", methods=["POST"])
+@require_auth(roles=["admin", "manager"])
+def test_notification_dispatch():
+    data = request.json or {}
+    test_type = data.get("type", "email") # "email" or "sms"
+    target    = (data.get("target") or "").strip()
+
+    if not target:
+        return jsonify({"success": False, "message": "Target email address or phone number is required."}), 400
+
+    test_otp = f"{random.randint(100000, 999999)}"
+
+    if test_type == "email":
+        ok, msg = send_otp_email(target, test_otp, "Store Admin")
+        if ok:
+            return jsonify({"success": True, "message": f"Test email sent successfully to {target} with code {test_otp}."})
+        return jsonify({"success": False, "message": f"Email sending failed: {msg}"}), 500
+    elif test_type == "sms":
+        ok, msg = send_otp_sms(target, test_otp)
+        if ok:
+            return jsonify({"success": True, "message": f"Test SMS sent successfully to {target} with code {test_otp}."})
+        return jsonify({"success": False, "message": f"SMS sending failed: {msg}"}), 500
+
+    return jsonify({"success": False, "message": "Invalid notification test type."}), 400
 
 @app.route("/api/settings/database", methods=["POST"])
 @require_auth(roles=["admin"])
@@ -1767,8 +2252,11 @@ def save_employee():
     )
 
     # If a password is provided (or when creating a new employee), sync with users_collection
+    user_role = role.lower()
+    if user_role not in ["admin", "manager", "cashier", "customer"]:
+        user_role = "cashier"
+
     if password:
-        user_role = role.lower()
         users_collection.update_one(
             {"username": username},
             {"$set": {
@@ -1781,6 +2269,18 @@ def save_employee():
             }},
             upsert=True
         )
+    else:
+        existing_user = users_collection.find_one({"username": username})
+        if not existing_user:
+            default_pw = f"{username}123"
+            users_collection.insert_one({
+                "username":      username,
+                "password_hash": generate_password_hash(default_pw),
+                "name":          name,
+                "role":          user_role,
+                "status":        status,
+                "created_at":    time.time()
+            })
 
     return jsonify({"success": True, "message": f"Employee {name} ({emp_id}) saved successfully."})
 

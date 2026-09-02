@@ -415,7 +415,7 @@ body.dark-theme {
 
 /* ── Receipt Modal ─────────────────────────────────────────────────────── */
 .modal-overlay {
-    display: none;
+    display: none !important;
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.6);
@@ -426,7 +426,7 @@ body.dark-theme {
 }
 
 .modal-overlay.active {
-    display: flex;
+    display: flex !important;
     animation: fadeIn 0.25s ease;
 }
 
@@ -440,7 +440,26 @@ body.dark-theme {
     max-width: 95vw;
     padding: 36px 32px;
     text-align: center;
+    position: relative;
     animation: slideUp 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.modal-close, .modal-close-x {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1.3rem;
+    cursor: pointer;
+    z-index: 10;
+    transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.modal-close:hover, .modal-close-x:hover {
+    color: var(--text-primary);
+    transform: scale(1.1);
 }
 
 @keyframes slideUp {
@@ -1755,6 +1774,243 @@ body.dark-theme {
     background: rgba(244, 63, 94, 0.15);
     border-color: rgba(244, 63, 94, 0.4);
     color: var(--accent-red);
+}
+
+/* ── Forgot Password & Reset Modal Styles ─────────────────────────────────── */
+
+.forgot-pass-link {
+    background: transparent;
+    border: none;
+    color: var(--accent-cyan);
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 0;
+    transition: var(--transition);
+}
+
+.forgot-pass-link:hover {
+    color: #fff;
+    text-decoration: underline;
+}
+
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    padding: 20px;
+    opacity: 1;
+    transition: opacity 0.25s ease, visibility 0.25s ease;
+}
+
+.modal-overlay.hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.modal-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(10, 15, 29, 0.82);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.modal-card {
+    position: relative;
+    width: 100%;
+    max-width: 460px;
+    background: rgba(17, 24, 39, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 35px rgba(6, 182, 212, 0.15);
+    border-radius: 20px;
+    padding: 28px;
+    z-index: 10;
+    animation: modalSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.96);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.modal-title-group {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.modal-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: rgba(6, 182, 212, 0.12);
+    border: 1px solid rgba(6, 182, 212, 0.3);
+    color: var(--accent-cyan);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+}
+
+.modal-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #fff;
+    margin: 0;
+    letter-spacing: -0.3px;
+}
+
+.modal-subtitle {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    margin: 2px 0 0 0;
+}
+
+.modal-close-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--panel-border);
+    color: var(--text-secondary);
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+}
+
+.modal-close-btn:hover {
+    background: rgba(244, 63, 94, 0.15);
+    border-color: rgba(244, 63, 94, 0.4);
+    color: var(--accent-red);
+}
+
+.step-info-badge {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(6, 182, 212, 0.08);
+    border: 1px solid rgba(6, 182, 212, 0.25);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+}
+
+.demo-otp-chip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px dashed rgba(245, 158, 11, 0.4);
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin-bottom: 6px;
+    font-size: 0.82rem;
+}
+
+.demo-otp-label {
+    color: #fbbf24;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.demo-otp-code {
+    letter-spacing: 2px;
+    font-family: monospace;
+    font-size: 0.95rem;
+    color: #fff;
+    background: rgba(0,0,0,0.3);
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+
+.demo-otp-btn {
+    background: rgba(245, 158, 11, 0.2);
+    border: 1px solid rgba(245, 158, 11, 0.5);
+    color: #fde68a;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 6px;
+    padding: 4px 8px;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.demo-otp-btn:hover {
+    background: #f59e0b;
+    color: #000;
+}
+
+.text-link-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    cursor: pointer;
+    padding: 4px 6px;
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.text-link-btn:hover {
+    color: var(--accent-cyan);
+}
+
+.reset-success-box {
+    text-align: center;
+    padding: 10px 0 6px 0;
+}
+
+.success-icon-circle {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: rgba(16, 185, 129, 0.15);
+    border: 2px solid rgba(16, 185, 129, 0.4);
+    color: #34d399;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    margin: 0 auto;
+    box-shadow: 0 0 25px rgba(16, 185, 129, 0.3);
+    animation: successPulse 1.5s infinite alternate;
+}
+
+@keyframes successPulse {
+    from { transform: scale(1); box-shadow: 0 0 15px rgba(16, 185, 129, 0.2); }
+    to { transform: scale(1.05); box-shadow: 0 0 30px rgba(16, 185, 129, 0.45); }
 }
 
 

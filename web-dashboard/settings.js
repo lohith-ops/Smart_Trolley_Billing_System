@@ -421,5 +421,138 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // ── Email & SMS Notification Gateways ────────────────────────────────────
+    const notifForm       = document.getElementById('settings-notifications-form');
+    const smtpUserInput   = document.getElementById('smtp-user-input');
+    const smtpPassInput   = document.getElementById('smtp-pass-input');
+    const smtpServerInput = document.getElementById('smtp-server-input');
+    const smtpPortInput   = document.getElementById('smtp-port-input');
+    const fast2smsKeyInput= document.getElementById('fast2sms-key-input');
+    const twilioSidInput  = document.getElementById('twilio-sid-input');
+    const testNotifBtn    = document.getElementById('test-notification-btn');
+
+    async function fetchNotificationSettings() {
+        try {
+            const token = (typeof getAuthToken === 'function') ? getAuthToken() : localStorage.getItem('smart_trolley_jwt_token');
+            const headers = {};
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
+            const res = await fetch('/api/settings/notifications', { headers });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success) {
+                    if (smtpUserInput)   smtpUserInput.value = data.smtpUser || '';
+                    if (smtpPassInput && data.smtpPasswordSet) smtpPassInput.placeholder = '•••••••• (Configured)';
+                    if (smtpServerInput) smtpServerInput.value = data.smtpServer || 'smtp.gmail.com';
+                    if (smtpPortInput)   smtpPortInput.value = data.smtpPort || 587;
+                    if (fast2smsKeyInput && data.fast2smsApiKeySet) fast2smsKeyInput.placeholder = '•••••••• (Configured)';
+                    if (twilioSidInput)  twilioSidInput.value = data.twilioSid || '';
+                }
+            }
+        } catch (err) {
+            console.error('Failed to fetch notification settings:', err);
+        }
+    }
+
+    async function saveNotificationSettings(e) {
+        e.preventDefault();
+        const submitBtn = document.getElementById('save-notifications-btn');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+        }
+
+        const payload = {
+            smtpUser:        smtpUserInput ? smtpUserInput.value.trim() : '',
+            smtpPassword:    smtpPassInput ? smtpPassInput.value : '',
+            smtpServer:      smtpServerInput ? smtpServerInput.value.trim() : 'smtp.gmail.com',
+            smtpPort:        smtpPortInput ? parseInt(smtpPortInput.value) || 587 : 587,
+            fast2smsApiKey:  fast2smsKeyInput ? fast2smsKeyInput.value.trim() : '',
+            twilioSid:       twilioSidInput ? twilioSidInput.value.trim() : ''
+        };
+
+        try {
+            const token = (typeof getAuthToken === 'function') ? getAuthToken() : localStorage.getItem('smart_trolley_jwt_token');
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
+            const res = await fetch('/api/settings/notifications', {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+
+            if (res.ok && data.success) {
+                if (window.showToast) window.showToast('Gateways Saved', data.message || 'Notification gateways saved!', 'success');
+                else alert(data.message || 'Notification gateways saved!');
+                fetchNotificationSettings();
+            } else {
+                alert(data.message || 'Failed to save notification settings.');
+            }
+        } catch (err) {
+            console.error('Notification save error:', err);
+            alert('Network error while saving notification gateways.');
+        } finally {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fa-solid fa-save"></i> Save Notification Gateways';
+            }
+        }
+    }
+
+    async function handleTestNotification() {
+        const testChoice = prompt("What would you like to test?\nEnter 'email' or 'sms':", "email");
+        if (!testChoice) return;
+
+        const choiceClean = testChoice.trim().toLowerCase();
+        if (choiceClean !== 'email' && choiceClean !== 'sms') {
+            alert("Invalid choice. Please enter 'email' or 'sms'.");
+            return;
+        }
+
+        const promptText = (choiceClean === 'email') ? "Enter destination email (e.g. yourname@gmail.com):" : "Enter 10-digit mobile number (e.g. 9876543210):";
+        const target = prompt(promptText);
+        if (!target) return;
+
+        if (testNotifBtn) {
+            testNotifBtn.disabled = true;
+            testNotifBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sending...';
+        }
+
+        try {
+            const token = (typeof getAuthToken === 'function') ? getAuthToken() : localStorage.getItem('smart_trolley_jwt_token');
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
+            const res = await fetch('/api/settings/notifications/test', {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({ type: choiceClean, target: target.trim() })
+            });
+            const data = await res.json();
+
+            if (res.ok && data.success) {
+                if (window.showToast) window.showToast('Test Sent', data.message, 'success');
+                else alert(data.message);
+            } else {
+                alert(`Test Failed: ${data.message}`);
+            }
+        } catch (err) {
+            console.error('Test notification error:', err);
+            alert('Failed to send test dispatch. Check server logs.');
+        } finally {
+            if (testNotifBtn) {
+                testNotifBtn.disabled = false;
+                testNotifBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Test Delivery';
+            }
+        }
+    }
+
+    if (notifForm) notifForm.addEventListener('submit', saveNotificationSettings);
+    if (testNotifBtn) testNotifBtn.addEventListener('click', handleTestNotification);
+
+    // Add to initial loaders
+    fetchNotificationSettings();
     initSettings();
 });

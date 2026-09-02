@@ -5,7 +5,7 @@
 const AUTH_CONFIG = {
     TOKEN_KEY: 'smart_trolley_jwt_token',
     USER_KEY:  'smart_trolley_user_profile',
-    PUBLIC_PAGES: ['login.html', 'register.html', 'product-search.html', 'customer-portal.html', 'navigation.html', 'receipt.html'],
+    PUBLIC_PAGES: ['login.html', 'register.html', 'receipt.html'],
     ROLE_PERMISSIONS: {
         'admin': ['*'],
         'manager': ['index.html', 'trolleys.html', 'trolley-monitor.html', 'inventory.html', 'transactions.html', 'analytics.html', 'reports.html', 'feedback.html', 'customer-portal.html', 'product-search.html', 'navigation.html', 'receipt.html'],
@@ -56,20 +56,37 @@ function isAuthenticated() {
     const token = getAuthToken();
     if (!token) return false;
     const payload = parseJwt(token);
-    if (!payload || !payload.exp) return false;
+    if (!payload || !payload.exp) {
+        // Corrupt token, clear it
+        localStorage.removeItem(AUTH_CONFIG.TOKEN_KEY);
+        localStorage.removeItem(AUTH_CONFIG.USER_KEY);
+        return false;
+    }
     
     // Check if token expired
     const nowSecs = Math.floor(Date.now() / 1000);
-    return payload.exp > nowSecs;
+    if (payload.exp <= nowSecs) {
+        localStorage.removeItem(AUTH_CONFIG.TOKEN_KEY);
+        localStorage.removeItem(AUTH_CONFIG.USER_KEY);
+        return false;
+    }
+    return true;
 }
 
 /**
  * Sets session token and user profile in storage
  */
 function setAuthSession(token, user) {
-    localStorage.setItem(AUTH_CONFIG.TOKEN_KEY, token);
-    localStorage.setItem(AUTH_CONFIG.USER_KEY, JSON.stringify(user));
+    if (token) localStorage.setItem(AUTH_CONFIG.TOKEN_KEY, token);
+    if (user) localStorage.setItem(AUTH_CONFIG.USER_KEY, JSON.stringify(user));
 }
+
+// Expose immediately to global scope
+window.AUTH_CONFIG     = AUTH_CONFIG;
+window.getAuthToken    = getAuthToken;
+window.getAuthUser     = getAuthUser;
+window.isAuthenticated = isAuthenticated;
+window.setAuthSession  = setAuthSession;
 
 /**
  * Clears session and redirects to login page
@@ -151,17 +168,12 @@ async function authFetch(url, options = {}) {
     const loggedIn = isAuthenticated();
     const user = getAuthUser();
 
-    // 1. If user is on login/register page and already logged in, send them to their dashboard
-    if ((currentPath === 'login.html' || currentPath === 'register.html') && loggedIn) {
-        if (user && user.role === 'customer') {
-            window.location.href = 'customer-portal.html';
-        } else {
-            window.location.href = 'index.html';
-        }
+    // 1. If user is on login/register page, let them view the page directly (login form will handle authenticated navigation)
+    if (currentPath === 'login.html' || currentPath === 'register.html') {
         return;
     }
 
-    // 2. If not public and not logged in, redirect to login
+    // 2. If not public and not logged in, redirect to login page
     if (!isPublic && !loggedIn) {
         const redirectParam = encodeURIComponent(currentPath);
         window.location.href = `login.html?redirect=${redirectParam}`;

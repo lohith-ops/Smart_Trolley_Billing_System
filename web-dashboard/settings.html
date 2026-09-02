@@ -134,6 +134,76 @@
                     </form>
                 </div>
 
+                <!-- 📧 Email & 📱 SMS Notification Gateway -->
+                <div class="glass-panel settings-card">
+                    <h3><i class="fa-solid fa-paper-plane" style="color: var(--accent-cyan);"></i> Email & SMS Gateway</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.4;">
+                        Configure real Email (Gmail SMTP) & SMS Gateways (Fast2SMS / Twilio) to dispatch real OTPs for Customer Password Resets and Checkout Receipts.
+                    </p>
+
+                    <form id="settings-notifications-form">
+                        <!-- SMTP Section -->
+                        <div style="background: rgba(0,0,0,0.2); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 14px; margin-bottom: 14px;">
+                            <h4 style="color: var(--text-primary); font-size: 0.9rem; margin: 0 0 10px 0; display: flex; align-items: center; gap: 8px;">
+                                <i class="fa-solid fa-envelope" style="color: var(--accent-cyan);"></i> Email Delivery (Gmail SMTP)
+                            </h4>
+
+                            <div class="form-group" style="margin-bottom: 10px;">
+                                <label style="font-weight: 500; font-size: 0.82rem; display: block; margin-bottom: 4px;">Sender Gmail / Email Address</label>
+                                <input type="email" id="smtp-user-input" placeholder="e.g. yourstore@gmail.com" class="form-input" style="width: 100%;">
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 10px;">
+                                <label style="font-weight: 500; font-size: 0.82rem; display: block; margin-bottom: 4px;">
+                                    Gmail App Password (16-character)
+                                    <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color: var(--accent-cyan); font-size: 0.75rem; margin-left: 6px; text-decoration: none;">Get App Password <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 0.7rem;"></i></a>
+                                </label>
+                                <input type="password" id="smtp-pass-input" placeholder="••••••••••••••••" class="form-input" style="width: 100%;">
+                            </div>
+
+                            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 10px;">
+                                <div class="form-group">
+                                    <label style="font-weight: 500; font-size: 0.8rem; display: block; margin-bottom: 4px;">SMTP Host</label>
+                                    <input type="text" id="smtp-server-input" value="smtp.gmail.com" class="form-input" style="width: 100%;">
+                                </div>
+                                <div class="form-group">
+                                    <label style="font-weight: 500; font-size: 0.8rem; display: block; margin-bottom: 4px;">Port</label>
+                                    <input type="number" id="smtp-port-input" value="587" class="form-input" style="width: 100%;">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- SMS Gateway Section -->
+                        <div style="background: rgba(0,0,0,0.2); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 14px; margin-bottom: 16px;">
+                            <h4 style="color: var(--text-primary); font-size: 0.9rem; margin: 0 0 10px 0; display: flex; align-items: center; gap: 8px;">
+                                <i class="fa-solid fa-comment-sms" style="color: var(--accent-green);"></i> SMS Gateway (Fast2SMS / Twilio)
+                            </h4>
+
+                            <div class="form-group" style="margin-bottom: 10px;">
+                                <label style="font-weight: 500; font-size: 0.82rem; display: block; margin-bottom: 4px;">
+                                    Fast2SMS API Key (India Instant SMS)
+                                    <a href="https://www.fast2sms.com" target="_blank" style="color: var(--accent-cyan); font-size: 0.75rem; margin-left: 6px; text-decoration: none;">Get Fast2SMS Key <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 0.7rem;"></i></a>
+                                </label>
+                                <input type="password" id="fast2sms-key-input" placeholder="Paste your Fast2SMS API Key" class="form-input" style="width: 100%;">
+                            </div>
+
+                            <div class="form-group">
+                                <label style="font-weight: 500; font-size: 0.82rem; display: block; margin-bottom: 4px;">Twilio Account SID (Optional)</label>
+                                <input type="text" id="twilio-sid-input" placeholder="e.g. ACxxxxxxxxxxxxxxxx" class="form-input" style="width: 100%;">
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: 10px;">
+                            <button type="submit" id="save-notifications-btn" class="btn btn-primary" style="flex: 1;">
+                                <i class="fa-solid fa-save"></i> Save Notification Gateways
+                            </button>
+                            <button type="button" id="test-notification-btn" class="btn btn-outline" style="padding: 0 16px;" title="Test sending an Email or SMS">
+                                <i class="fa-solid fa-paper-plane"></i> Test Delivery
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
                 <!-- Database Maintenance -->
                 <div class="glass-panel settings-card">
                     <h3><i class="fa-solid fa-database"></i> Database Maintenance</h3>

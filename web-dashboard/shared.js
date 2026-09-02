@@ -6,10 +6,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // 1. Inject Unified Grouped Sidebar Navigation with User Role Filtering
     renderSidebar();
 
-    // 2. Highlight Active Nav Item
+    // 2. Synchronize Top Header User Profile
+    updateHeaderProfile();
+
+    // 3. Highlight Active Nav Item
     highlightActiveLink();
 
-    // 3. Initialize Toast Container
+    // 4. Initialize Toast Container
     initToastContainer();
 
     // 4. Arduino Connection Status Polling & Event Toast Alerts
@@ -340,3 +343,35 @@ window.showToast = function(title, message, type = 'info') {
         }
     }, 5000);
 };
+
+/**
+ * Synchronizes top header avatar, name, and role badge with active user session
+ */
+function updateHeaderProfile() {
+    const user = (window.getAuthUser && window.getAuthUser()) || { name: 'User', role: 'guest', username: 'user' };
+    const userProfiles = document.querySelectorAll('.user-profile');
+    const roleColors = {
+        'admin':   'f43f5e',
+        'manager': 'c084fc',
+        'cashier': '10b981',
+        'customer':'06b6d4',
+        'guest':   '64748b'
+    };
+    const role = (user.role || 'guest').toLowerCase();
+    const cleanColor = roleColors[role] || '10b981';
+    const displayName = user.name || user.username || 'User';
+
+    userProfiles.forEach(el => {
+        // Update customer portal specific elements or general header profile
+        const img = el.querySelector('img');
+        const span = el.querySelector('span:not(.trolley-status-badge)');
+        if (img) {
+            img.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=${cleanColor}&color=fff`;
+            img.alt = displayName;
+        }
+        if (span) {
+            span.textContent = displayName;
+        }
+    });
+}
+

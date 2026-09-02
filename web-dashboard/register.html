@@ -42,7 +42,7 @@
                 <span id="register-success-msg">Account created! Redirecting...</span>
             </div>
 
-            <form id="register-form" class="login-form">
+            <form id="register-form" class="login-form" action="javascript:void(0)" method="POST">
                 <div class="form-group">
                     <label for="reg-name"><i class="fa-solid fa-user"></i> Full Name</label>
                     <div class="input-with-icon">
@@ -64,6 +64,14 @@
                     <div class="input-with-icon">
                         <input type="email" id="reg-email" name="email" placeholder="e.g. admin@gmail.com" autocomplete="email">
                         <i class="fa-solid fa-envelope input-icon"></i>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="reg-phone"><i class="fa-solid fa-phone"></i> Mobile Phone Number (for SMS OTP)</label>
+                    <div class="input-with-icon">
+                        <input type="tel" id="reg-phone" name="phone" placeholder="e.g. 9876543210" autocomplete="tel">
+                        <i class="fa-solid fa-mobile-screen input-icon"></i>
                     </div>
                 </div>
 

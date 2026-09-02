@@ -7,7 +7,7 @@ import sys
 # Add project root to sys.path
 sys.path.insert(0, os.path.abspath(r"c:\Users\LOHITH\OneDrive\Desktop\MAIN PROJECT\SmartTrolleyBillingSystem"))
 
-from app import app, users_collection, init_users
+from app import app, users_collection, password_resets_collection, init_users
 
 def run_tests():
     print("==================================================")
@@ -167,6 +167,65 @@ def run_tests():
     res = client.put("/api/employees/E001/password", json={"password": "empcustompass123"}, headers={"Authorization": f"Bearer {admin_token}"})
     assert res.status_code == 200
     print("[PASS] Admin successfully reset password via Employee ID.")
+
+    # 19. Test Forgot Password - Real OTP Generation (/api/auth/forgot-password/request)
+    print("\n[TEST 19] Testing Forgot Password OTP Generation & Real Dispatch...")
+    res = client.post("/api/auth/forgot-password/request", json={"identifier": "customer"})
+    assert res.status_code == 200
+    fp_data = res.get_json()
+    assert fp_data.get("success") is True
+    assert "channels" in fp_data
+    # Retrieve securely generated OTP from database
+    reset_record = password_resets_collection.find_one({"username": "customer"})
+    assert reset_record is not None
+    real_otp = reset_record["otp"]
+    assert len(real_otp) == 6
+    print(f"[PASS] OTP generated & saved in DB: {real_otp}. Dispatched to: {fp_data.get('masked_target')}")
+
+    # 20. Test Forgot Password - Non-existent Identifier
+    print("\n[TEST 20] Testing Forgot Password Non-existent Identifier...")
+    res = client.post("/api/auth/forgot-password/request", json={"identifier": "nonexistent_user_999"})
+    assert res.status_code == 404
+    print("[PASS] Non-existent user rejected with 404.")
+
+    # 21. Test Forgot Password - Invalid OTP Code Verification
+    print("\n[TEST 21] Testing Invalid OTP rejection...")
+    res = client.post("/api/auth/forgot-password/verify", json={
+        "identifier": "customer",
+        "otp": "000000",
+        "new_password": "customerNewPass123"
+    })
+    assert res.status_code == 400
+    print("[PASS] Invalid OTP rejected with 400.")
+
+    # 22. Test Forgot Password - Valid OTP and Password Reset
+    print("\n[TEST 22] Testing Valid OTP Verification & Password Reset...")
+    res = client.post("/api/auth/forgot-password/verify", json={
+        "identifier": "customer",
+        "otp": real_otp,
+        "new_password": "customerNewPass123"
+    })
+    assert res.status_code == 200
+    assert res.get_json().get("success") is True
+    print("[PASS] Customer password successfully reset via OTP.")
+
+    # 23. Test Login with newly reset password
+    print("\n[TEST 23] Testing Customer Login with new password...")
+    res = client.post("/api/auth/login", json={"username": "customer", "password": "customerNewPass123"})
+    assert res.status_code == 200
+    assert res.get_json().get("token") is not None
+    print("[PASS] Customer logged in with newly reset password.")
+
+    # 24. Test Notification Settings API (/api/settings/notifications)
+    print("\n[TEST 24] Testing Notification Settings API...")
+    res = client.get("/api/settings/notifications", headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 200
+    notif_data = res.get_json()
+    assert notif_data.get("success") is True
+    print("[PASS] Notification settings retrieved successfully.")
+
+    # Reset customer password back to default 'customer123' for subsequent tests
+    client.put("/api/auth/users/customer/password", json={"password": "customer123"}, headers={"Authorization": f"Bearer {admin_token}"})
 
     # Clean up test users
     client.delete("/api/auth/users/supercashier1", headers={"Authorization": f"Bearer {admin_token}"})
