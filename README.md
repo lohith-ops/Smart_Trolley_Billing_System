@@ -13,6 +13,30 @@ An IoT-based retail solution designed to modernize the shopping and checkout exp
 *   **Product Registry:** A dynamically triggered registration interface that prompts the administrator to register new, unrecognized RFID cards directly from the live feed.
 
 ---
+---
+
+## 🎯 Project Objectives
+
+- Automate the retail billing process using IoT technology.
+- Reduce waiting time at traditional checkout counters.
+- Allow customers to scan products directly using RFID.
+- Display product information and prices on the trolley LCD.
+- Calculate the total bill automatically during shopping.
+- Provide separate modes for adding and removing products.
+- Give audio feedback for successful and incorrect scans.
+- Store product and transaction information in MongoDB.
+- Connect the physical trolley with a web-based dashboard.
+- Provide administrators with real-time shopping information.
+- Display active trolley and transaction information.
+- Make product registration easier through the web dashboard.
+- Detect unrecognized RFID cards.
+- Improve accuracy in product billing.
+- Reduce manual work for retail staff.
+- Provide a simple and responsive user interface.
+- Support real-time communication between hardware and backend.
+- Improve the overall customer shopping experience.
+- Make the checkout process faster and more convenient.
+- Demonstrate the practical use of IoT in retail systems.
 
 ## 🔧 Hardware Components & Pins
 This project is configured for **Arduino Uno / Mega** or compatible microcontrollers.
