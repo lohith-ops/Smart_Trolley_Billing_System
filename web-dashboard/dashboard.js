@@ -44,6 +44,9 @@ function refreshEls() {
     els.regName = document.getElementById('reg-name');
     els.regPrice = document.getElementById('reg-price');
     els.regCancelBtn = document.getElementById('reg-cancel-btn');
+    els.regCloseXBtn = document.getElementById('reg-close-x-btn');
+    els.regModalSub = document.getElementById('reg-modal-sub');
+    els.openRegBtn = document.getElementById('open-reg-modal-btn');
 
     // Simulator Elements
     els.simPanel = document.getElementById('sim-panel');
@@ -64,6 +67,8 @@ function refreshEls() {
 // Initialize Dashboard
 async function initDashboard() {
     refreshEls();
+    closeRegistrationModal();
+    if (els.receiptModal) els.receiptModal.classList.remove('active');
 
     await fetchProducts();
     await fetchSimulatorTrolleys();
@@ -87,8 +92,31 @@ async function initDashboard() {
     }
 
     // Registration Modal Events
+    if (els.openRegBtn) els.openRegBtn.addEventListener('click', () => showRegistrationModal(''));
     if (els.regForm) els.regForm.addEventListener('submit', handleRegistration);
     if (els.regCancelBtn) els.regCancelBtn.addEventListener('click', closeRegistrationModal);
+    if (els.regCloseXBtn) els.regCloseXBtn.addEventListener('click', closeRegistrationModal);
+    if (els.regModal) {
+        els.regModal.addEventListener('click', (e) => {
+            if (e.target === els.regModal) closeRegistrationModal();
+        });
+    }
+
+    // Global keyboard & click shortcuts to guarantee modal dismissal
+    document.addEventListener('click', (e) => {
+        if (e.target.closest('#reg-cancel-btn') || e.target.closest('#reg-close-x-btn')) {
+            e.preventDefault();
+            closeRegistrationModal();
+        }
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closeRegistrationModal();
+            closeReceiptModal();
+            if (els.simPanel) els.simPanel.classList.remove('open');
+        }
+    });
 
     // Simulator Panel Toggle & Actions
     if (els.simToggleBtn) {
@@ -180,17 +208,14 @@ async function fetchDashboard() {
         State.trolleyCount = data.trolleyCount;
         State.onlineTrolleys = data.onlineTrolleys;
 
-        // Check for Unknown Scans
+        // Check for Unknown Scans (Notify via toast, do not disruptive pop-up on page load)
         if (State.feed.length > 0) {
             const latestEvent = State.feed[0];
             const now = Date.now() / 1000;
-            // If unknown scan happened within 15 seconds, and not already prompted
             if (latestEvent.actionType === 'UNKNOWN_SCAN' && 
-                (now - latestEvent.timestamp) < 15 && 
+                (now - latestEvent.timestamp) < 5 && 
                 State.lastProcessedUnknownUID !== latestEvent.uid) {
-                
                 State.lastProcessedUnknownUID = latestEvent.uid;
-                showRegistrationModal(latestEvent.uid);
             }
         }
 
@@ -511,13 +536,17 @@ function renderFeed() {
             `;
         } else if (item.actionType === 'UNKNOWN_SCAN') {
             return `
-                <div class="transaction-item" style="border-color: rgba(59, 130, 246, 0.3);">
-                    <div class="tx-icon tx-remove" style="background: rgba(59, 130, 246, 0.15); color: #3b82f6;"><i class="fa-solid fa-question"></i></div>
-                    <div class="tx-details">
-                        <h4>Unknown Card Scanned</h4>
-                        <span>UID: ${item.uid} · ${trolleyLabel} · ${timeString}</span>
+                <div class="transaction-item" style="border-color: rgba(59, 130, 246, 0.3); display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div class="tx-icon tx-remove" style="background: rgba(59, 130, 246, 0.15); color: #3b82f6;"><i class="fa-solid fa-tag"></i></div>
+                        <div class="tx-details">
+                            <h4>Unknown Card Scanned</h4>
+                            <span>UID: <b>${item.uid}</b> · ${trolleyLabel} · ${timeString}</span>
+                        </div>
                     </div>
-                    <div class="tx-amount" style="color: #3b82f6; font-size: 0.8rem;">Register needed</div>
+                    <button class="btn btn-outline btn-reg-unknown-tag" data-uid="${item.uid}" style="padding: 4px 12px; font-size: 0.8rem; background: rgba(59, 130, 246, 0.15); color: #60a5fa; border-color: rgba(59, 130, 246, 0.4); border-radius: 6px; cursor: pointer; white-space: nowrap;">
+                        <i class="fa-solid fa-plus-circle" style="margin-right: 4px;"></i> Register
+                    </button>
                 </div>
             `;
         } else if (item.actionType === 'RESET') {
@@ -545,6 +574,15 @@ function renderFeed() {
         }
         return '';
     }).join('');
+
+    // Attach click listeners to unknown tag registration buttons in the feed
+    els.feedContainer.querySelectorAll('.btn-reg-unknown-tag').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const uid = btn.getAttribute('data-uid');
+            showRegistrationModal(uid);
+        });
+    });
 }
 
 // Update ALL mode toggle buttons on the page (top bar + simulator panel)
@@ -791,10 +829,10 @@ function setupPaymentModalListeners() {
                     if (vpaLabel) vpaLabel.textContent = `${storeName} (Standee QR)`;
                     if (subLabel) subLabel.textContent = `Scan Standee QR and pay Rs.${totalAmount}`;
                 } else {
-                    const upiString = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(storeName)}&am=${totalAmount}&cu=INR&tn=SmartTrolleyBill`;
-                    upiQrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(upiString)}`;
-                    if (vpaLabel) vpaLabel.textContent = `UPI VPA: ${upiId}`;
-                    if (subLabel) subLabel.textContent = `Scan to Pay Rs.${totalAmount} (Auto-filled amount)`;
+                    // Use robust server-side generated high-contrast NPCI UPI QR code
+                    upiQrImg.src = `/api/payment/qr?amount=${totalAmount}&t=${Date.now()}`;
+                    if (vpaLabel) vpaLabel.textContent = `UPI ID: ${upiId}`;
+                    if (subLabel) subLabel.textContent = `Scan to Pay Rs.${totalAmount} with any UPI app`;
                 }
             }
         });
@@ -889,17 +927,44 @@ function setupPaymentModalListeners() {
 }
 
 // Open Product Register Modal
-function showRegistrationModal(uid) {
-    if (!els.regModal) return;
-    els.regUid.value = uid;
-    els.regName.value = '';
-    els.regPrice.value = '';
-    els.regModal.classList.add('active');
-    setTimeout(() => els.regName.focus(), 100);
+function showRegistrationModal(uid = '') {
+    const regModal = document.getElementById('register-modal');
+    if (!regModal) return;
+    refreshEls();
+    regModal.classList.add('active');
+    regModal.style.display = 'flex';
+    
+    if (els.regUid) {
+        els.regUid.value = uid || '';
+        if (uid) {
+            els.regUid.setAttribute('readonly', 'true');
+            els.regUid.classList.add('readonly-input');
+        } else {
+            els.regUid.removeAttribute('readonly');
+            els.regUid.classList.remove('readonly-input');
+        }
+    }
+    if (els.regName) els.regName.value = '';
+    if (els.regPrice) els.regPrice.value = '';
+    if (els.regModalSub) {
+        els.regModalSub.textContent = uid ? 'Unknown RFID Card Scanned' : 'Assign RFID Card to Catalog';
+    }
+    setTimeout(() => {
+        if (uid && els.regName) els.regName.focus();
+        else if (els.regUid) els.regUid.focus();
+    }, 100);
 }
 
 function closeRegistrationModal() {
-    if (els.regModal) els.regModal.classList.remove('active');
+    const regModal = document.getElementById('register-modal');
+    if (regModal) {
+        regModal.classList.remove('active');
+        regModal.style.display = 'none';
+    }
+    if (els.regModal) {
+        els.regModal.classList.remove('active');
+        els.regModal.style.display = 'none';
+    }
 }
 
 // Submit Product registration form

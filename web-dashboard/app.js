@@ -79,13 +79,10 @@ async function fetchDashboard() {
         if (State.feed.length > 0) {
             const latestEvent = State.feed[0];
             const now = Date.now() / 1000;
-            // If it's an UNKNOWN_SCAN, happened in the last 15 seconds, and we haven't processed it yet
             if (latestEvent.actionType === 'UNKNOWN_SCAN' && 
-                (now - latestEvent.timestamp) < 15 && 
+                (now - latestEvent.timestamp) < 5 && 
                 State.lastProcessedUnknownUID !== latestEvent.uid) {
-                
                 State.lastProcessedUnknownUID = latestEvent.uid;
-                showRegistrationModal(latestEvent.uid);
             }
         }
 
