@@ -333,7 +333,7 @@ void setup() {
   wm.addParameter(&custom_server_ip);
   wm.addParameter(&custom_server_port);
 
-  String apName = "SmartTrolley-" + TROLLEY_ID + "-Setup";
+  String apName = "Trolley002-Setup";
 
   // Check if RESET button is held down at startup
   bool buttonPressed = (digitalRead(RESET_BTN) == LOW || digitalRead(RESET_BTN) != resetIdleState);
@@ -344,7 +344,7 @@ void setup() {
     lcdShow("Setup Portal...", "Release Button");
     beepDouble();
     delay(1500);
-    lcdShow("Setup: Connect!", apName.substring(0, 16));
+    lcdShow("Setup: Connect!", apName);
     portalSuccess = wm.startConfigPortal(apName.c_str());
   } else {
     Serial.println(F("[WiFi] Trying saved network (8s)..."));
@@ -354,7 +354,7 @@ void setup() {
     // If autoConnect failed to connect and didn't start portal, start portal explicitly
     if (!portalSuccess && WiFi.status() != WL_CONNECTED) {
       Serial.println(F("[WiFi] Saved network unavailable. Starting Setup Portal..."));
-      lcdShow("Setup: Connect!", apName.substring(0, 16));
+      lcdShow("Setup: Connect!", apName);
       portalSuccess = wm.startConfigPortal(apName.c_str());
     }
   }
