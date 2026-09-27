@@ -12,5 +12,9 @@
     "twilioSid": "",
     "twilioAuthToken": "",
     "twilioFromPhone": "",
-    "useG1Credits": true
+    "useG1Credits": true,
+    "wifiSSID": "yogaraj",
+    "wifiPassword": "1234567890",
+    "serverIP": "10.221.37.241",
+    "serverPort": 5000
 }

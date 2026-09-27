@@ -326,7 +326,7 @@ void setup() {
   wm.setAPCallback(configModeCallback);
   wm.setSaveConfigCallback(saveConfigCallback);
   wm.setConnectTimeout(8);        // Only wait 8 seconds for saved Wi-Fi
-  wm.setConfigPortalTimeout(0);    // Stay in AP mode until configured
+  wm.setConfigPortalTimeout(25);   // Wait 25s for phone setup, then enter loop to accept USB config
 
   // Custom parameters for Flask server IP & Port
   WiFiManagerParameter custom_server_ip("server_ip", "Flask Server IP (e.g. 192.168.1.15)", serverIP, 40);

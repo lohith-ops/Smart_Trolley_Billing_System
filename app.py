@@ -2832,7 +2832,7 @@ def get_customer_profile():
 
 def serial_loop():
     global global_ser, current_mode, SERIAL_PORT
-    BAUD_RATE = 9600
+    BAUD_RATE = 115200  # Matched with ESP32 Serial.begin(115200)
     last_heartbeat_time = 0
     last_warn_time = 0
     SERIAL_TROLLEY_ID = "TROLLEY-001"  # Arduino always maps to Trolley-001
