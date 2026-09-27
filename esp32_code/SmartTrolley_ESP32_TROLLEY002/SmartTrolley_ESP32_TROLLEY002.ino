@@ -82,21 +82,6 @@ void updateApiEndpoints() {
   Serial.println("[CONFIG] API Base URL set to: " + BASE_URL);
 }
 
-void saveConfigCallback() {
-  Serial.println(F("[CONFIG] Settings saved via web portal!"));
-  shouldSaveConfig = true;
-}
-
-void configModeCallback(WiFiManager *myWiFiManager) {
-  Serial.println(F("[WiFiManager] Entered Config Portal Mode"));
-  Serial.print(F("[WiFiManager] AP IP: "));
-  Serial.println(WiFi.softAPIP());
-  Serial.print(F("[WiFiManager] AP SSID: "));
-  Serial.println(myWiFiManager->getConfigPortalSSID());
-  lcdShow("Setup: Connect!", myWiFiManager->getConfigPortalSSID().substring(0, 16));
-  beepDouble();
-}
-
 // ── Pin Definitions ────────────────────────────────────────────────────────
 const int ADD_BTN    = 13;
 const int REMOVE_BTN = 12;
@@ -160,6 +145,22 @@ void lcdShow(String line1, String line2 = "") {
     lcd.setCursor(0, 1);
     lcd.print(line2.substring(0, 16));
   }
+}
+
+// ── WiFiManager Callbacks (placed after LCD & Audio helpers) ───────────────
+void saveConfigCallback() {
+  Serial.println(F("[CONFIG] Settings saved via web portal!"));
+  shouldSaveConfig = true;
+}
+
+void configModeCallback(WiFiManager *myWiFiManager) {
+  Serial.println(F("[WiFiManager] Entered Config Portal Mode"));
+  Serial.print(F("[WiFiManager] AP IP: "));
+  Serial.println(WiFi.softAPIP());
+  Serial.print(F("[WiFiManager] AP SSID: "));
+  Serial.println(myWiFiManager->getConfigPortalSSID());
+  lcdShow("Setup: Connect!", myWiFiManager->getConfigPortalSSID().substring(0, 16));
+  beepDouble();
 }
 
 // ── Wi-Fi Reconnect ────────────────────────────────────────────────────────
