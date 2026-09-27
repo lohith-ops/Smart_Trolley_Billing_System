@@ -167,13 +167,11 @@ void reconnectWiFi() {
   if (WiFi.status() == WL_CONNECTED) return;
 
   Serial.println(F("[WiFi] Connection lost — attempting reconnect..."));
-  lcdShow("WiFi: Reconnect", "Please wait...");
-
   WiFi.reconnect();
 
   int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-    delay(500);
+  while (WiFi.status() != WL_CONNECTED && attempts < 8) {
+    delay(300);
     Serial.print(".");
     attempts++;
   }
@@ -187,10 +185,8 @@ void reconnectWiFi() {
     lcdShow("Mode: " + currentMode, "Scan card...");
   } else {
     wifiConnected = false;
-    Serial.println(F("\n[WiFi] Reconnect failed. Will retry later."));
-    lcdShow("WiFi Failed", "Retrying soon...");
-    delay(1000);
-    lcdShow("Mode: " + currentMode, "Scan card...");
+    Serial.println(F("\n[WiFi] Reconnect failed."));
+    lcdShow("Mode: " + currentMode, "WiFi Offline");
   }
 }
 
@@ -322,14 +318,14 @@ void setup() {
   updateApiEndpoints();
 
   // 4. Wi-Fi Setup using WiFiManager (On-Demand Captive Portal)
-  WiFi.mode(WIFI_STA);
-  wifi_country_t country = { .cc = "IN", .schan = 1, .nchan = 13, .policy = WIFI_COUNTRY_POLICY_AUTO };
-  esp_wifi_set_country(&country);
+  WiFi.disconnect(); // Clear any previous transient state
+  delay(100);
 
   WiFiManager wm;
   wm.setAPCallback(configModeCallback);
   wm.setSaveConfigCallback(saveConfigCallback);
-  wm.setConfigPortalTimeout(180); // 3 minutes timeout
+  wm.setConnectTimeout(8);        // Only wait 8 seconds for saved Wi-Fi
+  wm.setConfigPortalTimeout(0);    // Stay in AP mode until configured
 
   // Custom parameters for Flask server IP & Port
   WiFiManagerParameter custom_server_ip("server_ip", "Flask Server IP (e.g. 192.168.1.15)", serverIP, 40);
@@ -339,19 +335,28 @@ void setup() {
 
   String apName = "SmartTrolley-" + TROLLEY_ID + "-Setup";
 
-  // Check if RESET button is held down at startup to manually force the Portal
+  // Check if RESET button is held down at startup
+  bool buttonPressed = (digitalRead(RESET_BTN) == LOW || digitalRead(RESET_BTN) != resetIdleState);
+
   bool portalSuccess = false;
-  if (digitalRead(RESET_BTN) == LOW) {
-    Serial.println(F("[PORTAL] Reset button held during boot! Launching Setup Portal..."));
-    lcdShow("Forcing Setup...", "Release Button");
+  if (buttonPressed) {
+    Serial.println(F("[PORTAL] Button held during boot! Launching Setup Portal..."));
+    lcdShow("Setup Portal...", "Release Button");
     beepDouble();
     delay(1500);
     lcdShow("Setup: Connect!", apName.substring(0, 16));
     portalSuccess = wm.startConfigPortal(apName.c_str());
   } else {
-    Serial.println(F("[WiFi] Attempting auto-connection to saved network..."));
+    Serial.println(F("[WiFi] Trying saved network (8s)..."));
     lcdShow("Connecting WiFi", "Please wait...");
     portalSuccess = wm.autoConnect(apName.c_str());
+
+    // If autoConnect failed to connect and didn't start portal, start portal explicitly
+    if (!portalSuccess && WiFi.status() != WL_CONNECTED) {
+      Serial.println(F("[WiFi] Saved network unavailable. Starting Setup Portal..."));
+      lcdShow("Setup: Connect!", apName.substring(0, 16));
+      portalSuccess = wm.startConfigPortal(apName.c_str());
+    }
   }
 
   // If new credentials / parameters were saved via portal, write them to Flash
