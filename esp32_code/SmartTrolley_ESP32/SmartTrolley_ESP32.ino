@@ -309,17 +309,50 @@ void setup() {
     delay(2000);
   }
 
-  // 3. Load Saved Server Settings from Flash (Preferences)
+  // 3. Load Saved Server & Wi-Fi Settings from Flash (Preferences)
   preferences.begin("trolley-cfg", false);
-  String savedIP   = preferences.getString("server_ip", "10.50.17.241");
+  String savedIP   = preferences.getString("server_ip", "10.221.37.241");
   String savedPort = preferences.getString("server_port", "5000");
+  String savedSSID = preferences.getString("wifi_ssid", "");
+  String savedPass = preferences.getString("wifi_pass", "");
   savedIP.toCharArray(serverIP, sizeof(serverIP));
   savedPort.toCharArray(serverPort, sizeof(serverPort));
   preferences.end();
   updateApiEndpoints();
 
-  // 4. Wi-Fi Setup using WiFiManager (On-Demand Captive Portal)
-  WiFi.disconnect(); // Clear any previous transient state
+  // Check if RESET button is held down at startup
+  bool buttonPressed = (digitalRead(RESET_BTN) == LOW || digitalRead(RESET_BTN) != resetIdleState);
+
+  // If saved Wi-Fi exists (from Web Dashboard Option B) and RESET button NOT held, connect directly!
+  if (savedSSID.length() > 0 && !buttonPressed) {
+    Serial.println("[WiFi] Connecting to configured network: " + savedSSID);
+    lcdShow("Connecting WiFi", savedSSID.substring(0, 16));
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(savedSSID.c_str(), savedPass.c_str());
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 25) {
+      delay(300);
+      Serial.print(".");
+      attempts++;
+    }
+    if (WiFi.status() == WL_CONNECTED) {
+      wifiConnected = true;
+      Serial.println("\n[WiFi] Connected! IP: " + WiFi.localIP().toString());
+      lcdShow("WiFi Connected!", WiFi.localIP().toString());
+      beepOnce();
+      delay(1200);
+      registerWithServer();
+      sendHeartbeat();
+      delay(1000);
+      lcdShow("Mode: " + currentMode, "Scan card...");
+      return; // Fully connected wirelessly! Skip captive portal.
+    } else {
+      Serial.println(F("\n[WiFi] Could not connect to configured Wi-Fi. Entering setup mode..."));
+    }
+  }
+
+  // 4. Wi-Fi Setup using WiFiManager (On-Demand Captive Portal / Fallback)
+  WiFi.disconnect();
   delay(100);
 
   WiFiManager wm;
@@ -335,9 +368,6 @@ void setup() {
   wm.addParameter(&custom_server_port);
 
   String apName = "Trolley001-Setup";
-
-  // Check if RESET button is held down at startup
-  bool buttonPressed = (digitalRead(RESET_BTN) == LOW || digitalRead(RESET_BTN) != resetIdleState);
 
   bool portalSuccess = false;
   if (buttonPressed) {
@@ -423,6 +453,8 @@ void loop() {
         preferences.begin("trolley-cfg", false);
         preferences.putString("server_ip", serverIP);
         preferences.putString("server_port", serverPort);
+        preferences.putString("wifi_ssid", newSSID);
+        preferences.putString("wifi_pass", newPass);
         preferences.end();
         updateApiEndpoints();
 
