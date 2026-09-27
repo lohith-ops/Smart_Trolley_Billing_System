@@ -224,6 +224,81 @@ def run_tests():
     assert notif_data.get("success") is True
     print("[PASS] Notification settings retrieved successfully.")
 
+    # 25. Test Employee Registration with Email & Validation (/api/employees)
+    print("\n[TEST 25] Testing Employee Registration with Email & Validation...")
+    # Invalid email rejection
+    res = client.post("/api/employees", json={
+        "id": "E999",
+        "name": "Test Employee",
+        "email": "invalid-email-format",
+        "role": "Cashier",
+        "shift": "Morning (08:00 AM - 04:00 PM)",
+        "status": "Active"
+    }, headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 400
+    print("[PASS] Invalid employee email format correctly rejected with 400.")
+
+    # Valid registration with email
+    res = client.post("/api/employees", json={
+        "id": "E999",
+        "name": "Test Employee",
+        "email": "test.employee@smarttrolley.com",
+        "role": "Cashier",
+        "shift": "Morning (08:00 AM - 04:00 PM)",
+        "status": "Active"
+    }, headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 200
+    # Verify employee record has email
+    res_list = client.get("/api/employees")
+    assert res_list.status_code == 200
+    emp_record = next((e for e in res_list.get_json() if e["id"] == "E999"), None)
+    assert emp_record is not None
+    assert emp_record.get("email") == "test.employee@smarttrolley.com"
+    print("[PASS] Employee created with registered email successfully.")
+
+    # 26. Test Changing Employee Email (/api/employees/<emp_id>/email)
+    print("\n[TEST 26] Testing Changing Employee Email via Dedicated Endpoint...")
+    res = client.put("/api/employees/E999/email", json={"email": "new.test.email@smarttrolley.com"}, headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 200
+    assert res.get_json().get("success") is True
+    # Verify employee record has updated email
+    res_list = client.get("/api/employees")
+    emp_record = next((e for e in res_list.get_json() if e["id"] == "E999"), None)
+    assert emp_record is not None
+    assert emp_record.get("email") == "new.test.email@smarttrolley.com"
+    print("[PASS] Employee email changed and verified successfully.")
+
+    # 27. Test Updating Employee Email via /api/employees Edit POST
+    print("\n[TEST 27] Testing Updating Employee Email via Roster Edit POST...")
+    res = client.post("/api/employees", json={
+        "id": "E999",
+        "name": "Test Employee Renamed",
+        "email": "updated.employee@smarttrolley.com",
+        "role": "Cashier",
+        "shift": "Evening (04:00 PM - 12:00 AM)",
+        "status": "Active"
+    }, headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 200
+    res_list = client.get("/api/employees")
+    emp_record = next((e for e in res_list.get_json() if e["id"] == "E999"), None)
+    assert emp_record is not None
+    assert emp_record.get("email") == "updated.employee@smarttrolley.com"
+    print("[PASS] Employee email updated via roster edit successfully.")
+
+    # 28. Test Guest Session Generation (/api/auth/guest)
+    print("\n[TEST 28] Testing Guest Session Generation (/api/auth/guest)...")
+    res = client.post("/api/auth/guest")
+    assert res.status_code == 200
+    guest_data = res.get_json()
+    assert guest_data.get("success") is True
+    assert guest_data.get("token") is not None
+    assert guest_data.get("user", {}).get("role") == "guest"
+    print("[PASS] Guest session token generated successfully with 'guest' role.")
+
+    # Clean up test employee
+    client.delete("/api/employees/E999", headers={"Authorization": f"Bearer {admin_token}"})
+    client.delete("/api/auth/users/e999", headers={"Authorization": f"Bearer {admin_token}"})
+
     # Reset customer password back to default 'customer123' for subsequent tests
     client.put("/api/auth/users/customer/password", json={"password": "customer123"}, headers={"Authorization": f"Bearer {admin_token}"})
 

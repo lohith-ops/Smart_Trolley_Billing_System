@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Trolley - Digital Invoice Receipt</title>
+    <title>GECM Supermarket - Digital Invoice Receipt</title>
     <!-- Google Fonts: Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -20,27 +20,27 @@
         <!-- Receipt Sheet Container -->
         <div class="receipt-paper" id="receipt-print-area">
             <div class="receipt-header">
-                <div class="receipt-logo">SUPERMARKET POS</div>
-                <div style="font-size: 0.8rem; margin-top: 4px; color:#555;">SMART SHOPPING EXPERIENCE</div>
-                <div style="font-size: 0.8rem; color:#555;">OUTER RING ROAD, BANGALORE</div>
+                <div class="receipt-logo" id="receipt-store-name">GECM Supermarket</div>
+                <div id="receipt-store-sub" style="font-size: 0.8rem; margin-top: 4px; color:#555;">SMART TROLLEY BILLING SYSTEM</div>
+                <div id="receipt-store-address" style="font-size: 0.8rem; color:#555;">GECM CAMPUS, HASSAN</div>
             </div>
 
             <!-- Meta details -->
             <div class="receipt-line">
                 <strong>INVOICE NO:</strong>
-                <span id="invoice-no">TXN-8719280</span>
+                <span id="invoice-no">TXN-000000</span>
             </div>
             <div class="receipt-line">
                 <strong>DATE / TIME:</strong>
-                <span id="invoice-date">07/07/2026 19:15:30</span>
+                <span id="invoice-date">--/--/---- --:--:--</span>
             </div>
             <div class="receipt-line">
-                <strong>CUSTOMER ID:</strong>
-                <span id="invoice-customer">MEM-872910 (Gold)</span>
+                <strong>CUSTOMER:</strong>
+                <span id="invoice-customer">Walk-in Customer</span>
             </div>
             <div class="receipt-line">
                 <strong>TROLLEY ID:</strong>
-                <span id="invoice-trolley">Trolley-01</span>
+                <span id="invoice-trolley">Trolley #001</span>
             </div>
 
             <div class="receipt-divider"></div>
@@ -96,7 +96,7 @@
             </div>
             <div class="receipt-line" style="font-size: 0.85rem;">
                 <span>Payment Mode:</span>
-                <span>DIGITAL CARTS WALLET</span>
+                <span id="invoice-payment-mode" style="font-weight: 600;">UPI</span>
             </div>
 
             <div class="receipt-divider"></div>

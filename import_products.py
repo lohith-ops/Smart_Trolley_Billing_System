@@ -182,10 +182,10 @@ def main():
         employees_col.delete_many({})
     
     default_employees = [
-        {"id": "E001", "name": "Rohit Sharma", "role": "Admin", "shift": "Morning (08:00 AM - 04:00 PM)", "status": "Active"},
-        {"id": "E002", "name": "Ananya Sen", "role": "Manager", "shift": "Evening (04:00 PM - 12:00 AM)", "status": "Active"},
-        {"id": "E003", "name": "Vikram Malhotra", "role": "Cashier", "shift": "Morning (08:00 AM - 04:00 PM)", "status": "Active"},
-        {"id": "E004", "name": "Priya Nair", "role": "Inventory Staff", "shift": "Night (12:00 AM - 08:00 AM)", "status": "Active"}
+        {"id": "E001", "name": "Rohit Sharma", "email": "rohit.admin@smarttrolley.com", "role": "Admin", "shift": "Morning (08:00 AM - 04:00 PM)", "status": "Active"},
+        {"id": "E002", "name": "Ananya Sen", "email": "ananya.manager@smarttrolley.com", "role": "Manager", "shift": "Evening (04:00 PM - 12:00 AM)", "status": "Active"},
+        {"id": "E003", "name": "Vikram Malhotra", "email": "vikram.cashier@smarttrolley.com", "role": "Cashier", "shift": "Morning (08:00 AM - 04:00 PM)", "status": "Active"},
+        {"id": "E004", "name": "Priya Nair", "email": "priya.inventory@smarttrolley.com", "role": "Inventory Staff", "shift": "Night (12:00 AM - 08:00 AM)", "status": "Active"}
     ]
     for emp in default_employees:
         employees_col.update_one({"id": emp["id"]}, {"$set": emp}, upsert=True)

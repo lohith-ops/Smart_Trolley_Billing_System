@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
         empId: document.getElementById('emp-id'),
         empName: document.getElementById('emp-name'),
         empUsername: document.getElementById('emp-username'),
+        empEmail: document.getElementById('emp-email'),
         empRole: document.getElementById('emp-role'),
         empPassword: document.getElementById('emp-password'),
         empPassGroup: document.getElementById('emp-password-group'),
@@ -21,6 +22,15 @@ document.addEventListener('DOMContentLoaded', () => {
         empStatus: document.getElementById('emp-status'),
         cancelBtn: document.getElementById('emp-cancel-btn'),
         submitBtn: document.getElementById('emp-submit-btn'),
+
+        // Change Email Modal Elements
+        changeEmailModal: document.getElementById('change-email-modal'),
+        changeEmailForm: document.getElementById('change-email-form'),
+        changeEmailEmpId: document.getElementById('change-email-emp-id'),
+        changeEmailEmpName: document.getElementById('change-email-emp-name'),
+        changeEmailNewEmail: document.getElementById('change-email-new-email'),
+        changeEmailCancelBtn: document.getElementById('change-email-cancel-btn'),
+        changeEmailSubmitBtn: document.getElementById('change-email-submit-btn'),
 
         // Reset Password Modal Elements
         resetModal: document.getElementById('reset-password-modal'),
@@ -98,18 +108,28 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span>Login ID / User</span>
                     <span class="trolley-stat-value" style="color: var(--accent-cyan); font-weight: 600;">${loginUsername}</span>
                 </div>
+                <div class="trolley-stat-row" style="align-items: center;">
+                    <span>Registered Email</span>
+                    <span class="trolley-stat-value" style="display: inline-flex; align-items: center; gap: 6px; color: ${emp.email ? 'var(--accent-cyan)' : 'var(--text-muted)'}; font-size: 0.82rem; word-break: break-all;">
+                        <i class="${emp.email ? 'fa-solid' : 'fa-regular'} fa-envelope" style="opacity: 0.7;"></i>
+                        <span class="emp-email-text">${emp.email || '<span style="font-style: italic; opacity: 0.7;">Not registered</span>'}</span>
+                        <button type="button" class="quick-email-btn" data-id="${emp.id}" title="Change Email" style="background: rgba(6, 182, 212, 0.1); border: 1px solid rgba(6, 182, 212, 0.3); color: var(--accent-cyan); cursor: pointer; padding: 2px 6px; font-size: 0.7rem; border-radius: 4px; margin-left: 4px; transition: all 0.2s;">
+                            <i class="fa-solid fa-pen"></i>
+                        </button>
+                    </span>
+                </div>
                 <div class="trolley-stat-row">
                     <span>Roster Shift</span>
                     <span class="trolley-stat-value" style="font-size: 0.8rem;">${emp.shift}</span>
                 </div>
                 <div style="margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px;">
-                    <button class="btn btn-outline edit-emp-btn" data-id="${emp.id}" style="padding: 6px 0; font-size: 0.75rem;">
+                    <button class="btn btn-outline edit-emp-btn" data-id="${emp.id}" style="padding: 6px 0; font-size: 0.75rem;" title="Edit employee details & email">
                         <i class="fa-solid fa-pen"></i> Edit
                     </button>
-                    <button class="btn btn-outline reset-pass-btn" data-id="${emp.id}" style="padding: 6px 0; font-size: 0.75rem; border-color: rgba(6, 182, 212, 0.4); color: var(--accent-cyan);">
+                    <button class="btn btn-outline reset-pass-btn" data-id="${emp.id}" style="padding: 6px 0; font-size: 0.75rem; border-color: rgba(6, 182, 212, 0.4); color: var(--accent-cyan);" title="Reset password">
                         <i class="fa-solid fa-key"></i> Key
                     </button>
-                    <button class="btn btn-danger delete-emp-btn" data-id="${emp.id}" style="padding: 6px 0; font-size: 0.75rem;">
+                    <button class="btn btn-danger delete-emp-btn" data-id="${emp.id}" style="padding: 6px 0; font-size: 0.75rem;" title="Delete employee">
                         <i class="fa-solid fa-trash"></i> Del
                     </button>
                 </div>
@@ -122,6 +142,14 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.addEventListener('click', () => {
                 const id = btn.getAttribute('data-id');
                 openEditModal(id);
+            });
+        });
+
+        document.querySelectorAll('.quick-email-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const id = btn.getAttribute('data-id');
+                openChangeEmailModal(id);
             });
         });
 
@@ -148,6 +176,10 @@ document.addEventListener('DOMContentLoaded', () => {
         els.empId.classList.remove('readonly-input');
         els.empName.value = "";
         if (els.empUsername) els.empUsername.value = "";
+        if (els.empEmail) {
+            els.empEmail.value = "";
+            els.empEmail.readOnly = false;
+        }
         els.empRole.value = "Cashier";
         if (els.empPassword) els.empPassword.value = "";
         if (els.empPassGroup) els.empPassGroup.style.display = "block";
@@ -168,6 +200,10 @@ document.addEventListener('DOMContentLoaded', () => {
         els.empId.classList.add('readonly-input');
         els.empName.value = emp.name;
         if (els.empUsername) els.empUsername.value = emp.username || emp.name.toLowerCase().replace(/\s+/g, '') || emp.id.toLowerCase();
+        if (els.empEmail) {
+            els.empEmail.value = emp.email || "";
+            els.empEmail.readOnly = false; // Always available to change email
+        }
         els.empRole.value = emp.role;
         if (els.empPassword) els.empPassword.value = "";
         if (els.empPassGroup) els.empPassGroup.style.display = "none";
@@ -179,6 +215,55 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function closeRosterModal() {
         if (els.modal) els.modal.classList.remove('active');
+    }
+
+    // Change Email Modal
+    function openChangeEmailModal(id) {
+        if (!els.changeEmailModal) return;
+        const emp = employees.find(e => e.id === id);
+        if (!emp) return;
+
+        els.changeEmailEmpId.value = emp.id;
+        els.changeEmailEmpName.value = `${emp.name} (${emp.id})`;
+        els.changeEmailNewEmail.value = emp.email || '';
+        els.changeEmailModal.classList.add('active');
+        setTimeout(() => els.changeEmailNewEmail.focus(), 100);
+    }
+
+    function closeChangeEmailModal() {
+        if (els.changeEmailModal) els.changeEmailModal.classList.remove('active');
+    }
+
+    if (els.changeEmailForm) {
+        els.changeEmailForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const empId = els.changeEmailEmpId.value;
+            const newEmail = els.changeEmailNewEmail.value.trim();
+
+            try {
+                const res = await fetch(`/api/employees/${encodeURIComponent(empId)}/email`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: newEmail })
+                });
+
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    closeChangeEmailModal();
+                    await fetchEmployees();
+                    if (window.showToast) {
+                        window.showToast("Email Updated", data.message || `Updated registered email for ${empId}.`, "success");
+                    } else {
+                        alert(data.message || "Email updated successfully!");
+                    }
+                } else {
+                    alert(data.message || "Failed to update email.");
+                }
+            } catch (err) {
+                console.error("Email update error:", err);
+                alert("Unable to reach server to update email.");
+            }
+        });
     }
 
     // Reset Password Modal
@@ -219,6 +304,7 @@ document.addEventListener('DOMContentLoaded', () => {
             id: els.empId.value.trim(),
             name: els.empName.value.trim(),
             username: suggestedUser,
+            email: els.empEmail ? els.empEmail.value.trim() : '',
             role: els.empRole.value,
             shift: els.empShift.value,
             status: els.empStatus.value,
@@ -312,12 +398,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // Bind events
     if (els.addBtn) els.addBtn.addEventListener('click', openAddModal);
     if (els.cancelBtn) els.cancelBtn.addEventListener('click', closeRosterModal);
+    if (els.changeEmailCancelBtn) els.changeEmailCancelBtn.addEventListener('click', closeChangeEmailModal);
     if (els.resetCancelBtn) els.resetCancelBtn.addEventListener('click', closeResetPasswordModal);
     if (els.form) els.form.addEventListener('submit', handleFormSubmit);
 
     if (els.modal) {
         els.modal.addEventListener('click', (e) => {
             if (e.target === els.modal) closeRosterModal();
+        });
+    }
+
+    if (els.changeEmailModal) {
+        els.changeEmailModal.addEventListener('click', (e) => {
+            if (e.target === els.changeEmailModal) closeChangeEmailModal();
         });
     }
 

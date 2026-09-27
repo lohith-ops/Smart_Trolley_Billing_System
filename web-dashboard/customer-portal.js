@@ -29,7 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const loggedIn = window.isAuthenticated ? window.isAuthenticated() : false;
         const authUser = window.getAuthUser ? window.getAuthUser() : null;
 
-        if (loggedIn && authUser) {
+        if (loggedIn && authUser && authUser.role !== 'guest') {
             // Logged in user
             if (els.logoutBtn) els.logoutBtn.style.display = 'inline-flex';
             if (els.loginNavBtn) els.loginNavBtn.style.display = 'none';
@@ -48,6 +48,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (els.logoutBtn) els.logoutBtn.style.display = 'none';
             if (els.loginNavBtn) els.loginNavBtn.style.display = 'inline-flex';
             if (els.headerUsername) els.headerUsername.textContent = 'Guest Shopper';
+            if (els.avatarImg) els.avatarImg.src = `https://ui-avatars.com/api/?name=Guest+Shopper&background=64748b&color=fff`;
+            if (els.profileImg) els.profileImg.src = `https://ui-avatars.com/api/?name=Guest+Shopper&background=64748b&color=fff`;
             if (els.name) els.name.textContent = 'Guest Shopper';
             if (els.tier) els.tier.textContent = 'Guest Visitor';
         }
@@ -62,17 +64,17 @@ document.addEventListener('DOMContentLoaded', () => {
             if (res.ok) {
                 const profile = await res.json();
                 
-                if (authUser) {
+                if (authUser && authUser.role !== 'guest') {
                     if (els.name) els.name.textContent = authUser.name || profile.name;
                     if (els.email) els.email.textContent = authUser.email || profile.email;
                     if (els.phone) els.phone.textContent = authUser.phone || profile.phone;
+                    if (els.points) els.points.innerHTML = `<i class="fa-solid fa-award"></i> ${profile.points} Points`;
                 } else {
-                    if (els.name) els.name.textContent = profile.name;
-                    if (els.email) els.email.textContent = profile.email;
-                    if (els.phone) els.phone.textContent = profile.phone;
+                    if (els.name) els.name.textContent = 'Guest Shopper';
+                    if (els.email) els.email.textContent = 'Not registered (Guest)';
+                    if (els.phone) els.phone.textContent = 'Not registered';
+                    if (els.points) els.points.innerHTML = `<i class="fa-solid fa-award"></i> 0 Points <span style="font-size:0.75rem; font-weight:normal; opacity:0.8;">(Sign in to earn)</span>`;
                 }
-
-                if (els.points) els.points.innerHTML = `<i class="fa-solid fa-award"></i> ${profile.points} Points`;
 
                 // Render Wishlist
                 if (els.wishlist) {

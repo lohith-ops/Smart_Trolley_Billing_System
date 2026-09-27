@@ -67,6 +67,10 @@
                     <input type="text" id="emp-username" placeholder="e.g. lohi or cashier1" class="form-input" autocomplete="username">
                 </div>
                 <div class="form-group">
+                    <label>Email Address</label>
+                    <input type="email" id="emp-email" placeholder="e.g. employee@smarttrolley.com" class="form-input" autocomplete="email">
+                </div>
+                <div class="form-group">
                     <label>Assigned Role</label>
                     <select id="emp-role" required class="form-input">
                         <option value="Admin">Admin</option>
@@ -99,6 +103,36 @@
                 <div class="form-actions">
                     <button type="button" class="btn btn-outline" id="emp-cancel-btn">Cancel</button>
                     <button type="submit" class="btn btn-checkout" id="emp-submit-btn" style="background:var(--grad-primary);">Save Employee</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Change Email Modal -->
+    <div class="modal-overlay" id="change-email-modal">
+        <div class="modal-box glass-panel" style="max-width: 440px;">
+            <div class="modal-icon" style="color: var(--accent-cyan);">
+                <i class="fa-solid fa-envelope"></i>
+            </div>
+            <h2>Update Registered Email</h2>
+            <p class="modal-sub" id="change-email-modal-sub">Modify employee email address for roster & account communications</p>
+            
+            <form id="change-email-form" class="register-form" style="margin-top: 15px;">
+                <input type="hidden" id="change-email-emp-id">
+                <div class="form-group">
+                    <label>Employee Name</label>
+                    <input type="text" id="change-email-emp-name" readonly class="form-input readonly-input">
+                </div>
+                <div class="form-group">
+                    <label>Registered Email Address</label>
+                    <input type="email" id="change-email-new-email" required placeholder="e.g. employee@smarttrolley.com" class="form-input" autocomplete="email">
+                </div>
+                
+                <div class="form-actions" style="margin-top: 20px;">
+                    <button type="button" class="btn btn-outline" id="change-email-cancel-btn">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="change-email-submit-btn" style="background: var(--accent-cyan); color: #000; font-weight: 600;">
+                        <i class="fa-solid fa-check"></i> Update Email
+                    </button>
                 </div>
             </form>
         </div>

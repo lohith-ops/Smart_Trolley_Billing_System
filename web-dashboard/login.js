@@ -67,6 +67,30 @@ function initLoginPage() {
         });
     }
 
+    // 3.1 Continue as Guest Handler
+    const guestLinks = document.querySelectorAll('.guest-link');
+    guestLinks.forEach(link => {
+        link.addEventListener('click', async (e) => {
+            e.preventDefault();
+            try {
+                const res = await fetch('/api/auth/guest', { method: 'POST' });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.token && data.user) {
+                        setAuthSession(data.token, data.user);
+                    }
+                } else if (window.setGuestSession) {
+                    window.setGuestSession();
+                }
+            } catch (err) {
+                if (window.setGuestSession) {
+                    window.setGuestSession();
+                }
+            }
+            window.location.href = 'customer-portal.html';
+        });
+    });
+
     // Auto-login & clean if query params exist from previous form reload
     try {
         const urlParams = new URLSearchParams(window.location.search);

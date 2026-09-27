@@ -182,6 +182,45 @@
                     </div>
                 </div>
 
+                <!-- CUSTOMER PHONE & OTP VERIFICATION -->
+                <div class="checkout-otp-section" style="background: rgba(255,255,255,0.03); border-radius: 8px; padding: 14px; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.08); text-align: left;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                        <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                            <i class="fa-solid fa-mobile-screen-button" style="color: var(--accent-cyan);"></i> Customer Phone & OTP
+                        </span>
+                        <span id="checkout-otp-badge" style="display: none; font-size: 0.72rem; padding: 2px 6px; border-radius: 4px; background: rgba(16,185,129,0.2); color: #34d399; font-weight: 600;">
+                            <i class="fa-solid fa-check"></i> OTP Verified
+                        </span>
+                    </div>
+
+                    <!-- Phone Input Row -->
+                    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                        <div style="position: relative; flex: 1;">
+                            <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-secondary); font-size: 0.82rem;">+91</span>
+                            <input type="tel" id="checkout-customer-phone" maxlength="10" placeholder="10-digit registered mobile" style="width: 100%; box-sizing: border-box; padding: 8px 10px 8px 38px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.25); color: #fff; font-size: 0.85rem; outline: none;">
+                        </div>
+                        <button type="button" id="btn-send-checkout-otp" class="btn" style="background: var(--grad-primary); border: none; padding: 8px 12px; font-size: 0.8rem; font-weight: 600; white-space: nowrap; cursor: pointer; border-radius: 6px;">
+                            <i class="fa-solid fa-paper-plane"></i> Send OTP
+                        </button>
+                    </div>
+
+                    <!-- OTP Input Row -->
+                    <div id="checkout-otp-verify-row" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="checkout-otp-input" maxlength="6" placeholder="Enter 6-digit OTP" style="flex: 1; padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.25); color: #fff; font-size: 0.9rem; letter-spacing: 2px; text-align: center; outline: none;">
+                            <button type="button" id="btn-verify-checkout-otp" class="btn" style="background: #10b981; border: none; padding: 8px 14px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border-radius: 6px; color: #fff;">
+                                <i class="fa-solid fa-check"></i> Verify
+                            </button>
+                        </div>
+                        <div id="checkout-otp-status" style="font-size: 0.75rem; color: var(--text-secondary);"></div>
+                        <!-- Demo OTP helper banner -->
+                        <div id="checkout-demo-otp-banner" style="display: none; align-items: center; justify-content: space-between; background: rgba(6,182,212,0.1); border: 1px dashed rgba(6,182,212,0.3); border-radius: 6px; padding: 6px 10px; font-size: 0.75rem; color: var(--accent-cyan);">
+                            <span>Demo Mode OTP: <strong id="checkout-demo-otp-val" style="font-size:0.85rem; letter-spacing:1px;">------</strong></span>
+                            <button type="button" id="checkout-demo-otp-fill" style="background:none; border:none; color:#fff; cursor:pointer; text-decoration:underline; font-size:0.72rem;">Auto-fill</button>
+                        </div>
+                    </div>
+                </div>
+
                 <div style="display: flex; gap: 10px; width: 100%;">
                     <button class="btn btn-outline btn-cancel-bill" style="flex: 1;">Cancel Bill</button>
                     <button class="btn btn-checkout" id="btn-proceed-to-payment" style="flex: 1; background: var(--grad-primary);">Proceed to Pay</button>
@@ -256,6 +295,9 @@
                     <span style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 4px;">Billed Grand Total</span>
                     <h1 id="success-billed-amount" style="color: var(--accent-green); font-size: 2.2rem; font-weight: bold; margin: 0;">Rs.0.00</h1>
                     <span id="success-payment-method" style="font-size: 0.8rem; font-weight:600; color:var(--text-secondary); margin-top: 8px; display:inline-block; background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px; text-transform: uppercase;">PAID VIA UPI</span>
+                    <div id="success-sms-notice" style="display: none; font-size: 0.8rem; color: var(--accent-cyan); margin-top: 10px; align-items: center; justify-content: center; gap: 6px;">
+                        <i class="fa-solid fa-paper-plane"></i> <span id="success-sms-text">Digital receipt SMS sent to registered phone</span>
+                    </div>
                 </div>
 
                 <div style="display: flex; gap: 12px; justify-content: center; width: 100%;">

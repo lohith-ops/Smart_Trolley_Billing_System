@@ -69,25 +69,18 @@ function renderTransactions(list) {
         const totalItemsCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
         const row = document.createElement('tr');
+        const receiptUrl = `receipt.html?timestamp=${tx.timestamp}&id=${tx.transaction_id || tx._id || ''}`;
         row.innerHTML = `
             <td>${dateStr}</td>
             <td>${totalItemsCount} item(s)</td>
             <td style="font-weight:600; color:var(--accent-green);">Rs.${tx.total.toFixed(2)}</td>
             <td style="text-align: right;">
-                <button class="btn btn-outline view-receipt-btn" data-idx="${idx}"><i class="fa-solid fa-receipt"></i> View Receipt</button>
+                <a href="${receiptUrl}" target="_blank" class="btn btn-checkout" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; padding: 6px 14px;">
+                    <i class="fa-solid fa-file-invoice"></i> View Receipt
+                </a>
             </td>
         `;
         els.transactionsList.appendChild(row);
-    });
-
-    // Add button listeners
-    document.querySelectorAll('.view-receipt-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const idx = btn.getAttribute('data-idx');
-            // Check if we are using the filtered list
-            const currentList = els.txSearch.value.trim() ? getFilteredList() : Transactions;
-            openReceiptModal(currentList[idx]);
-        });
     });
 }
 
@@ -112,7 +105,19 @@ function filterTransactions() {
 
 // Open Receipt details overlay
 function openReceiptModal(tx) {
-    if (!els.receiptModal) return;
+    if (!tx) return;
+    const receiptUrl = `receipt.html?timestamp=${tx.timestamp}&id=${tx.transaction_id || tx._id || ''}`;
+
+    // Update full receipt button if modal is used
+    const fullBtn = document.getElementById('modal-full-receipt-btn');
+    if (fullBtn) {
+        fullBtn.href = receiptUrl;
+    }
+
+    if (!els.receiptModal) {
+        window.open(receiptUrl, '_blank');
+        return;
+    }
 
     const d = new Date(tx.timestamp * 1000);
     els.receiptDate.textContent = d.toLocaleDateString() + ' · ' + d.toLocaleTimeString();

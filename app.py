@@ -49,7 +49,7 @@ def load_config():
     defaults = {
         "serialPort": "COM3",
         "upiId": "smartsupermarket@okaxis",
-        "storeName": "Smart Supermarket",
+        "storeName": "GECM Supermarket",
         "useCustomQr": False,
         "customQrImage": "",
         "smtpServer": "smtp.gmail.com",
@@ -260,6 +260,7 @@ try:
     trolleys_collection     = db['trolleys']
     users_collection        = db['users']
     password_resets_collection = db['password_resets']
+    otp_verifications_collection = db['otp_verifications']
     mongo_ok = True
     print("[DB] Connected to local MongoDB successfully.")
 except Exception as e:
@@ -273,6 +274,7 @@ except Exception as e:
     trolleys_collection     = db['trolleys']
     users_collection        = db['users']
     password_resets_collection = db['password_resets']
+    otp_verifications_collection = db['otp_verifications']
 
     # Seed default products into mock database
     defaults = [
@@ -356,18 +358,27 @@ def init_users():
             if emp_id:
                 usernames_to_check.append(emp_id.lower())
 
+            emp_email = (emp.get("email") or "").strip().lower()
+
             for uname in usernames_to_check:
-                if uname and not users_collection.find_one({"username": uname}):
-                    default_pw = f"{uname}123"
-                    users_collection.insert_one({
-                        "username":      uname,
-                        "password_hash": generate_password_hash(default_pw),
-                        "name":          emp_name or uname,
-                        "role":          emp_role,
-                        "status":        emp.get("status", "Active"),
-                        "created_at":    time.time()
-                    })
-                    print(f"[AUTH] Auto-synced employee account: {uname} (Role: {emp_role}, Initial PW: {default_pw})")
+                if uname:
+                    existing_user = users_collection.find_one({"username": uname})
+                    if not existing_user:
+                        default_pw = f"{uname}123"
+                        user_doc = {
+                            "username":      uname,
+                            "password_hash": generate_password_hash(default_pw),
+                            "name":          emp_name or uname,
+                            "role":          emp_role,
+                            "status":        emp.get("status", "Active"),
+                            "created_at":    time.time()
+                        }
+                        if emp_email:
+                            user_doc["email"] = emp_email
+                        users_collection.insert_one(user_doc)
+                        print(f"[AUTH] Auto-synced employee account: {uname} (Role: {emp_role}, Initial PW: {default_pw})")
+                    elif emp_email and not existing_user.get("email"):
+                        users_collection.update_one({"username": uname}, {"$set": {"email": emp_email}})
     except Exception as ex:
         print(f"[AUTH WARN] Error auto-syncing employee accounts: {ex}")
 
@@ -866,6 +877,22 @@ def auth_signup():
         }
     })
 
+@app.route("/api/auth/guest", methods=["POST", "GET"])
+def auth_guest():
+    """Generates an instant guest session token for shoppers continuing as guest."""
+    guest_user = {
+        "username": "guest",
+        "name":     "Guest Shopper",
+        "role":     "guest",
+        "email":    ""
+    }
+    token = generate_token(guest_user)
+    return jsonify({
+        "success": True,
+        "token":   token,
+        "user":    guest_user
+    })
+
 @app.route("/api/auth/register", methods=["POST"])
 @require_auth(roles=["admin"])
 def auth_register():
@@ -1003,6 +1030,42 @@ def auth_change_own_password():
 @app.route("/api/auth/logout", methods=["POST"])
 def auth_logout():
     return jsonify({"success": True, "message": "Logged out successfully."})
+
+@app.route("/api/auth/profile", methods=["PUT"])
+@require_auth()
+def auth_update_profile():
+    """Endpoint for any logged-in user or employee to update their own profile (including email)."""
+    data = request.json or {}
+    email = (data.get("email") or "").strip().lower()
+    name = (data.get("name") or "").strip()
+    phone = (data.get("phone") or "").strip()
+
+    if email and not EMAIL_REGEX.match(email):
+        return jsonify({"success": False, "message": "Please enter a valid email address."}), 400
+
+    username = request.current_user["username"]
+    user = users_collection.find_one({"username": username})
+    if not user:
+        return jsonify({"success": False, "message": "User account not found."}), 404
+
+    update_fields = {"updated_at": time.time()}
+    if email:
+        update_fields["email"] = email
+    if name:
+        update_fields["name"] = name
+    if phone:
+        update_fields["phone"] = phone
+
+    users_collection.update_one({"username": username}, {"$set": update_fields})
+
+    # If this user is also an employee in db['employees'], sync email there as well
+    if email:
+        db['employees'].update_many(
+            {"$or": [{"username": username}, {"id": {"$regex": f"^{re.escape(username)}$", "$options": "i"}}]},
+            {"$set": {"email": email}}
+        )
+
+    return jsonify({"success": True, "message": "Profile updated successfully.", "email": email})
 
 def find_user_by_identifier(identifier):
     """Finds a user by username, email, or phone number."""
@@ -1162,14 +1225,14 @@ def send_otp_sms(to_phone, otp_code):
                     return True, "SMS sent via Fast2SMS."
                 else:
                     err_msg = res_json.get("message", "Unknown error from Fast2SMS")
-                    print(f"[SMS ERROR Fast2SMS] ❌ Fast2SMS returned error: {err_msg}")
+                    print(f"[SMS ERROR Fast2SMS] Fast2SMS returned error: {err_msg}")
         except urllib.error.HTTPError as e:
             try:
                 err_body = e.read().decode('utf-8')
-                print(f"[SMS ERROR Fast2SMS] ❌ HTTP {e.code}: {err_body}")
+                print(f"[SMS ERROR Fast2SMS] HTTP {e.code}: {err_body}")
                 return False, err_body
             except Exception:
-                print(f"[SMS ERROR Fast2SMS] ❌ HTTP {e.code}")
+                print(f"[SMS ERROR Fast2SMS] HTTP {e.code}")
                 return False, f"HTTP {e.code}"
         except Exception as e:
             print(f"[SMS ERROR Fast2SMS] Failed sending SMS to {phone_digits}: {e}")
@@ -1196,6 +1259,73 @@ def send_otp_sms(to_phone, otp_code):
             print(f"[SMS ERROR Twilio] Failed sending SMS to {to_phone}: {e}")
 
     print(f"[SMS INFO] SMS Gateway not configured in Settings/Env. Code for phone {phone_digits}: {otp_code}")
+    return False, "SMS Gateway not configured."
+
+def send_bill_sms(to_phone, txn_id, total, items_count):
+    """Sends bill confirmation and receipt link to customer via SMS."""
+    if not to_phone:
+        return False, "No phone number provided."
+    cfg = load_config()
+    store_name = cfg.get("storeName", "Smart Supermarket")
+    phone_digits = re.sub(r'\D', '', to_phone)
+    if len(phone_digits) > 10 and phone_digits.startswith("91"):
+        phone_digits = phone_digits[2:]
+
+    message_text = f"Thank you for shopping at {store_name}! Your bill of Rs.{total:.2f} ({items_count} items) is paid. Receipt ID: {txn_id}"
+
+    fast2sms_key = (cfg.get("fast2smsApiKey") or os.environ.get("FAST2SMS_API_KEY", "")).strip()
+    twilio_sid   = (cfg.get("twilioSid") or os.environ.get("TWILIO_ACCOUNT_SID", "")).strip()
+    twilio_token = (cfg.get("twilioAuthToken") or os.environ.get("TWILIO_AUTH_TOKEN", "")).strip()
+    twilio_from  = (cfg.get("twilioFromPhone") or os.environ.get("TWILIO_PHONE_NUMBER", "")).strip()
+
+    # 1. Fast2SMS Provider
+    if fast2sms_key:
+        try:
+            url = "https://www.fast2sms.com/dev/bulkV2"
+            payload = json.dumps({
+                "route": "v3",
+                "sender_id": "TXTIND",
+                "message": message_text,
+                "language": "english",
+                "flash": 0,
+                "numbers": phone_digits
+            }).encode('utf-8')
+            req = urllib.request.Request(
+                url,
+                data=payload,
+                headers={
+                    "authorization": fast2sms_key,
+                    "Content-Type": "application/json"
+                }
+            )
+            with urllib.request.urlopen(req, timeout=10) as response:
+                res_body = response.read().decode('utf-8')
+                print(f"[SMS BILL Fast2SMS] ✅ Sent bill SMS to {phone_digits}: {res_body}")
+                return True, "Bill SMS sent via Fast2SMS."
+        except Exception as e:
+            print(f"[SMS ERROR Fast2SMS] Failed sending bill SMS to {phone_digits}: {e}")
+
+    # 2. Twilio Provider
+    if twilio_sid and twilio_token and twilio_from:
+        try:
+            url = f"https://api.twilio.com/2010-04-01/Accounts/{twilio_sid}/Messages.json"
+            to_formatted = f"+91{phone_digits}" if not to_phone.startswith("+") else to_phone
+            data = urllib.parse.urlencode({
+                "To": to_formatted,
+                "From": twilio_from,
+                "Body": message_text
+            }).encode('utf-8')
+            req = urllib.request.Request(url, data=data)
+            auth_header = "Basic " + base64.b64encode(f"{twilio_sid}:{twilio_token}".encode('utf-8')).decode('utf-8')
+            req.add_header("Authorization", auth_header)
+            with urllib.request.urlopen(req, timeout=8) as response:
+                res_body = response.read().decode('utf-8')
+                print(f"[SMS BILL Twilio] ✅ Sent bill SMS to {to_formatted}: {res_body}")
+                return True, "Bill SMS sent via Twilio."
+        except Exception as e:
+            print(f"[SMS ERROR Twilio] Failed sending bill SMS to {to_phone}: {e}")
+
+    print(f"[SMS INFO] SMS Gateway not configured. Bill receipt SMS for {phone_digits}: Rs.{total:.2f}")
     return False, "SMS Gateway not configured."
 
 @app.route("/api/auth/forgot-password/request", methods=["POST"])
@@ -1578,11 +1708,159 @@ def cancel_bill():
     })
     return jsonify({"success": True, "message": "Bill cancelled, cart returned to scanning", "total": total})
 
+@app.route("/api/cart/request-otp", methods=["POST"])
+def request_checkout_otp():
+    """Generates and sends an OTP to customer's registered phone number for checkout verification."""
+    data = request.json or {}
+    trolley_id = data.get("trolley_id", "TROLLEY-001")
+    phone = (data.get("phone") or "").strip()
+
+    # Check cart
+    cart_id = _trolley_cart_id(trolley_id)
+    cart = carts_collection.find_one({"_id": cart_id})
+    if not cart or cart.get("itemsContained", 0) == 0:
+        return jsonify({"success": False, "message": "Cart is empty — please scan items first."}), 400
+
+    # If phone not provided, check if user is logged in
+    auth_header = request.headers.get("Authorization", "")
+    if not phone and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+        decoded = decode_token(token)
+        if decoded and decoded.get("sub"):
+            user = users_collection.find_one({"username": decoded["sub"]})
+            if user:
+                phone = user.get("phone", "").strip()
+
+    if not phone:
+        return jsonify({"success": False, "message": "Please enter a valid registered phone number."}), 400
+
+    phone_digits = re.sub(r'\D', '', phone)
+    if len(phone_digits) > 10 and phone_digits.startswith("91"):
+        phone_digits = phone_digits[2:]
+    if len(phone_digits) != 10:
+        return jsonify({"success": False, "message": "Phone number must be a valid 10-digit number."}), 400
+
+    # Generate 6-digit numeric OTP
+    otp = f"{random.randint(100000, 999999)}"
+    expires_at = time.time() + 600  # 10 minutes
+
+    # Store OTP in database
+    otp_verifications_collection.delete_many({"trolley_id": trolley_id})
+    otp_verifications_collection.insert_one({
+        "trolley_id": trolley_id,
+        "phone":      phone_digits,
+        "otp":        otp,
+        "expires_at": expires_at,
+        "created_at": time.time(),
+        "attempts":   0
+    })
+
+    # Dispatch SMS in background
+    threading.Thread(target=send_otp_sms, args=(phone_digits, otp), daemon=True).start()
+
+    masked_phone = f"******{phone_digits[-4:]}" if len(phone_digits) >= 4 else phone_digits
+
+    return jsonify({
+        "success":      True,
+        "message":      f"Verification code sent to {masked_phone}.",
+        "trolley_id":   trolley_id,
+        "masked_phone": masked_phone,
+        "otp":          otp  # Demo mode fallback
+    })
+
+@app.route("/api/cart/verify-and-pay", methods=["POST"])
+def verify_and_pay():
+    """Verifies OTP sent to customer's phone and executes payment/checkout."""
+    data = request.json or {}
+    trolley_id     = data.get("trolley_id", "TROLLEY-001")
+    otp            = (data.get("otp") or "").strip()
+    payment_method = data.get("paymentMethod", "UPI")
+    phone          = (data.get("phone") or "").strip()
+
+    # Look up OTP record
+    otp_record = otp_verifications_collection.find_one({"trolley_id": trolley_id})
+    if not otp_record:
+        return jsonify({"success": False, "message": "No active OTP request found for this trolley. Please click 'Send OTP' first."}), 400
+
+    if time.time() > otp_record.get("expires_at", 0):
+        otp_verifications_collection.delete_many({"trolley_id": trolley_id})
+        return jsonify({"success": False, "message": "Verification code has expired. Please request a new OTP."}), 400
+
+    if otp_record.get("attempts", 0) >= 5:
+        otp_verifications_collection.delete_many({"trolley_id": trolley_id})
+        return jsonify({"success": False, "message": "Too many invalid attempts. Please request a new verification code."}), 429
+
+    if otp_record.get("otp") != otp:
+        otp_verifications_collection.update_one({"trolley_id": trolley_id}, {"$set": {"attempts": otp_record.get("attempts", 0) + 1}})
+        return jsonify({"success": False, "message": "Invalid OTP code. Please check and try again."}), 400
+
+    # OTP is verified! Proceed to checkout
+    cart_id = _trolley_cart_id(trolley_id)
+    cart = carts_collection.find_one({"_id": cart_id})
+    if not cart or cart.get("itemsContained", 0) == 0:
+        return jsonify({"success": False, "message": "Cart is empty — scan items first"}), 400
+
+    saved_items = dict(cart["items"])
+    total       = cart["total"]
+    timestamp   = time.time()
+    phone_used  = phone or otp_record.get("phone", "")
+
+    txn_res = transactions_collection.insert_one({
+        "trolley_id":    trolley_id,
+        "items":         saved_items,
+        "total":         total,
+        "paymentMethod": payment_method,
+        "customerPhone": phone_used,
+        "timestamp":     timestamp
+    })
+    txn_id = str(txn_res.inserted_id)
+
+    carts_collection.update_one({"_id": cart_id}, {
+        "$set": {
+            "items":          {},
+            "total":          0.0,
+            "itemsContained": 0,
+            "status":         "ACTIVE",
+            "lastActive":     f"Paid via {payment_method} (Verified)"
+        }
+    })
+    trolleys_collection.update_one({"_id": trolley_id}, {
+        "$set": {"cart_value": 0.0, "item_count": 0}
+    })
+    db['feed'].insert_one({
+        "actionType":    "CHECKOUT",
+        "total":         total,
+        "paymentMethod": payment_method,
+        "customerPhone": phone_used,
+        "trolley_id":    trolley_id,
+        "timestamp":     timestamp
+    })
+    send_command_to_arduino("LCD:Checked Out!|Total: Rs.0.00")
+    send_command_to_arduino("BEEP:2")
+
+    # Invalidate verified OTP
+    otp_verifications_collection.delete_many({"trolley_id": trolley_id})
+
+    # Dispatch Bill receipt SMS
+    if phone_used:
+        threading.Thread(target=send_bill_sms, args=(phone_used, txn_id, total, len(saved_items)), daemon=True).start()
+
+    return jsonify({
+        "success":        True,
+        "message":        "OTP verified and payment successful!",
+        "transaction_id": txn_id,
+        "trolley_id":     trolley_id,
+        "total":          total,
+        "items":          saved_items,
+        "timestamp":      timestamp
+    })
+
 @app.route("/api/cart/pay", methods=["POST"])
 def pay_bill():
     data = request.json or {}
     trolley_id     = data.get("trolley_id", "TROLLEY-001")
     payment_method = data.get("paymentMethod", "UPI")
+    phone          = (data.get("phone") or data.get("customerPhone") or "").strip()
 
     cart_id = _trolley_cart_id(trolley_id)
     cart = carts_collection.find_one({"_id": cart_id})
@@ -1593,13 +1871,15 @@ def pay_bill():
     total       = cart["total"]
     timestamp   = time.time()
 
-    transactions_collection.insert_one({
+    txn_res = transactions_collection.insert_one({
         "trolley_id":    trolley_id,
         "items":         saved_items,
         "total":         total,
         "paymentMethod": payment_method,
+        "customerPhone": phone,
         "timestamp":     timestamp
     })
+    txn_id = str(txn_res.inserted_id)
 
     carts_collection.update_one({"_id": cart_id}, {
         "$set": {
@@ -1617,19 +1897,25 @@ def pay_bill():
         "actionType":    "CHECKOUT",
         "total":         total,
         "paymentMethod": payment_method,
+        "customerPhone": phone,
         "trolley_id":    trolley_id,
         "timestamp":     timestamp
     })
     send_command_to_arduino("LCD:Checked Out!|Total: Rs.0.00")
     send_command_to_arduino("BEEP:2")
 
+    # Send receipt SMS if phone provided
+    if phone:
+        threading.Thread(target=send_bill_sms, args=(phone, txn_id, total, len(saved_items)), daemon=True).start()
+
     return jsonify({
-        "success":   True,
-        "message":   "Payment successful",
-        "trolley_id": trolley_id,
-        "total":     total,
-        "items":     saved_items,
-        "timestamp": timestamp
+        "success":        True,
+        "message":        "Payment successful",
+        "transaction_id": txn_id,
+        "trolley_id":     trolley_id,
+        "total":          total,
+        "items":          saved_items,
+        "timestamp":      timestamp
     })
 
 # Backward-compat alias
@@ -1986,7 +2272,7 @@ def get_payment_settings():
     return jsonify({
         "success":       True,
         "upiId":         cfg.get("upiId", "smartsupermarket@okaxis"),
-        "storeName":     cfg.get("storeName", "Smart Supermarket"),
+        "storeName":     cfg.get("storeName", "GECM Supermarket"),
         "useCustomQr":   bool(cfg.get("useCustomQr", False)),
         "customQrImage": cfg.get("customQrImage", "")
     })
@@ -1996,8 +2282,8 @@ def get_payment_qr():
     """Generates official high-contrast NPCI UPI QR code image."""
     amount = request.args.get("amount", "0.00")
     cfg = load_config()
-    upi_id = (cfg.get("upiId") or "lohith@okaxis").strip()
-    store_name = (cfg.get("storeName") or "Lohith Supermarket").strip()
+    upi_id = (cfg.get("upiId") or "9353180038@ybl").strip()
+    store_name = (cfg.get("storeName") or "GECM Supermarket").strip()
 
     upi_url = f"upi://pay?pa={upi_id}&pn={urllib.parse.quote(store_name)}&am={amount}&cu=INR&tn=SmartTrolleyBill"
 
@@ -2225,12 +2511,16 @@ def save_employee():
     status = data.get("status", "Active")
     password = data.get("password") or ""
     username = (data.get("username") or emp_id.lower()).strip().lower()
+    email = (data.get("email") or "").strip().lower()
 
     if not emp_id or not name:
         return jsonify({"success": False, "message": "Employee ID and Full Name are required."}), 400
 
     if len(name) < 2:
         return jsonify({"success": False, "message": "Employee name must be at least 2 characters long."}), 400
+
+    if email and not EMAIL_REGEX.match(email):
+        return jsonify({"success": False, "message": "Please enter a valid email address (e.g. employee@smarttrolley.com)."}), 400
 
     if role.lower() not in ["admin", "manager", "cashier"]:
         return jsonify({"success": False, "message": "Role must be Admin, Manager, or Cashier."}), 400
@@ -2244,6 +2534,7 @@ def save_employee():
             "id":       emp_id,
             "username": username,
             "name":     name,
+            "email":    email,
             "role":     role,
             "shift":    shift,
             "status":   status
@@ -2256,33 +2547,84 @@ def save_employee():
     if user_role not in ["admin", "manager", "cashier", "customer"]:
         user_role = "cashier"
 
+    user_update_fields = {
+        "username":      username,
+        "name":          name,
+        "role":          user_role,
+        "status":        status,
+        "email":         email,
+        "updated_at":    time.time()
+    }
+
     if password:
+        user_update_fields["password_hash"] = generate_password_hash(password)
         users_collection.update_one(
             {"username": username},
-            {"$set": {
-                "username":      username,
-                "password_hash": generate_password_hash(password),
-                "name":          name,
-                "role":          user_role,
-                "status":        status,
-                "updated_at":    time.time()
-            }},
+            {"$set": user_update_fields},
             upsert=True
         )
     else:
         existing_user = users_collection.find_one({"username": username})
         if not existing_user:
             default_pw = f"{username}123"
-            users_collection.insert_one({
+            new_user_doc = {
                 "username":      username,
                 "password_hash": generate_password_hash(default_pw),
                 "name":          name,
                 "role":          user_role,
                 "status":        status,
+                "email":         email,
                 "created_at":    time.time()
-            })
+            }
+            users_collection.insert_one(new_user_doc)
+        else:
+            users_collection.update_one(
+                {"username": username},
+                {"$set": user_update_fields}
+            )
 
     return jsonify({"success": True, "message": f"Employee {name} ({emp_id}) saved successfully."})
+
+@app.route("/api/employees/<emp_id>/email", methods=["PUT"])
+@require_auth(roles=["admin", "manager"])
+def update_employee_email(emp_id):
+    """Admin/Manager endpoint to update an employee's registered email address."""
+    emp_id = (emp_id or "").strip().upper()
+    data = request.json or {}
+    email = (data.get("email") or "").strip().lower()
+
+    if email and not EMAIL_REGEX.match(email):
+        return jsonify({"success": False, "message": "Please enter a valid email address (e.g. employee@smarttrolley.com)."}), 400
+
+    employees_collection = db["employees"]
+    emp = employees_collection.find_one({"id": emp_id})
+    if not emp:
+        return jsonify({"success": False, "message": f"Employee '{emp_id}' not found."}), 404
+
+    employees_collection.update_one(
+        {"id": emp_id},
+        {"$set": {"email": email}}
+    )
+
+    # Sync to users_collection for this employee
+    target_username = emp.get("username", emp_id.lower()).lower()
+    users_collection.update_many(
+        {"$or": [
+            {"username": target_username},
+            {"username": emp_id.lower()}
+        ]},
+        {"$set": {"email": email, "updated_at": time.time()}}
+    )
+
+    db['feed'].insert_one({
+        "actionType": "EMPLOYEE_EMAIL_UPDATE",
+        "employee_id": emp_id,
+        "email": email,
+        "updated_by": request.current_user.get("username", "admin"),
+        "timestamp": time.time()
+    })
+
+    return jsonify({"success": True, "message": f"Email for employee {emp.get('name', emp_id)} ({emp_id}) updated successfully.", "email": email})
 
 @app.route("/api/employees/<emp_id>/password", methods=["PUT"])
 @require_auth(roles=["admin"])

@@ -5,12 +5,13 @@
 const AUTH_CONFIG = {
     TOKEN_KEY: 'smart_trolley_jwt_token',
     USER_KEY:  'smart_trolley_user_profile',
-    PUBLIC_PAGES: ['login.html', 'register.html', 'receipt.html'],
+    PUBLIC_PAGES: ['login.html', 'register.html', 'receipt.html', 'customer-portal.html', 'product-search.html', 'navigation.html', 'feedback.html'],
     ROLE_PERMISSIONS: {
         'admin': ['*'],
         'manager': ['index.html', 'trolleys.html', 'trolley-monitor.html', 'inventory.html', 'transactions.html', 'analytics.html', 'reports.html', 'feedback.html', 'customer-portal.html', 'product-search.html', 'navigation.html', 'receipt.html'],
         'cashier': ['index.html', 'trolleys.html', 'trolley-monitor.html', 'transactions.html', 'feedback.html', 'customer-portal.html', 'product-search.html', 'navigation.html', 'receipt.html'],
-        'customer': ['customer-portal.html', 'product-search.html', 'navigation.html', 'feedback.html', 'receipt.html']
+        'customer': ['customer-portal.html', 'product-search.html', 'navigation.html', 'feedback.html', 'receipt.html'],
+        'guest': ['customer-portal.html', 'product-search.html', 'navigation.html', 'feedback.html', 'receipt.html']
     }
 };
 
@@ -185,15 +186,27 @@ async function authFetch(url, options = {}) {
         const allowedPages = AUTH_CONFIG.ROLE_PERMISSIONS[user.role] || [];
         if (!allowedPages.includes('*') && !allowedPages.includes(currentPath)) {
             alert(`Access Denied: Your account role (${user.role.toUpperCase()}) does not have permission to view ${currentPath}.`);
-            window.location.href = (user.role === 'customer') ? 'customer-portal.html' : 'index.html';
+            window.location.href = (user.role === 'customer' || user.role === 'guest') ? 'customer-portal.html' : 'index.html';
         }
     }
 })();
+
+/**
+ * Sets guest session profile
+ */
+function setGuestSession(token, user) {
+    const guestUser = user || { name: 'Guest Shopper', role: 'guest', username: 'guest' };
+    localStorage.setItem(AUTH_CONFIG.USER_KEY, JSON.stringify(guestUser));
+    if (token) {
+        localStorage.setItem(AUTH_CONFIG.TOKEN_KEY, token);
+    }
+}
 
 // Export helpers to global window
 window.getAuthToken = getAuthToken;
 window.getAuthUser = getAuthUser;
 window.isAuthenticated = isAuthenticated;
 window.setAuthSession = setAuthSession;
+window.setGuestSession = setGuestSession;
 window.logoutUser = logoutUser;
 window.authFetch = authFetch;

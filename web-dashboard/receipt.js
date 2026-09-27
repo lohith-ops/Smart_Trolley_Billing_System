@@ -5,11 +5,17 @@
 document.addEventListener('DOMContentLoaded', () => {
     let transaction = null;
 
+    let currentStoreName = "GECM Supermarket";
+    let currentStoreAddress = "GECM CAMPUS, HASSAN";
+
     const els = {
+        storeName: document.getElementById('receipt-store-name'),
+        storeAddress: document.getElementById('receipt-store-address'),
         invoiceNo: document.getElementById('invoice-no'),
         invoiceDate: document.getElementById('invoice-date'),
         invoiceCustomer: document.getElementById('invoice-customer'),
         invoiceTrolley: document.getElementById('invoice-trolley'),
+        paymentMode: document.getElementById('invoice-payment-mode'),
         itemsBody: document.getElementById('invoice-items-body'),
         qtyTotal: document.getElementById('invoice-qty-total'),
         subtotal: document.getElementById('invoice-subtotal'),
@@ -22,31 +28,59 @@ document.addEventListener('DOMContentLoaded', () => {
         btnPdf: document.getElementById('btn-pdf-receipt')
     };
 
-    // Load invoice
+    // Load invoice and store settings
     async function loadInvoice() {
         const urlParams = new URLSearchParams(window.location.search);
         const timestamp = parseFloat(urlParams.get('timestamp'));
+        const txId = urlParams.get('id');
 
-        if (!isNaN(timestamp)) {
-            try {
-                const res = await fetch('/api/transactions');
-                if (res.ok) {
-                    const txs = await res.json();
-                    transaction = txs.find(t => Math.abs(t.timestamp - timestamp) < 1.0);
+        // Fetch store settings for store name
+        try {
+            const setRes = await fetch('/api/settings/payment');
+            if (setRes.ok) {
+                const setData = await setRes.json();
+                if (setData.storeName) {
+                    currentStoreName = setData.storeName;
                 }
-            } catch (e) {
-                console.error("Failed to load matching transaction for receipt:", e);
             }
+        } catch (e) {
+            console.warn("Could not fetch store settings:", e);
         }
 
-        // Fallback to mock invoice if not found
+        if (els.storeName) els.storeName.textContent = currentStoreName;
+        if (els.storeAddress) els.storeAddress.textContent = currentStoreAddress;
+        document.title = `${currentStoreName} - Digital Invoice Receipt`;
+
+        try {
+            const res = await fetch('/api/transactions');
+            if (res.ok) {
+                const txs = await res.json();
+                if (txs && txs.length > 0) {
+                    if (txId) {
+                        transaction = txs.find(t => t.transaction_id === txId || t._id === txId);
+                    }
+                    if (!transaction && !isNaN(timestamp)) {
+                        transaction = txs.find(t => Math.abs(t.timestamp - timestamp) < 3.0);
+                    }
+                    // If no timestamp or not matched, default to the most recent transaction
+                    if (!transaction && (isNaN(timestamp) || !urlParams.has('timestamp'))) {
+                        transaction = txs[0];
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("Failed to load matching transaction for receipt:", e);
+        }
+
+        // Fallback to mock invoice if not found and no transactions exist in DB
         if (!transaction) {
             transaction = {
                 timestamp: Date.now() / 1000,
-                total: 170.00,
+                total: 60.00,
+                paymentMethod: "UPI",
+                trolley_id: "TROLLEY-001",
                 items: {
-                    "5C1E7E05": { name: "Rice 1kg", price: 60.00, quantity: 2, subtotal: 120.00 },
-                    "11223344": { name: "Milk (1 Gallon)", price: 50.00, quantity: 1, subtotal: 50.00 }
+                    "5C1E7E05": { name: "Rice 1kg", price: 60.00, quantity: 1, subtotal: 60.00 }
                 }
             };
         }
@@ -61,10 +95,17 @@ document.addEventListener('DOMContentLoaded', () => {
         // Construct transaction/invoice hash ID based on timestamp
         const txHash = `TXN-${Math.floor(transaction.timestamp)}`;
         
-        els.invoiceNo.textContent = txHash;
-        els.invoiceDate.textContent = dateString;
+        if (els.storeName) els.storeName.textContent = currentStoreName;
+        if (els.invoiceNo) els.invoiceNo.textContent = txHash;
+        if (els.invoiceDate) els.invoiceDate.textContent = dateString;
+        if (els.invoiceCustomer) {
+            els.invoiceCustomer.textContent = transaction.customerPhone ? `+91 ${transaction.customerPhone}` : 'Walk-in Customer';
+        }
         if (els.invoiceTrolley) {
-            els.invoiceTrolley.textContent = transaction.trolley_id ? transaction.trolley_id.replace('TROLLEY-00', 'Trolley #').replace('TROLLEY-', 'Trolley #') : 'Trolley #1';
+            els.invoiceTrolley.textContent = transaction.trolley_id ? transaction.trolley_id.replace('TROLLEY-00', 'Trolley #').replace('TROLLEY-', 'Trolley #') : 'Trolley #001';
+        }
+        if (els.paymentMode) {
+            els.paymentMode.textContent = (transaction.paymentMethod || 'UPI').toUpperCase();
         }
         
         // Calculate mathematics
@@ -77,28 +118,32 @@ document.addEventListener('DOMContentLoaded', () => {
         const qtySum = itemsList.reduce((acc, curr) => acc + curr.quantity, 0);
         const points = Math.floor(total / 10);
 
-        els.qtyTotal.textContent = `${qtySum} units`;
-        els.subtotal.textContent = `Rs.${subAmount.toFixed(2)}`;
-        els.cgst.textContent = `Rs.${cgstAmount.toFixed(2)}`;
-        els.sgst.textContent = `Rs.${sgstAmount.toFixed(2)}`;
-        els.grandTotal.textContent = `Rs.${total.toFixed(2)}`;
-        els.pointsEarned.textContent = `+${points} Points`;
+        if (els.qtyTotal) els.qtyTotal.textContent = `${qtySum} units`;
+        if (els.subtotal) els.subtotal.textContent = `Rs.${subAmount.toFixed(2)}`;
+        if (els.cgst) els.cgst.textContent = `Rs.${cgstAmount.toFixed(2)}`;
+        if (els.sgst) els.sgst.textContent = `Rs.${sgstAmount.toFixed(2)}`;
+        if (els.grandTotal) els.grandTotal.textContent = `Rs.${total.toFixed(2)}`;
+        if (els.pointsEarned) els.pointsEarned.textContent = `+${points} Points`;
 
         // Update QR server dynamic URL
-        els.qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${txHash}`;
+        if (els.qrImage) {
+            els.qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${txHash}`;
+        }
 
         // Render rows
-        els.itemsBody.innerHTML = '';
-        itemsList.forEach(item => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${item.name}</td>
-                <td style="text-align: right;">Rs.${item.price.toFixed(2)}</td>
-                <td style="text-align: center;">${item.quantity}</td>
-                <td style="text-align: right; font-weight: bold;">Rs.${item.subtotal.toFixed(2)}</td>
-            `;
-            els.itemsBody.appendChild(tr);
-        });
+        if (els.itemsBody) {
+            els.itemsBody.innerHTML = '';
+            itemsList.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${item.name}</td>
+                    <td style="text-align: right;">Rs.${item.price.toFixed(2)}</td>
+                    <td style="text-align: center;">${item.quantity}</td>
+                    <td style="text-align: right; font-weight: bold;">Rs.${item.subtotal.toFixed(2)}</td>
+                `;
+                els.itemsBody.appendChild(tr);
+            });
+        }
     }
 
     // Print Receipt
@@ -121,22 +166,27 @@ document.addEventListener('DOMContentLoaded', () => {
             const txHash = `TXN-${Math.floor(transaction.timestamp)}`;
 
             doc.setFont("courier", "bold");
-            doc.setFontSize(14);
-            doc.text("SUPERMARKET POS", 40, 15, { align: 'center' });
+            doc.setFontSize(13);
+            doc.text(currentStoreName.toUpperCase(), 40, 14, { align: 'center' });
             
             doc.setFont("courier", "normal");
             doc.setFontSize(8);
-            doc.text("OUTER RING ROAD, BANGALORE", 40, 20, { align: 'center' });
+            doc.text(currentStoreAddress, 40, 19, { align: 'center' });
+            doc.text("SMART TROLLEY BILLING SYSTEM", 40, 23, { align: 'center' });
             
-            doc.text("-------------------------------------", 40, 25, { align: 'center' });
-            doc.text(`INVOICE: ${txHash}`, 10, 30);
-            doc.text(`DATE   : ${new Date(transaction.timestamp * 1000).toLocaleString()}`, 10, 35);
-            doc.text("MEMBER : MEM-872910 (Gold)", 10, 40);
-            doc.text("-------------------------------------", 40, 45, { align: 'center' });
+            doc.text("-------------------------------------", 40, 27, { align: 'center' });
+            doc.text(`INVOICE: ${txHash}`, 10, 32);
+            doc.text(`DATE   : ${new Date(transaction.timestamp * 1000).toLocaleString()}`, 10, 36);
+            const custInfo = transaction.customerPhone ? `+91 ${transaction.customerPhone}` : "Walk-in Customer";
+            doc.text(`CUSTOMER: ${custInfo}`, 10, 40);
+            const trolleyInfo = transaction.trolley_id ? transaction.trolley_id.replace('TROLLEY-00', 'Trolley #').replace('TROLLEY-', 'Trolley #') : 'Trolley #001';
+            doc.text(`TROLLEY : ${trolleyInfo}`, 10, 44);
+            doc.text(`PAYMENT : ${(transaction.paymentMethod || 'UPI').toUpperCase()}`, 10, 48);
+            doc.text("-------------------------------------", 40, 52, { align: 'center' });
 
             // Table headers
-            doc.text("ITEM         PRICE   QTY   TOTAL", 10, 50);
-            let y = 55;
+            doc.text("ITEM         PRICE   QTY   TOTAL", 10, 57);
+            let y = 62;
 
             const itemsList = Object.values(transaction.items);
             itemsList.forEach(item => {

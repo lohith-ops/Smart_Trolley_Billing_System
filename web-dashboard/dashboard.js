@@ -751,6 +751,32 @@ function showBillingModal(billData) {
     if (cgstEl) cgstEl.textContent = `Rs.${billData.cgst.toFixed(2)}`;
     if (sgstEl) sgstEl.textContent = `Rs.${billData.sgst.toFixed(2)}`;
     if (totalEl) totalEl.textContent = `Rs.${billData.total.toFixed(2)}`;
+
+    // Reset OTP section state
+    const phoneInput = document.getElementById('checkout-customer-phone');
+    const otpVerifyRow = document.getElementById('checkout-otp-verify-row');
+    const otpInput = document.getElementById('checkout-otp-input');
+    const otpBadge = document.getElementById('checkout-otp-badge');
+    const otpStatus = document.getElementById('checkout-otp-status');
+    const demoBanner = document.getElementById('checkout-demo-otp-banner');
+    const smsNotice = document.getElementById('success-sms-notice');
+
+    if (otpVerifyRow) otpVerifyRow.style.display = 'none';
+    if (otpInput) otpInput.value = '';
+    if (otpBadge) otpBadge.style.display = 'none';
+    if (otpStatus) otpStatus.textContent = '';
+    if (demoBanner) demoBanner.style.display = 'none';
+    if (smsNotice) smsNotice.style.display = 'none';
+
+    // Auto-populate phone from logged-in customer if available
+    try {
+        const authUser = window.getAuthUser ? window.getAuthUser() : null;
+        if (phoneInput && authUser && authUser.phone) {
+            phoneInput.value = authUser.phone.replace(/\D/g, '').slice(-10);
+        }
+    } catch (e) {
+        console.warn('Could not auto-populate customer phone:', e);
+    }
     
     // Show Modal
     if (els.receiptModal) els.receiptModal.classList.add('active');
@@ -848,6 +874,94 @@ function setupPaymentModalListeners() {
         });
     }
 
+    // Customer Phone & OTP Listeners
+    let isOtpVerified = false;
+    let verifiedOtpCode = '';
+
+    const sendOtpBtn = document.getElementById('btn-send-checkout-otp');
+    const verifyOtpBtn = document.getElementById('btn-verify-checkout-otp');
+    const phoneInput = document.getElementById('checkout-customer-phone');
+    const otpInput = document.getElementById('checkout-otp-input');
+    const otpVerifyRow = document.getElementById('checkout-otp-verify-row');
+    const otpStatus = document.getElementById('checkout-otp-status');
+    const otpBadge = document.getElementById('checkout-otp-badge');
+    const demoOtpBanner = document.getElementById('checkout-demo-otp-banner');
+    const demoOtpVal = document.getElementById('checkout-demo-otp-val');
+    const demoOtpFill = document.getElementById('checkout-demo-otp-fill');
+
+    if (sendOtpBtn) {
+        sendOtpBtn.addEventListener('click', async () => {
+            const phone = phoneInput ? phoneInput.value.trim() : '';
+            if (!phone || phone.length !== 10) {
+                alert('Please enter a valid 10-digit mobile number.');
+                if (phoneInput) phoneInput.focus();
+                return;
+            }
+
+            const targetTrolley = (currentBill && currentBill.trolley_id) ? currentBill.trolley_id : (els.simTrolleySelect ? els.simTrolleySelect.value : 'TROLLEY-001');
+            sendOtpBtn.disabled = true;
+            sendOtpBtn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Sending...`;
+
+            try {
+                const res = await fetch('/api/cart/request-otp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ trolley_id: targetTrolley, phone: phone })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    if (otpVerifyRow) otpVerifyRow.style.display = 'flex';
+                    if (otpStatus) {
+                        otpStatus.style.color = '#34d399';
+                        otpStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> ${data.message || 'OTP sent successfully.'}`;
+                    }
+                    if (data.otp && demoOtpBanner && demoOtpVal) {
+                        demoOtpVal.textContent = data.otp;
+                        demoOtpBanner.style.display = 'flex';
+                    }
+                    if (otpInput) otpInput.focus();
+                } else {
+                    if (otpStatus) {
+                        otpStatus.style.color = '#f87171';
+                        otpStatus.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> ${data.message || 'Failed to send OTP.'}`;
+                    }
+                    alert(data.message || 'Failed to send OTP.');
+                }
+            } catch (err) {
+                console.error('Request OTP error:', err);
+                alert('Network error while sending OTP.');
+            } finally {
+                sendOtpBtn.disabled = false;
+                sendOtpBtn.innerHTML = `<i class="fa-solid fa-paper-plane"></i> Resend OTP`;
+            }
+        });
+    }
+
+    if (demoOtpFill && demoOtpVal && otpInput) {
+        demoOtpFill.addEventListener('click', () => {
+            otpInput.value = demoOtpVal.textContent.trim();
+        });
+    }
+
+    if (verifyOtpBtn) {
+        verifyOtpBtn.addEventListener('click', () => {
+            const enteredOtp = otpInput ? otpInput.value.trim() : '';
+            if (!enteredOtp || enteredOtp.length !== 6) {
+                alert('Please enter the 6-digit OTP code.');
+                if (otpInput) otpInput.focus();
+                return;
+            }
+            isOtpVerified = true;
+            verifiedOtpCode = enteredOtp;
+            if (otpBadge) otpBadge.style.display = 'inline-flex';
+            if (otpStatus) {
+                otpStatus.style.color = '#34d399';
+                otpStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> Code ready for checkout authorization.`;
+            }
+            if (window.showToast) window.showToast("OTP Ready", "Customer verified. Proceed to pay.", "success");
+        });
+    }
+
     // Cancel buttons
     document.querySelectorAll('.btn-cancel-bill').forEach(btn => {
         btn.addEventListener('click', cancelBill);
@@ -883,15 +997,27 @@ function setupPaymentModalListeners() {
         btn.addEventListener('click', async () => {
             const method = btn.dataset.method;
             const targetTrolley = (currentBill && currentBill.trolley_id) ? currentBill.trolley_id : (els.simTrolleySelect ? els.simTrolleySelect.value : 'TROLLEY-001');
+            const phone = phoneInput ? phoneInput.value.trim() : '';
+            const enteredOtp = otpInput ? otpInput.value.trim() : (verifiedOtpCode || '');
+
             btn.disabled = true;
             const origText = btn.innerHTML;
             btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Processing...`;
             
             try {
-                const res = await fetch('/api/cart/pay', {
+                // If OTP was requested and entered, call verify-and-pay endpoint
+                let url = '/api/cart/pay';
+                let payload = { paymentMethod: method, trolley_id: targetTrolley, phone: phone };
+
+                if (enteredOtp && enteredOtp.length === 6) {
+                    url = '/api/cart/verify-and-pay';
+                    payload.otp = enteredOtp;
+                }
+
+                const res = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ paymentMethod: method, trolley_id: targetTrolley })
+                    body: JSON.stringify(payload)
                 });
                 const data = await res.json();
                 if (data.success) {
@@ -903,10 +1029,26 @@ function setupPaymentModalListeners() {
                     const successMethod = document.getElementById('success-payment-method');
                     if (successAmount) successAmount.textContent = `Rs.${data.total.toFixed(2)}`;
                     if (successMethod) successMethod.textContent = `Paid via ${method}`;
+
+                    // Show SMS receipt confirmation
+                    const smsNotice = document.getElementById('success-sms-notice');
+                    const smsText = document.getElementById('success-sms-text');
+                    if (smsNotice && phone) {
+                        smsNotice.style.display = 'flex';
+                        if (smsText) smsText.textContent = `Digital bill receipt sent via SMS to +91 ${phone}`;
+                    }
                     
+                    const receiptUrl = `receipt.html?timestamp=${data.timestamp}&id=${data.transaction_id || ''}`;
                     const receiptLink = document.getElementById('modal-receipt-link');
                     if (receiptLink) {
-                        receiptLink.href = `receipt.html?timestamp=${data.timestamp}`;
+                        receiptLink.href = receiptUrl;
+                    }
+                    
+                    // Automatically display full digital invoice receipt after payment
+                    try {
+                        window.open(receiptUrl, '_blank');
+                    } catch (e) {
+                        console.warn("Could not auto-open receipt tab:", e);
                     }
                     
                     triggerLcdFeedback("Checked Out!", "Total: Rs.0.00");
