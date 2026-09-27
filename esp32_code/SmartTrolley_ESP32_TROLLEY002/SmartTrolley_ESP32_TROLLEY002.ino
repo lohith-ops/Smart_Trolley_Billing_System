@@ -15,6 +15,7 @@
  *   1. MFRC522 (by GithubCommunity)
  *   2. LiquidCrystal_I2C (by Frank de Brabander)
  *   3. ArduinoJson (by Benoit Blanchon) - Version 6 or 7
+ *   4. WiFiManager (by tzapu) - Version 2.0.16-rc.2 or later
  *
  * Hardware Connections (ESP32 Dev Board):
  *   - MFRC522 RFID:
@@ -47,27 +48,54 @@
 #include <MFRC522.h>
 #include <LiquidCrystal_I2C.h>
 #include <ArduinoJson.h>
+#include <Preferences.h>
+#include <WiFiManager.h>
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ► TROLLEY IDENTITY — Change ONLY this line when creating a new trolley file
 // ══════════════════════════════════════════════════════════════════════════════
 const String TROLLEY_ID   = "TROLLEY-002";
 const String TROLLEY_NAME = "Smart Trolley 002";
-const String FW_VERSION   = "2.0";
+const String FW_VERSION   = "2.1";
 
-// ── Wi-Fi Configuration ────────────────────────────────────────────────────
-const char* ssid       = "Redmi 13C 5G";       // Your Wi-Fi SSID
-const char* password   = "111111111";           // Your Wi-Fi Password
-const String serverIP  = "10.50.17.241";        // Flask server local IP
-const int   serverPort = 5000;                  // Flask server port
+// ── Wi-Fi & Server Configuration (Stored in NVS / Flash) ────────────────────
+char serverIP[40]   = "10.50.17.241";        // Default Flask server local IP
+char serverPort[6]  = "5000";                // Default Flask server port
+Preferences preferences;                     // Non-volatile storage handler
+bool shouldSaveConfig = false;
 
-// ── API Endpoints (all include TROLLEY_ID in JSON body) ─────────────────────
-const String BASE_URL     = "http://" + serverIP + ":" + String(serverPort);
-const String apiAction    = BASE_URL + "/api/cart/action";
-const String apiReset     = BASE_URL + "/api/reset";
-const String apiMode      = BASE_URL + "/api/simulator/mode";
-const String apiHeartbeat = BASE_URL + "/api/trolley/heartbeat";
-const String apiRegister  = BASE_URL + "/api/trolley/register";
+// ── API Endpoints (Dynamic based on serverIP & serverPort) ──────────────────
+String BASE_URL     = "http://" + String(serverIP) + ":" + String(serverPort);
+String apiAction    = BASE_URL + "/api/cart/action";
+String apiReset     = BASE_URL + "/api/reset";
+String apiMode      = BASE_URL + "/api/simulator/mode";
+String apiHeartbeat = BASE_URL + "/api/trolley/heartbeat";
+String apiRegister  = BASE_URL + "/api/trolley/register";
+
+void updateApiEndpoints() {
+  BASE_URL     = "http://" + String(serverIP) + ":" + String(serverPort);
+  apiAction    = BASE_URL + "/api/cart/action";
+  apiReset     = BASE_URL + "/api/reset";
+  apiMode      = BASE_URL + "/api/simulator/mode";
+  apiHeartbeat = BASE_URL + "/api/trolley/heartbeat";
+  apiRegister  = BASE_URL + "/api/trolley/register";
+  Serial.println("[CONFIG] API Base URL set to: " + BASE_URL);
+}
+
+void saveConfigCallback() {
+  Serial.println(F("[CONFIG] Settings saved via web portal!"));
+  shouldSaveConfig = true;
+}
+
+void configModeCallback(WiFiManager *myWiFiManager) {
+  Serial.println(F("[WiFiManager] Entered Config Portal Mode"));
+  Serial.print(F("[WiFiManager] AP IP: "));
+  Serial.println(WiFi.softAPIP());
+  Serial.print(F("[WiFiManager] AP SSID: "));
+  Serial.println(myWiFiManager->getConfigPortalSSID());
+  lcdShow("Setup: Connect!", myWiFiManager->getConfigPortalSSID().substring(0, 16));
+  beepDouble();
+}
 
 // ── Pin Definitions ────────────────────────────────────────────────────────
 const int ADD_BTN    = 13;
@@ -138,12 +166,10 @@ void lcdShow(String line1, String line2 = "") {
 void reconnectWiFi() {
   if (WiFi.status() == WL_CONNECTED) return;
 
-  Serial.println("[WiFi] Connection lost — attempting reconnect...");
+  Serial.println(F("[WiFi] Connection lost — attempting reconnect..."));
   lcdShow("WiFi: Reconnect", "Please wait...");
 
-  WiFi.disconnect();
-  delay(500);
-  WiFi.begin(ssid, password);
+  WiFi.reconnect();
 
   int attempts = 0;
   while (WiFi.status() != WL_CONNECTED && attempts < 20) {
@@ -161,7 +187,7 @@ void reconnectWiFi() {
     lcdShow("Mode: " + currentMode, "Scan card...");
   } else {
     wifiConnected = false;
-    Serial.println("\n[WiFi] Reconnect failed. Will retry later.");
+    Serial.println(F("\n[WiFi] Reconnect failed. Will retry later."));
     lcdShow("WiFi Failed", "Retrying soon...");
     delay(1000);
     lcdShow("Mode: " + currentMode, "Scan card...");
@@ -286,40 +312,64 @@ void setup() {
     delay(2000);
   }
 
-  // 3. Wi-Fi Connect
+  // 3. Load Saved Server Settings from Flash (Preferences)
+  preferences.begin("trolley-cfg", false);
+  String savedIP   = preferences.getString("server_ip", "10.50.17.241");
+  String savedPort = preferences.getString("server_port", "5000");
+  savedIP.toCharArray(serverIP, sizeof(serverIP));
+  savedPort.toCharArray(serverPort, sizeof(serverPort));
+  preferences.end();
+  updateApiEndpoints();
+
+  // 4. Wi-Fi Setup using WiFiManager (On-Demand Captive Portal)
   WiFi.mode(WIFI_STA);
   wifi_country_t country = { .cc = "IN", .schan = 1, .nchan = 13, .policy = WIFI_COUNTRY_POLICY_AUTO };
   esp_wifi_set_country(&country);
-  WiFi.disconnect();
-  delay(100);
 
-  Serial.println("[WiFi] Scanning networks...");
-  lcdShow("Scanning WiFi..", "Please wait");
-  int n = WiFi.scanNetworks();
-  Serial.print("[WiFi Scan] Found "); Serial.print(n); Serial.println(" networks:");
-  bool targetFound = false;
-  for (int i = 0; i < n; ++i) {
-    String foundSSID = WiFi.SSID(i);
-    Serial.print("   "); Serial.print(i + 1); Serial.print(": ");
-    Serial.print(foundSSID); Serial.print(" ("); Serial.print(WiFi.RSSI(i)); Serial.println(" dBm)");
-    if (foundSSID == ssid) targetFound = true;
+  WiFiManager wm;
+  wm.setAPCallback(configModeCallback);
+  wm.setSaveConfigCallback(saveConfigCallback);
+  wm.setConfigPortalTimeout(180); // 3 minutes timeout
+
+  // Custom parameters for Flask server IP & Port
+  WiFiManagerParameter custom_server_ip("server_ip", "Flask Server IP (e.g. 192.168.1.15)", serverIP, 40);
+  WiFiManagerParameter custom_server_port("server_port", "Flask Server Port", serverPort, 6);
+  wm.addParameter(&custom_server_ip);
+  wm.addParameter(&custom_server_port);
+
+  String apName = "SmartTrolley-" + TROLLEY_ID + "-Setup";
+
+  // Check if RESET button is held down at startup to manually force the Portal
+  bool portalSuccess = false;
+  if (digitalRead(RESET_BTN) == LOW) {
+    Serial.println(F("[PORTAL] Reset button held during boot! Launching Setup Portal..."));
+    lcdShow("Forcing Setup...", "Release Button");
+    beepDouble();
+    delay(1500);
+    lcdShow("Setup: Connect!", apName.substring(0, 16));
+    portalSuccess = wm.startConfigPortal(apName.c_str());
+  } else {
+    Serial.println(F("[WiFi] Attempting auto-connection to saved network..."));
+    lcdShow("Connecting WiFi", "Please wait...");
+    portalSuccess = wm.autoConnect(apName.c_str());
   }
-  if (!targetFound) {
-    Serial.println("[WiFi WARNING] SSID '" + String(ssid) + "' not found! Ensure 2.4GHz AP.");
+
+  // If new credentials / parameters were saved via portal, write them to Flash
+  if (shouldSaveConfig) {
+    strncpy(serverIP, custom_server_ip.getValue(), sizeof(serverIP) - 1);
+    serverIP[sizeof(serverIP) - 1] = '\0';
+    strncpy(serverPort, custom_server_port.getValue(), sizeof(serverPort) - 1);
+    serverPort[sizeof(serverPort) - 1] = '\0';
+
+    preferences.begin("trolley-cfg", false);
+    preferences.putString("server_ip", serverIP);
+    preferences.putString("server_port", serverPort);
+    preferences.end();
+    Serial.println("[CONFIG] Saved new Server IP: " + String(serverIP) + ":" + String(serverPort));
+    updateApiEndpoints();
   }
 
-  Serial.print("[WiFi] Connecting to: "); Serial.println(ssid);
-  lcdShow("Connecting WiFi", ssid);
-  WiFi.begin(ssid, password);
-
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-    delay(500);
-    Serial.print(".");
-    attempts++;
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
+  if (portalSuccess && WiFi.status() == WL_CONNECTED) {
     wifiConnected = true;
     Serial.println("\n[WiFi] Connected! IP: " + WiFi.localIP().toString());
     lcdShow("WiFi Connected!", WiFi.localIP().toString());
@@ -330,7 +380,7 @@ void setup() {
     sendHeartbeat();
   } else {
     wifiConnected = false;
-    Serial.println("\n[WiFi] Failed. Operating in offline/retry mode.");
+    Serial.println(F("\n[WiFi] Failed/Timeout. Operating in offline/retry mode."));
     lcdShow("WiFi Offline", "Retrying...");
     beepDouble();
   }
@@ -511,7 +561,7 @@ void loop() {
     beepTriple();
   } else if (httpCode < 0) {
     Serial.println("[API Error] Connection failed, code: " + String(httpCode));
-    lcdShow("Connection Error", "IP: " + serverIP);
+    lcdShow("Connection Error", "IP: " + String(serverIP));
     beepTriple();
   } else {
     Serial.println("[API Error] HTTP " + String(httpCode));
