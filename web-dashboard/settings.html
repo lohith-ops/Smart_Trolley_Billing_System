@@ -134,6 +134,51 @@
                     </form>
                 </div>
 
+                <!-- 📡 Trolley Wi-Fi & Network Setup -->
+                <div class="glass-panel settings-card">
+                    <h3><i class="fa-solid fa-wifi" style="color: var(--accent-cyan);"></i> Trolley Wi-Fi & Network Setup</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.4;">
+                        Configure the Wi-Fi credentials and laptop Server IP for your trolleys. You can push settings directly to a USB-connected trolley or save them for wireless trolleys.
+                    </p>
+
+                    <form id="settings-wifi-form">
+                        <div class="form-group">
+                            <label>Wi-Fi Network Name (SSID)</label>
+                            <input type="text" id="wifi-ssid-input" placeholder="e.g. Redmi 13C 5G or College-WiFi" required class="form-input">
+                        </div>
+                        <div class="form-group">
+                            <label>Wi-Fi Password</label>
+                            <div style="position: relative;">
+                                <input type="password" id="wifi-password-input" placeholder="Enter Wi-Fi Password" class="form-input" style="padding-right: 40px;">
+                                <button type="button" id="toggle-wifi-pass-btn" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-secondary); cursor: pointer;" title="Show/Hide Password">
+                                    <i class="fa-solid fa-eye" id="wifi-pass-icon"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Laptop Server IP (Auto-Detected)</label>
+                            <input type="text" id="wifi-server-ip-input" placeholder="e.g. 10.221.37.241" required class="form-input">
+                            <span style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px; display: block;">
+                                This laptop's local network IP. The trolley sends billing data to this address.
+                            </span>
+                        </div>
+                        <div class="form-group">
+                            <label>Flask Server Port</label>
+                            <input type="number" id="wifi-server-port-input" value="5000" required class="form-input">
+                        </div>
+
+                        <div style="display: flex; gap: 10px; margin-top: 14px;">
+                            <button type="submit" id="save-wifi-btn" class="btn btn-outline" style="flex: 1;">
+                                <i class="fa-solid fa-save"></i> Save Settings
+                            </button>
+                            <button type="button" id="push-wifi-usb-btn" class="btn btn-checkout" style="flex: 1.2; background: var(--grad-primary);">
+                                <i class="fa-brands fa-usb"></i> Send to Trolley (USB)
+                            </button>
+                        </div>
+                        <div id="wifi-push-status" style="margin-top: 12px; font-size: 0.82rem; text-align: center; display: none;"></div>
+                    </form>
+                </div>
+
                 <!-- 📧 Email & 📱 SMS Notification Gateway -->
                 <div class="glass-panel settings-card">
                     <h3><i class="fa-solid fa-paper-plane" style="color: var(--accent-cyan);"></i> Email & SMS Gateway</h3>

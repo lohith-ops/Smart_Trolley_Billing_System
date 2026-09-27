@@ -552,7 +552,127 @@ document.addEventListener('DOMContentLoaded', () => {
     if (notifForm) notifForm.addEventListener('submit', saveNotificationSettings);
     if (testNotifBtn) testNotifBtn.addEventListener('click', handleTestNotification);
 
+    // ── Trolley Wi-Fi Configuration ──────────────────────────────────────────
+    const wifiEls = {
+        form:          document.getElementById('settings-wifi-form'),
+        ssid:          document.getElementById('wifi-ssid-input'),
+        pass:          document.getElementById('wifi-password-input'),
+        serverIp:      document.getElementById('wifi-server-ip-input'),
+        serverPort:    document.getElementById('wifi-server-port-input'),
+        togglePassBtn: document.getElementById('toggle-wifi-pass-btn'),
+        passIcon:      document.getElementById('wifi-pass-icon'),
+        saveBtn:       document.getElementById('save-wifi-btn'),
+        pushUsbBtn:    document.getElementById('push-wifi-usb-btn'),
+        pushStatus:    document.getElementById('wifi-push-status')
+    };
+
+    if (wifiEls.togglePassBtn && wifiEls.pass) {
+        wifiEls.togglePassBtn.addEventListener('click', () => {
+            const isPassword = wifiEls.pass.type === 'password';
+            wifiEls.pass.type = isPassword ? 'text' : 'password';
+            if (wifiEls.passIcon) {
+                wifiEls.passIcon.className = isPassword ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye';
+            }
+        });
+    }
+
+    async function fetchWifiSettings() {
+        if (!wifiEls.ssid) return;
+        try {
+            const res = await fetch('/api/settings/wifi');
+            if (res.ok) {
+                const data = await res.json();
+                if (data.ssid && !wifiEls.ssid.value) wifiEls.ssid.value = data.ssid;
+                if (data.password && !wifiEls.pass.value) wifiEls.pass.value = data.password;
+                if (data.serverIP && !wifiEls.serverIp.value) wifiEls.serverIp.value = data.serverIP;
+                if (data.serverPort && !wifiEls.serverPort.value) wifiEls.serverPort.value = data.serverPort;
+
+                if (wifiEls.pushUsbBtn) {
+                    if (data.serialConnected) {
+                        wifiEls.pushUsbBtn.title = `Trolley connected on ${data.serialPort}`;
+                        wifiEls.pushUsbBtn.innerHTML = `<i class="fa-brands fa-usb"></i> Send to Trolley (${data.serialPort})`;
+                    } else {
+                        wifiEls.pushUsbBtn.title = `No trolley detected on USB port`;
+                        wifiEls.pushUsbBtn.innerHTML = `<i class="fa-brands fa-usb"></i> Send to Trolley (USB)`;
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('Error fetching Wi-Fi settings:', e);
+        }
+    }
+
+    async function handleWifiSave(e, sendToUsb = false) {
+        if (e && e.preventDefault) e.preventDefault();
+
+        const ssid = wifiEls.ssid ? wifiEls.ssid.value.trim() : '';
+        const password = wifiEls.pass ? wifiEls.pass.value.trim() : '';
+        const serverIP = wifiEls.serverIp ? wifiEls.serverIp.value.trim() : '';
+        const serverPort = wifiEls.serverPort ? parseInt(wifiEls.serverPort.value, 10) : 5000;
+
+        if (!ssid) {
+            alert('Please enter a Wi-Fi SSID');
+            return;
+        }
+
+        const btn = sendToUsb ? wifiEls.pushUsbBtn : wifiEls.saveBtn;
+        const originalText = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+        }
+
+        try {
+            const token = (typeof getAuthToken === 'function') ? getAuthToken() : localStorage.getItem('smart_trolley_jwt_token');
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
+            const res = await fetch('/api/settings/wifi', {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({
+                    ssid: ssid,
+                    password: password,
+                    serverIP: serverIP,
+                    serverPort: serverPort,
+                    sendToUsb: sendToUsb
+                })
+            });
+            const data = await res.json();
+
+            if (res.ok && data.success) {
+                if (window.showToast) window.showToast('Wi-Fi Settings', data.message, 'success');
+                else alert(data.message);
+
+                if (wifiEls.pushStatus) {
+                    wifiEls.pushStatus.style.display = 'block';
+                    wifiEls.pushStatus.style.color = '#10b981';
+                    wifiEls.pushStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> ${data.message}`;
+                    setTimeout(() => { wifiEls.pushStatus.style.display = 'none'; }, 6000);
+                }
+            } else {
+                alert(`Error: ${data.message || 'Failed to save Wi-Fi settings'}`);
+            }
+        } catch (err) {
+            console.error('Save Wi-Fi error:', err);
+            alert('Failed to connect to backend server');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+    }
+
+    if (wifiEls.form) {
+        wifiEls.form.addEventListener('submit', (e) => handleWifiSave(e, false));
+    }
+    if (wifiEls.pushUsbBtn) {
+        wifiEls.pushUsbBtn.addEventListener('click', (e) => handleWifiSave(e, true));
+    }
+
     // Add to initial loaders
     fetchNotificationSettings();
+    fetchWifiSettings();
     initSettings();
 });

@@ -399,6 +399,70 @@ void setup() {
 void loop() {
   unsigned long now = millis();
 
+  // ── 0. Serial Commands (Remote Config from Web Dashboard via USB) ─────────
+  if (Serial.available()) {
+    String line = Serial.readStringUntil('\n');
+    line.trim();
+
+    if (line.startsWith("WIFI_CFG:")) {
+      // Format: WIFI_CFG:ssid|password|serverIP|serverPort
+      String payload = line.substring(9);
+      int p1 = payload.indexOf('|');
+      int p2 = payload.indexOf('|', p1 + 1);
+      int p3 = payload.indexOf('|', p2 + 1);
+
+      if (p1 > 0) {
+        String newSSID = payload.substring(0, p1);
+        String newPass = (p2 > 0) ? payload.substring(p1 + 1, p2) : payload.substring(p1 + 1);
+        String newIP   = (p2 > 0 && p3 > 0) ? payload.substring(p2 + 1, p3) : ((p2 > 0) ? payload.substring(p2 + 1) : String(serverIP));
+        String newPort = (p3 > 0) ? payload.substring(p3 + 1) : String(serverPort);
+
+        newIP.toCharArray(serverIP, sizeof(serverIP));
+        newPort.toCharArray(serverPort, sizeof(serverPort));
+
+        preferences.begin("trolley-cfg", false);
+        preferences.putString("server_ip", serverIP);
+        preferences.putString("server_port", serverPort);
+        preferences.end();
+        updateApiEndpoints();
+
+        Serial.println("[WIFI_CFG] Received via USB: SSID=" + newSSID + " Server=" + String(serverIP) + ":" + String(serverPort));
+        lcdShow("New WiFi Config!", newSSID.substring(0, 16));
+        beepDouble();
+        delay(1200);
+        lcdShow("Connecting WiFi", "Please wait...");
+
+        WiFi.disconnect();
+        delay(300);
+        WiFi.begin(newSSID.c_str(), newPass.c_str());
+
+        int attempts = 0;
+        while (WiFi.status() != WL_CONNECTED && attempts < 25) {
+          delay(400);
+          Serial.print(".");
+          attempts++;
+        }
+
+        if (WiFi.status() == WL_CONNECTED) {
+          wifiConnected = true;
+          Serial.println("\n[WiFi] Connected! IP: " + WiFi.localIP().toString());
+          lcdShow("WiFi Connected!", WiFi.localIP().toString());
+          beepOnce();
+          delay(1500);
+          registerWithServer();
+          sendHeartbeat();
+        } else {
+          wifiConnected = false;
+          Serial.println(F("\n[WiFi] Connection failed!"));
+          lcdShow("WiFi Failed!", "Check Password");
+          beepTriple();
+          delay(1500);
+        }
+        lcdShow("Mode: " + currentMode, "Scan card...");
+      }
+    }
+  }
+
   // ── 1. Wi-Fi Health Check & Reconnect ────────────────────────────────────
   if (now - lastWifiCheckTime > WIFI_CHECK_INTERVAL_MS) {
     lastWifiCheckTime = now;

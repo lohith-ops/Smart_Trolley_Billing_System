@@ -2412,6 +2412,72 @@ def test_notification_dispatch():
 
     return jsonify({"success": False, "message": "Invalid notification test type."}), 400
 
+# ── Trolley Wi-Fi Configuration API ──────────────────────────────────────────
+
+def get_local_ip():
+    try:
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('8.8.8.8', 1))
+        local_ip = s.getsockname()[0]
+        s.close()
+        return local_ip
+    except Exception:
+        return "127.0.0.1"
+
+@app.route("/api/settings/wifi", methods=["GET"])
+def get_wifi_settings():
+    cfg = load_config()
+    current_ip = get_local_ip()
+    return jsonify({
+        "ssid":            cfg.get("wifiSSID", "Redmi 13C 5G"),
+        "password":        cfg.get("wifiPassword", ""),
+        "serverIP":        cfg.get("serverIP", current_ip),
+        "localIP":         current_ip,
+        "serverPort":      cfg.get("serverPort", 5000),
+        "serialConnected": bool(global_ser and global_ser.is_open),
+        "serialPort":      SERIAL_PORT
+    })
+
+@app.route("/api/settings/wifi", methods=["POST"])
+def update_wifi_settings():
+    data = request.json or {}
+    ssid        = (data.get("ssid") or "").strip()
+    password    = (data.get("password") or "").strip()
+    server_ip   = (data.get("serverIP") or "").strip() or get_local_ip()
+    server_port = int(data.get("serverPort") or 5000)
+    send_to_usb = data.get("sendToUsb", True)
+
+    if not ssid:
+        return jsonify({"success": False, "message": "Wi-Fi SSID is required."}), 400
+
+    cfg = load_config()
+    cfg["wifiSSID"]     = ssid
+    cfg["wifiPassword"] = password
+    cfg["serverIP"]     = server_ip
+    cfg["serverPort"]   = server_port
+    save_config(cfg)
+
+    usb_sent = False
+    if send_to_usb and global_ser and global_ser.is_open:
+        cmd = f"WIFI_CFG:{ssid}|{password}|{server_ip}|{server_port}"
+        send_command_to_arduino(cmd)
+        usb_sent = True
+
+    msg = "Wi-Fi settings saved successfully."
+    if usb_sent:
+        msg += " Pushed to Trolley via USB (COM3)!"
+    else:
+        msg += " (Trolley USB not connected, settings saved for wireless trolleys)."
+
+    return jsonify({
+        "success": True,
+        "message": msg,
+        "usbSent": usb_sent,
+        "serverIP": server_ip,
+        "serverPort": server_port
+    })
+
 @app.route("/api/settings/database", methods=["POST"])
 @require_auth(roles=["admin"])
 def manage_database():
