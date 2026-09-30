@@ -59,9 +59,28 @@ const String TROLLEY_NAME = "Smart Trolley 001";
 const String FW_VERSION   = "2.1";
 
 // ── Wi-Fi & Server Configuration (Stored in NVS / Flash) ────────────────────
-char serverIP[40]   = "10.50.17.241";        // Default Flask server local IP
-char serverPort[6]  = "5000";                // Default Flask server port
-Preferences preferences;                     // Non-volatile storage handler
+// Multi-Network Support: Add up to 10 known Wi-Fi networks here!
+// The ESP32 scans and connects to whichever network is currently available.
+struct KnownNetwork {
+  const char* ssid;
+  const char* pass;
+};
+
+const KnownNetwork knownNetworks[] = {
+  { "Yogaraj",              "1234567890" },    // Current active Wi-Fi / Hotspot
+  { "Nandini K Y",          "333444455555" },  // Previous hotspot
+  { "Redmi 13C 5G",         "111111111" },     // Redmi hotspot
+  { "motorolaedge50fusion", "111111111" },     // Motorola hotspot
+  // Add more store / lab / home networks below if needed (up to 10):
+  // { "Store_WiFi",        "password123" }
+};
+const int NUM_KNOWN_NETWORKS = sizeof(knownNetworks) / sizeof(knownNetworks[0]);
+
+const char* defaultSSID = "Yogaraj";               // Active Wi-Fi network
+const char* defaultPass = "1234567890";            // Active Wi-Fi password
+char serverIP[40]       = "10.221.37.241";         // Current Flask server local IP
+char serverPort[6]      = "5000";                  // Default Flask server port
+Preferences preferences;                           // Non-volatile storage handler
 bool shouldSaveConfig = false;
 
 // ── API Endpoints (Dynamic based on serverIP & serverPort) ──────────────────
@@ -94,7 +113,7 @@ const int BUZZER_PIN = 15;
 #define I2C_SCL  22
 
 // ── Global Objects ─────────────────────────────────────────────────────────
-LiquidCrystal_I2C lcd(0x27, 16, 2); // Change to 0x3F if LCD is blank
+LiquidCrystal_I2C* pLcd = nullptr; // Dynamically created after I2C auto-detection
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 
 // ── State Variables ────────────────────────────────────────────────────────
@@ -138,13 +157,16 @@ void beepTriple() {
 
 // ── LCD Helper ─────────────────────────────────────────────────────────────
 void lcdShow(String line1, String line2 = "") {
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print(line1.substring(0, 16));
-  if (line2.length() > 0) {
-    lcd.setCursor(0, 1);
-    lcd.print(line2.substring(0, 16));
-  }
+  if (!pLcd) return;
+  pLcd->setCursor(0, 0);
+  String l1 = line1.substring(0, 16);
+  while (l1.length() < 16) l1 += " ";
+  pLcd->print(l1);
+
+  pLcd->setCursor(0, 1);
+  String l2 = line2.substring(0, 16);
+  while (l2.length() < 16) l2 += " ";
+  pLcd->print(l2);
 }
 
 // ── WiFiManager Callbacks (placed after LCD & Audio helpers) ───────────────
@@ -163,31 +185,160 @@ void configModeCallback(WiFiManager *myWiFiManager) {
   beepDouble();
 }
 
-// ── Wi-Fi Reconnect ────────────────────────────────────────────────────────
-void reconnectWiFi() {
-  if (WiFi.status() == WL_CONNECTED) return;
+// ── Multi-Network Connection Helpers ────────────────────────────────────────
+bool tryConnectToSSID(const char* ssid, const char* pass, int maxWaitSec = 15) {
+  if (!ssid || strlen(ssid) == 0) return false;
+  Serial.print(F("[WiFi] Connecting to: "));
+  Serial.println(ssid);
+  lcdShow("Connecting WiFi", String(ssid).substring(0, 16));
 
-  Serial.println(F("[WiFi] Connection lost — attempting reconnect..."));
-  WiFi.reconnect();
+  WiFi.disconnect(true);
+  delay(100);
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false); // Crucial for mobile hotspots: prevents sleep disconnections
+  WiFi.setTxPower(WIFI_POWER_19_5dBm); // Full transmission power
+
+  // CRITICAL: Set PMF BEFORE WiFi.begin for WPA3 / phone hotspot compatibility
+  wifi_config_t conf;
+  if (esp_wifi_get_config(WIFI_IF_STA, &conf) == ESP_OK) {
+    conf.sta.pmf_cfg.capable = true;
+    conf.sta.pmf_cfg.required = false;
+    esp_wifi_set_config(WIFI_IF_STA, &conf);
+  }
+
+  if (pass && strlen(pass) > 0) {
+    WiFi.begin(ssid, pass);
+  } else {
+    WiFi.begin(ssid);
+  }
 
   int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 8) {
-    delay(300);
+  while (WiFi.status() != WL_CONNECTED && attempts < (maxWaitSec * 2)) {
+    delay(500);
     Serial.print(".");
     attempts++;
   }
+  Serial.println();
 
   if (WiFi.status() == WL_CONNECTED) {
     wifiConnected = true;
-    Serial.println("\n[WiFi] Reconnected! IP: " + WiFi.localIP().toString());
-    lcdShow("WiFi Reconnected", WiFi.localIP().toString());
+    Serial.println("\n[WiFi] Connected to " + String(ssid) + "! IP: " + WiFi.localIP().toString());
+    lcdShow("WiFi Connected!", WiFi.localIP().toString());
     beepOnce();
+
+    // Auto-align server IP subnet with local Wi-Fi subnet (e.g. 10.221.37.x)
+    IPAddress myIP = WiFi.localIP();
+    IPAddress srv;
+    if (srv.fromString(serverIP)) {
+      if (myIP[0] != srv[0] || myIP[1] != srv[1] || myIP[2] != srv[2]) {
+        Serial.printf("[AUTO-IP] Updating server IP subnet from %s to %d.%d.%d.%d\n", serverIP, myIP[0], myIP[1], myIP[2], srv[3]);
+        sprintf(serverIP, "%d.%d.%d.%d", myIP[0], myIP[1], myIP[2], srv[3]);
+        updateApiEndpoints();
+        preferences.begin("trolley-cfg", false);
+        preferences.putString("server_ip", serverIP);
+        preferences.end();
+      }
+    }
+
     delay(1200);
+    return true;
+  }
+  return false;
+}
+
+bool connectToAnySavedNetwork() {
+  Serial.println(F("\n[WiFi] Scanning airwaves for known networks..."));
+  lcdShow("Checking WiFi...", "Scanning...");
+
+  WiFi.disconnect(true);
+  delay(100);
+  WiFi.mode(WIFI_STA);
+
+  int n = WiFi.scanNetworks(false, true); // show_hidden = true for phone hotspots
+  Serial.print(F("[WiFi] Nearby networks detected: "));
+  Serial.println(n);
+
+  preferences.begin("trolley-cfg", true);
+  String savedSSID = preferences.getString("wifi_ssid", defaultSSID);
+  String savedPass = preferences.getString("wifi_pass", defaultPass);
+  preferences.end();
+
+  // 1. If the saved / active network is detected in the air scan, connect immediately
+  if (n > 0 && savedSSID.length() > 0) {
+    for (int i = 0; i < n; i++) {
+      if (WiFi.SSID(i) == savedSSID) {
+        Serial.println("[WiFi] Detected saved network in air: " + savedSSID);
+        if (tryConnectToSSID(savedSSID.c_str(), savedPass.c_str(), 15)) {
+          return true;
+        }
+      }
+    }
+  }
+
+  // 2. Check each known network in the list against scan results
+  if (n > 0) {
+    for (int j = 0; j < NUM_KNOWN_NETWORKS; j++) {
+      const char* candSSID = knownNetworks[j].ssid;
+      const char* candPass = knownNetworks[j].pass;
+      if (candSSID && strlen(candSSID) > 0) {
+        for (int i = 0; i < n; i++) {
+          if (WiFi.SSID(i) == candSSID) {
+            Serial.println("[WiFi] Detected known network: " + String(candSSID));
+            if (tryConnectToSSID(candSSID, candPass, 15)) {
+              preferences.begin("trolley-cfg", false);
+              preferences.putString("wifi_ssid", candSSID);
+              preferences.putString("wifi_pass", candPass);
+              preferences.end();
+              return true;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Fallback: Direct probe connection to saved network
+  // (Phone hotspots often suppress broadcast beacons to save battery, but respond to direct probes!)
+  if (savedSSID.length() > 0) {
+    Serial.println("[WiFi] Direct connection probe to saved network: " + savedSSID);
+    if (tryConnectToSSID(savedSSID.c_str(), savedPass.c_str(), 12)) {
+      return true;
+    }
+  }
+
+  // 4. Fallback: Direct probe to other known networks
+  for (int j = 0; j < NUM_KNOWN_NETWORKS; j++) {
+    const char* candSSID = knownNetworks[j].ssid;
+    const char* candPass = knownNetworks[j].pass;
+    if (candSSID && strlen(candSSID) > 0 && String(candSSID) != savedSSID) {
+      Serial.println("[WiFi] Direct connection probe to: " + String(candSSID));
+      if (tryConnectToSSID(candSSID, candPass, 10)) {
+        preferences.begin("trolley-cfg", false);
+        preferences.putString("wifi_ssid", candSSID);
+        preferences.putString("wifi_pass", candPass);
+        preferences.end();
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+// ── Wi-Fi Reconnect (Periodic check) ───────────────────────────────────────
+void reconnectWiFi() {
+  if (WiFi.status() == WL_CONNECTED) return;
+
+  Serial.println(F("\n[WiFi] Connection lost — searching for saved networks..."));
+  if (connectToAnySavedNetwork()) {
+    registerWithServer();
+    sendHeartbeat();
+    delay(800);
     lcdShow("Mode: " + currentMode, "Scan card...");
   } else {
     wifiConnected = false;
-    Serial.println(F("\n[WiFi] Reconnect failed."));
-    lcdShow("Mode: " + currentMode, "WiFi Offline");
+    Serial.println(F("[WiFi] All saved networks currently unreachable."));
+    lcdShow("WiFi Offline", "Retrying...");
   }
 }
 
@@ -276,20 +427,57 @@ void setup() {
 
   Serial.begin(115200);
   delay(100);
-  addIdleState    = digitalRead(ADD_BTN);
-  removeIdleState = digitalRead(REMOVE_BTN);
-  resetIdleState  = digitalRead(RESET_BTN);
+  addIdleState    = HIGH;
+  removeIdleState = HIGH;
+  resetIdleState  = HIGH;
 
   delay(400);
   Serial.println("\n==========================================");
   Serial.println("  Smart Trolley System — " + TROLLEY_ID + "  ");
   Serial.println("==========================================");
 
-  // 1. LCD Init
+  // 1. LCD Init with Auto-I2C Address Detection (0x27 vs 0x3F)
+  delay(300); // Allow LCD controller power rails to stabilize
   Wire.begin(I2C_SDA, I2C_SCL);
-  lcd.init();
-  lcd.backlight();
-  lcdShow(TROLLEY_ID, "Starting v" + FW_VERSION);
+  delay(100);
+
+  byte lcdAddr = 0;
+  // Test 0x27
+  Wire.beginTransmission(0x27);
+  if (Wire.endTransmission() == 0) {
+    lcdAddr = 0x27;
+  } else {
+    // Test 0x3F
+    Wire.beginTransmission(0x3F);
+    if (Wire.endTransmission() == 0) {
+      lcdAddr = 0x3F;
+    } else {
+      // Scan standard I2C range (0x20 to 0x3F)
+      for (byte a = 0x20; a <= 0x3F; a++) {
+        Wire.beginTransmission(a);
+        if (Wire.endTransmission() == 0) {
+          lcdAddr = a;
+          break;
+        }
+      }
+    }
+  }
+
+  if (lcdAddr == 0) {
+    lcdAddr = 0x27; // Fallback default
+    Serial.println(F("[LCD WARNING] No I2C display responding at 0x27 or 0x3F! Check SDA(21), SCL(22), and 5V."));
+  } else {
+    Serial.print(F("[LCD] Auto-detected I2C display at address: 0x"));
+    Serial.println(lcdAddr, HEX);
+  }
+
+  pLcd = new LiquidCrystal_I2C(lcdAddr, 16, 2);
+  pLcd->init();
+  delay(50);
+  pLcd->init(); // Dual-init ensures HD44780 controller reliably enters 4-bit mode
+  pLcd->backlight();
+  pLcd->clear();
+  lcdShow(TROLLEY_ID, "Ready to Scan");
   beepOnce();
   delay(1500);
 
@@ -311,83 +499,82 @@ void setup() {
 
   // 3. Load Saved Server & Wi-Fi Settings from Flash (Preferences)
   preferences.begin("trolley-cfg", false);
-  String savedIP   = preferences.getString("server_ip", "10.221.37.241");
-  String savedPort = preferences.getString("server_port", "5000");
-  String savedSSID = preferences.getString("wifi_ssid", "");
-  String savedPass = preferences.getString("wifi_pass", "");
-  savedIP.toCharArray(serverIP, sizeof(serverIP));
-  savedPort.toCharArray(serverPort, sizeof(serverPort));
+  String storedIP   = preferences.getString("server_ip", "");
+  String storedPort = preferences.getString("server_port", "");
+  // Check if stored IP has a valid non-empty string and not the obsolete default
+  if (storedIP.length() > 0 && storedIP != "10.175.93.241") {
+    strncpy(serverIP, storedIP.c_str(), sizeof(serverIP) - 1);
+  } else {
+    preferences.putString("server_ip", serverIP);
+  }
+  if (storedPort.length() > 0) {
+    strncpy(serverPort, storedPort.c_str(), sizeof(serverPort) - 1);
+  } else {
+    preferences.putString("server_port", serverPort);
+  }
   preferences.end();
   updateApiEndpoints();
 
-  // Check if RESET button is held down at startup
-  bool buttonPressed = (digitalRead(RESET_BTN) == LOW || digitalRead(RESET_BTN) != resetIdleState);
+  // Check if RESET button is held down at startup (to force Config Portal)
+  bool buttonPressed = (digitalRead(RESET_BTN) == LOW);
 
-  // If saved Wi-Fi exists (from Web Dashboard Option B) and RESET button NOT held, connect directly!
-  if (savedSSID.length() > 0 && !buttonPressed) {
-    Serial.println("[WiFi] Connecting to configured network: " + savedSSID);
-    lcdShow("Connecting WiFi", savedSSID.substring(0, 16));
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(savedSSID.c_str(), savedPass.c_str());
-    int attempts = 0;
-    while (WiFi.status() != WL_CONNECTED && attempts < 25) {
-      delay(300);
-      Serial.print(".");
-      attempts++;
-    }
-    if (WiFi.status() == WL_CONNECTED) {
-      wifiConnected = true;
-      Serial.println("\n[WiFi] Connected! IP: " + WiFi.localIP().toString());
-      lcdShow("WiFi Connected!", WiFi.localIP().toString());
-      beepOnce();
-      delay(1200);
+  // If RESET button is held, clear cached Wi-Fi to force setup portal
+  if (buttonPressed) {
+    Serial.println(F("[CONFIG] RESET button held at boot! Clearing Wi-Fi cache & opening Setup Portal..."));
+    preferences.begin("trolley-cfg", false);
+    preferences.remove("wifi_ssid");
+    preferences.remove("wifi_pass");
+    preferences.end();
+    lcdShow("Reset Held", "Opening Setup...");
+    beepTriple();
+    delay(1000);
+  } else {
+    Serial.println(F("[WiFi] Auto-connecting to saved Wi-Fi networks..."));
+    if (connectToAnySavedNetwork()) {
       registerWithServer();
       sendHeartbeat();
-      delay(1000);
+      delay(800);
       lcdShow("Mode: " + currentMode, "Scan card...");
       return; // Fully connected wirelessly! Skip captive portal.
     } else {
-      Serial.println(F("\n[WiFi] Could not connect to configured Wi-Fi. Entering setup mode..."));
+      Serial.println(F("\n[WiFi] Saved networks unavailable. Starting Setup Portal..."));
     }
   }
 
   // 4. Wi-Fi Setup using WiFiManager (On-Demand Captive Portal / Fallback)
-  WiFi.disconnect();
-  delay(100);
+  String apName = "Trolley001-Setup";
+  Serial.println(F("[WiFi] Launching Setup Access Point: Trolley001-Setup..."));
+  lcdShow("Setup: Connect!", apName);
+  beepDouble();
+
+  WiFi.disconnect(true);
+  delay(150);
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.setSleep(false);
+  WiFi.setTxPower(WIFI_POWER_19_5dBm);
+
+
 
   WiFiManager wm;
   wm.setAPCallback(configModeCallback);
   wm.setSaveConfigCallback(saveConfigCallback);
-  wm.setConnectTimeout(8);        // Only wait 8 seconds for saved Wi-Fi
-  wm.setConfigPortalTimeout(25);   // Wait 25s for phone setup, then enter loop to accept USB config
+  wm.setConnectTimeout(30);        // 30s timeout allows mobile hotspots to complete DHCP
+  wm.setConfigPortalTimeout(300);  // 5 minutes active portal (plenty of time to configure)
 
   // Custom parameters for Flask server IP & Port
-  WiFiManagerParameter custom_server_ip("server_ip", "Flask Server IP (e.g. 192.168.1.15)", serverIP, 40);
+  WiFiManagerParameter custom_server_ip("server_ip", "Flask Server IP (e.g. 10.221.37.241)", serverIP, 40);
   WiFiManagerParameter custom_server_port("server_port", "Flask Server Port", serverPort, 6);
   wm.addParameter(&custom_server_ip);
   wm.addParameter(&custom_server_port);
 
-  String apName = "Trolley001-Setup";
+  bool portalSuccess = wm.startConfigPortal(apName.c_str());
 
-  bool portalSuccess = false;
+  // If button was pressed during boot, wait for user to release it to avoid accidental cart reset
   if (buttonPressed) {
-    Serial.println(F("[PORTAL] Button held during boot! Launching Setup Portal..."));
-    lcdShow("Setup Portal...", "Release Button");
-    beepDouble();
-    delay(1500);
-    lcdShow("Setup: Connect!", apName);
-    portalSuccess = wm.startConfigPortal(apName.c_str());
-  } else {
-    Serial.println(F("[WiFi] Trying saved network (8s)..."));
-    lcdShow("Connecting WiFi", "Please wait...");
-    portalSuccess = wm.autoConnect(apName.c_str());
-
-    // If autoConnect failed to connect and didn't start portal, start portal explicitly
-    if (!portalSuccess && WiFi.status() != WL_CONNECTED) {
-      Serial.println(F("[WiFi] Saved network unavailable. Starting Setup Portal..."));
-      lcdShow("Setup: Connect!", apName);
-      portalSuccess = wm.startConfigPortal(apName.c_str());
+    while (digitalRead(RESET_BTN) == LOW) {
+      delay(50);
     }
+    delay(200);
   }
 
   // If new credentials / parameters were saved via portal, write them to Flash
@@ -411,6 +598,18 @@ void setup() {
     lcdShow("WiFi Connected!", WiFi.localIP().toString());
     beepOnce();
     delay(1500);
+
+    // Save active Wi-Fi credentials to Preferences for ultra-fast boot reconnection
+    preferences.begin("trolley-cfg", false);
+    if (WiFi.SSID().length() > 0) {
+      preferences.putString("wifi_ssid", WiFi.SSID());
+      if (WiFi.psk().length() > 0) {
+        preferences.putString("wifi_pass", WiFi.psk());
+      }
+      Serial.println("[CONFIG] Saved Wi-Fi to flash: " + WiFi.SSID());
+    }
+    preferences.end();
+
     // Register with server and send first heartbeat
     registerWithServer();
     sendHeartbeat();
@@ -464,23 +663,7 @@ void loop() {
         delay(1200);
         lcdShow("Connecting WiFi", "Please wait...");
 
-        WiFi.disconnect();
-        delay(300);
-        WiFi.begin(newSSID.c_str(), newPass.c_str());
-
-        int attempts = 0;
-        while (WiFi.status() != WL_CONNECTED && attempts < 25) {
-          delay(400);
-          Serial.print(".");
-          attempts++;
-        }
-
-        if (WiFi.status() == WL_CONNECTED) {
-          wifiConnected = true;
-          Serial.println("\n[WiFi] Connected! IP: " + WiFi.localIP().toString());
-          lcdShow("WiFi Connected!", WiFi.localIP().toString());
-          beepOnce();
-          delay(1500);
+        if (tryConnectToSSID(newSSID.c_str(), newPass.c_str(), 15)) {
           registerWithServer();
           sendHeartbeat();
         } else {
@@ -522,9 +705,9 @@ void loop() {
   }
 
   // ── 4. Button Inputs ──────────────────────────────────────────────────────
-  bool addActive    = (digitalRead(ADD_BTN)    != addIdleState);
-  bool removeActive = (digitalRead(REMOVE_BTN) != removeIdleState);
-  bool resetActive  = (digitalRead(RESET_BTN)  != resetIdleState);
+  bool addActive    = (digitalRead(ADD_BTN)    == LOW);
+  bool removeActive = (digitalRead(REMOVE_BTN) == LOW);
+  bool resetActive  = (digitalRead(RESET_BTN)  == LOW);
 
   if (addActive && (now - lastDebounceAdd > DEBOUNCE_MS)) {
     lastDebounceAdd = now;

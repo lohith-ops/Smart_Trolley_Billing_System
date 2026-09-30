@@ -2,6 +2,7 @@ import threading
 import time
 import datetime
 import serial
+import socket
 import os
 import json
 import re
@@ -2430,8 +2431,8 @@ def get_wifi_settings():
     cfg = load_config()
     current_ip = get_local_ip()
     return jsonify({
-        "ssid":            cfg.get("wifiSSID", "Redmi 13C 5G"),
-        "password":        cfg.get("wifiPassword", ""),
+        "ssid":            cfg.get("wifiSSID", "Yogaraj"),
+        "password":        cfg.get("wifiPassword", "1234567890"),
         "serverIP":        cfg.get("serverIP", current_ip),
         "localIP":         current_ip,
         "serverPort":      cfg.get("serverPort", 5000),
@@ -2843,6 +2844,20 @@ def serial_loop():
                 global_ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
                 print(f"Connected to hardware on {SERIAL_PORT}")
                 last_warn_time = 0
+                try:
+                    s_tmp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    s_tmp.connect(('8.8.8.8', 80))
+                    host_local_ip = s_tmp.getsockname()[0]
+                    s_tmp.close()
+                    time.sleep(1.0)
+                    cfg = load_config()
+                    sync_ssid = cfg.get("wifiSSID", "Yogaraj")
+                    sync_pass = cfg.get("wifiPassword", "1234567890")
+                    sync_port = cfg.get("serverPort", 5000)
+                    send_command_to_arduino(f"WIFI_CFG:{sync_ssid}|{sync_pass}|{host_local_ip}|{sync_port}")
+                    print(f"[AUTO-SYNC] Automatically pushed active Wi-Fi ({sync_ssid}) and Host IP ({host_local_ip}:{sync_port}) to ESP32 via Serial!")
+                except Exception as ex_ip:
+                    print(f"[AUTO-SYNC WARN] {ex_ip}")
             except Exception as e:
                 try:
                     import serial.tools.list_ports

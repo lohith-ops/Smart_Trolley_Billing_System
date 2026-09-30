@@ -142,10 +142,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 <span style="color:${rssiColor}">${rssiLabel} <em style="font-size:0.78rem;opacity:0.75;">(${rssiQuality})</em></span>
             </div>
             <div class="hardware-status-panel">
-                <span>Firmware Version</span>
-                <span>v${trolley.firmware_version || '—'}</span>
-            </div>
-            <div class="hardware-status-panel">
                 <span>Current Mode</span>
                 <span class="trolley-status-badge ${trolley.current_mode === 'ADD' ? 'active' : 'idle'}" style="font-size:0.75rem;">
                     ${trolley.current_mode || 'ADD'}

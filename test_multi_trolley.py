@@ -10,6 +10,12 @@ class MultiTrolleyTestCase(unittest.TestCase):
         # Seed fresh data
         init_trolleys()
 
+    @classmethod
+    def tearDownClass(cls):
+        # Reset all carts back to empty when tests complete so live database stays 100% clean
+        carts_collection.update_many({}, {"$set": {"items": {}, "total": 0.0, "itemsContained": 0, "status": "ACTIVE", "lastActive": "Reset"}})
+        trolleys_collection.update_many({}, {"$set": {"cart_value": 0.0, "item_count": 0}})
+
     def test_01_default_trolleys_exist(self):
         """Verify TROLLEY-001, TROLLEY-002, TROLLEY-003 are initialized."""
         res = self.app.get('/api/trolleys')

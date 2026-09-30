@@ -40,15 +40,25 @@ async function initInventory() {
             if (e.target === els.productModal) closeProductModal();
         });
     }
+
+    // Auto-refresh inventory & heat map in real time (every 2.5s)
+    setInterval(fetchProducts, 2500);
 }
 
 // Fetch products from server
 async function fetchProducts() {
     try {
-        const res = await fetch('/api/products');
-        Products = await res.json();
-        renderInventory();
-        renderHeatMap();
+        const fetchFn = window.authFetch || fetch;
+        const res = await fetchFn('/api/products');
+        if (res.ok) {
+            Products = await res.json();
+            // Do not redraw DOM if user is actively filling out the product modal
+            const isModalOpen = els.productModal && els.productModal.classList.contains('active');
+            if (!isModalOpen) {
+                renderInventory();
+                renderHeatMap();
+            }
+        }
     } catch (e) {
         console.error("Failed to fetch products:", e);
     }
