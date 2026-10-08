@@ -134,7 +134,7 @@ Open **[http://127.0.0.1:5000](http://127.0.0.1:5000)** in your browser to view 
 
 ## 🔌 Serial Communication Protocol
 
-The Arduino firmware and Flask backend communicate over Serial at **9600 Baud** using a simple string-based protocol:
+The Arduino firmware and Flask backend communicate over Serial at **115200 Baud** using a simple string-based protocol:
 
 ### Arduino ➔ Python (Transmitted on Scans/Presses)
 *   `UID:XX XX XX XX` - RFID Card scanned.

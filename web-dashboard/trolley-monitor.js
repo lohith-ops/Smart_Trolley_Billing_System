@@ -10,13 +10,14 @@ document.addEventListener('DOMContentLoaded', () => {
     let trolleysList = [];
 
     const els = {
-        select:          document.getElementById('monitor-trolley-select'),
-        hwTelemetry:     document.getElementById('hw-telemetry-container'),
-        deviceInfo:      document.getElementById('device-info-container'),
+        select: document.getElementById('monitor-trolley-select'),
+        hwTelemetry: document.getElementById('hw-telemetry-container'),
+        deviceInfo: document.getElementById('device-info-container'),
+        custSession: document.getElementById('customer-session-container'),
         cartStatusLabel: document.getElementById('monitor-cart-status-label'),
-        cartTotal:       document.getElementById('monitor-cart-total'),
-        cartItems:       document.getElementById('monitor-cart-items'),
-        resetBtn:        document.getElementById('monitor-reset-btn')
+        cartTotal: document.getElementById('monitor-cart-total'),
+        cartItems: document.getElementById('monitor-cart-items'),
+        resetBtn: document.getElementById('monitor-reset-btn')
     };
 
     // ── Parse URL parameter ───────────────────────────────────────────────────
@@ -45,6 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // 3. Render panels
             renderHardwareTelemetry(trolley);
             renderDeviceInfo(trolley);
+            renderCustomerSession(trolley);
             renderCartItems(trolley.cart || {}, trolley.current_mode || 'ADD');
 
         } catch (e) {
@@ -60,7 +62,8 @@ document.addEventListener('DOMContentLoaded', () => {
         trolleysList.forEach(t => {
             const opt = document.createElement('option');
             opt.value = t.id;
-            opt.textContent = `${t.id} — ${t.status === 'online' ? '🟢' : '🔴'} ${t.status}`;
+            const isOnline = t.status === 'online' || t.connection_status === 'connected';
+            opt.textContent = `${t.id} — ${isOnline ? '🟢 Connected' : '🔴 Offline'} (${t.assignment_status || 'AVAILABLE'})`;
             if (t.id === currentTrolleyId) opt.selected = true;
             els.select.appendChild(opt);
         });
@@ -69,16 +72,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── Hardware Health Panel ─────────────────────────────────────────────────
     function renderHardwareTelemetry(trolley) {
         if (!els.hwTelemetry) return;
-        const isOnline = trolley.status === 'online';
+        const isOnline = trolley.status === 'online' || trolley.connection_status === 'connected';
         const batt = trolley.battery || 0;
         const battClass = batt > 60 ? 'online' : (batt > 20 ? 'idle' : 'offline');
+        const heartbeatText = trolley.last_heartbeat_display || (trolley.last_seen_24h ? `${trolley.last_seen_24h} (${trolley.last_seen_relative})` : (trolley.last_seen_str || 'Never'));
 
         els.hwTelemetry.innerHTML = `
             <div class="hardware-status-panel">
                 <span>ESP32 Microcontroller</span>
                 <span class="status-text ${isOnline ? 'online' : 'offline'}">
                     <span class="pulse-dot" style="background:${isOnline ? 'var(--accent-green)' : 'var(--accent-red)'}"></span>
-                    ${isOnline ? 'Connected' : 'Disconnected'}
+                    ${isOnline ? 'Connected' : 'Disconnected (Cart Saved)'}
                 </span>
             </div>
             <div class="hardware-status-panel">
@@ -107,7 +111,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             <div class="hardware-status-panel">
                 <span>Last Heartbeat</span>
-                <span>${trolley.last_seen_str || 'Never'}</span>
+                <span style="font-family:monospace;font-size:0.85rem;">${heartbeatText}</span>
             </div>`;
     }
 
@@ -122,11 +126,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (rssi !== 0) {
             rssiLabel = rssi + ' dBm';
             if (rssi >= -55) { rssiQuality = 'Excellent'; rssiColor = 'var(--accent-green)'; }
-            else if (rssi >= -65) { rssiQuality = 'Good';      rssiColor = 'var(--accent-green)'; }
-            else if (rssi >= -75) { rssiQuality = 'Fair';       rssiColor = '#f59e0b'; }
-            else if (rssi >= -85) { rssiQuality = 'Weak';       rssiColor = '#ef4444'; }
+            else if (rssi >= -65) { rssiQuality = 'Good'; rssiColor = 'var(--accent-green)'; }
+            else if (rssi >= -75) { rssiQuality = 'Fair'; rssiColor = '#f59e0b'; }
+            else if (rssi >= -85) { rssiQuality = 'Weak'; rssiColor = '#ef4444'; }
             else { rssiQuality = 'Very Weak'; rssiColor = '#ef4444'; }
         }
+
+        const isAssigned = trolley.assignment_status === 'ASSIGNED';
 
         els.deviceInfo.innerHTML = `
             <div class="hardware-status-panel">
@@ -142,11 +148,50 @@ document.addEventListener('DOMContentLoaded', () => {
                 <span style="color:${rssiColor}">${rssiLabel} <em style="font-size:0.78rem;opacity:0.75;">(${rssiQuality})</em></span>
             </div>
             <div class="hardware-status-panel">
+                <span>Fleet Assignment</span>
+                <span class="trolley-status-badge ${isAssigned ? 'idle' : 'active'}" style="font-size:0.75rem;">
+                    ${trolley.assignment_status || 'AVAILABLE'}
+                </span>
+            </div>
+            <div class="hardware-status-panel">
                 <span>Current Mode</span>
                 <span class="trolley-status-badge ${trolley.current_mode === 'ADD' ? 'active' : 'idle'}" style="font-size:0.75rem;">
                     ${trolley.current_mode || 'ADD'}
                 </span>
             </div>`;
+    }
+
+    // ── Customer Session Panel ────────────────────────────────────────────────
+    function renderCustomerSession(trolley) {
+        if (!els.custSession) return;
+        const isAssigned = trolley.assignment_status === 'ASSIGNED';
+        if (isAssigned) {
+            els.custSession.innerHTML = `
+                <div class="hardware-status-panel">
+                    <span>Shopper Name</span>
+                    <strong style="color:var(--accent-purple);font-size:0.95rem;">${trolley.assigned_customer_name || 'Customer'}</strong>
+                </div>
+                <div class="hardware-status-panel">
+                    <span>Customer ID</span>
+                    <span style="font-family:monospace;font-size:0.9rem;">${trolley.assigned_customer_id || '—'}</span>
+                </div>
+                <div class="hardware-status-panel">
+                    <span>Mobile Number</span>
+                    <span style="font-size:0.9rem;">${trolley.assigned_customer_phone || 'Not provided'}</span>
+                </div>
+                <div class="hardware-status-panel">
+                    <span>Session Persistence</span>
+                    <span class="trolley-status-badge active" style="font-size:0.75rem;background:rgba(168,85,247,0.2);color:#c084fc;">
+                        <i class="fa-solid fa-database" style="margin-right:4px;"></i>Saved in MongoDB
+                    </span>
+                </div>`;
+        } else {
+            els.custSession.innerHTML = `
+                <div style="text-align:center;color:var(--text-secondary);padding:14px 0;">
+                    <i class="fa-solid fa-user-clock" style="font-size:1.4rem;margin-bottom:6px;opacity:0.4;display:block;"></i>
+                    <p style="font-size:0.85rem;">Trolley is unassigned and AVAILABLE for next shopper.</p>
+                </div>`;
+        }
     }
 
     // ── Cart Items Panel ──────────────────────────────────────────────────────

@@ -72,12 +72,20 @@ function initLoginPage() {
     guestLinks.forEach(link => {
         link.addEventListener('click', async (e) => {
             e.preventDefault();
+            // Clear any previous user or customer session first
+            const tokenKey = (window.AUTH_CONFIG && window.AUTH_CONFIG.TOKEN_KEY) || 'smart_trolley_jwt_token';
+            const userKey = (window.AUTH_CONFIG && window.AUTH_CONFIG.USER_KEY) || 'smart_trolley_user_profile';
+            localStorage.removeItem(tokenKey);
+            localStorage.removeItem(userKey);
+
             try {
                 const res = await fetch('/api/auth/guest', { method: 'POST' });
                 if (res.ok) {
                     const data = await res.json();
                     if (data.token && data.user) {
                         setAuthSession(data.token, data.user);
+                    } else if (window.setGuestSession) {
+                        window.setGuestSession();
                     }
                 } else if (window.setGuestSession) {
                     window.setGuestSession();

@@ -100,7 +100,7 @@
             <header class="top-header glass-panel">
                 <div class="header-search">
                     <i class="fa-solid fa-magnifying-glass search-icon"></i>
-                    <input type="text" placeholder="Search inventory...">
+                    <input type="text" id="inventory-search" placeholder="Search by name, RFID UID, category, or shelf...">
                 </div>
                 <div class="header-actions">
                     <button class="icon-btn"><i class="fa-regular fa-bell"></i></button>
@@ -113,11 +113,16 @@
 
             <!-- Stock Level Heat Map -->
             <div class="glass-panel" style="padding: 24px;">
-                <h3 style="font-weight:600; font-size:1.1rem; margin-bottom:12px;">
-                    <i class="fa-solid fa-fire-flame-curved" style="margin-right: 8px; color: var(--accent-red);"></i>Stock Level Heat Map
-                </h3>
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:12px;">
+                    <h3 style="font-weight:600; font-size:1.1rem; margin:0;">
+                        <i class="fa-solid fa-fire-flame-curved" style="margin-right: 8px; color: var(--accent-red);"></i>Stock Level Heat Map
+                    </h3>
+                    <span class="trolley-status-badge active" style="font-size:0.75rem;background:rgba(16,185,129,0.15);color:var(--accent-green);border:1px solid rgba(16,185,129,0.3);padding:4px 10px;">
+                        <i class="fa-solid fa-cloud-arrow-up" style="margin-right:5px;"></i>Independent Central Catalog · Live MongoDB
+                    </span>
+                </div>
                 <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 16px;">
-                    Visual warehouse levels of active products on shelving locations. Low stock cells blink red.
+                    Visual warehouse levels of active products on shelving locations. Low stock cells blink red. Catalog works 100% independently of trolley connections.
                 </p>
                 <div class="heatmap-container" id="stock-heatmap">
                     <!-- Populated dynamically by inventory.js -->
@@ -125,9 +130,22 @@
             </div>
 
             <div class="glass-panel" style="padding: 24px; flex: 1;">
-                <div class="panel-header" style="margin-bottom: 24px;">
-                    <h3>Product Inventory</h3>
-                    <button class="btn btn-outline" id="add-product-btn"><i class="fa-solid fa-plus"></i> Add Product</button>
+                <div class="panel-header" style="margin-bottom: 24px; display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px;">
+                    <div>
+                        <h3 style="margin:0;">Product Inventory</h3>
+                        <p style="font-size:0.8rem; color:var(--text-secondary); margin-top:2px;" id="inventory-count-label">Loading catalog...</p>
+                    </div>
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                        <select id="inventory-category-filter" class="form-input" style="width:auto; padding:6px 12px; font-size:0.85rem; margin:0;">
+                            <option value="all">All Categories</option>
+                            <option value="Dairy">Dairy</option>
+                            <option value="Grains">Grains</option>
+                            <option value="Bakery">Bakery</option>
+                            <option value="Produce">Produce</option>
+                            <option value="Grocery">Grocery</option>
+                        </select>
+                        <button class="btn btn-outline" id="add-product-btn"><i class="fa-solid fa-plus"></i> Add Product</button>
+                    </div>
                 </div>
                 
                 <div class="inventory-list" id="inventory-list">

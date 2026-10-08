@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,7 +8,8 @@
     <!-- Google Fonts: Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
     <!-- FontAwesome 6 Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Main Styles -->
@@ -15,6 +17,7 @@
     <!-- Auth Scripts -->
     <script src="auth.js?v=3.0.0"></script>
 </head>
+
 <body class="dark-theme login-body">
     <div class="login-bg-glow">
         <div class="glow-sphere sphere-1"></div>
@@ -41,19 +44,25 @@
                 <div class="form-group">
                     <label for="login-username"><i class="fa-solid fa-user"></i> Username</label>
                     <div class="input-with-icon">
-                        <input type="text" id="login-username" name="username" placeholder="e.g. admin or cashier" required autocomplete="username" autofocus>
+                        <input type="text" id="login-username" name="username" placeholder="e.g. admin or cashier"
+                            required autocomplete="username" autofocus>
                         <i class="fa-solid fa-id-badge input-icon"></i>
                     </div>
                 </div>
 
                 <div class="form-group">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                        <label for="login-password" style="margin-bottom: 0;"><i class="fa-solid fa-lock"></i> Password</label>
-                        <button type="button" id="forgot-password-trigger" class="forgot-pass-link">Forgot Password?</button>
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label for="login-password" style="margin-bottom: 0;"><i class="fa-solid fa-lock"></i>
+                            Password</label>
+                        <button type="button" id="forgot-password-trigger" class="forgot-pass-link">Forgot
+                            Password?</button>
                     </div>
                     <div class="input-with-icon">
-                        <input type="password" id="login-password" name="password" placeholder="••••••••" required autocomplete="current-password">
-                        <button type="button" id="toggle-password" class="password-toggle-btn" aria-label="Toggle password visibility">
+                        <input type="password" id="login-password" name="password" placeholder="••••••••" required
+                            autocomplete="current-password">
+                        <button type="button" id="toggle-password" class="password-toggle-btn"
+                            aria-label="Toggle password visibility">
                             <i class="fa-solid fa-eye" id="toggle-password-icon"></i>
                         </button>
                     </div>
@@ -66,39 +75,48 @@
                     </button>
                 </div>
 
-                <div class="signup-prompt" style="margin-top: 14px; text-align: center; font-size: 0.9rem; color: var(--text-muted);">
-                    New customer? <a href="register.html" style="color: var(--accent-cyan); font-weight: 600; text-decoration: none; margin-left: 4px;">Create an Account <i class="fa-solid fa-arrow-right" style="font-size: 0.75rem;"></i></a>
+                <div class="signup-prompt"
+                    style="margin-top: 14px; text-align: center; font-size: 0.9rem; color: var(--text-muted);">
+                    New customer? <a href="register.html"
+                        style="color: var(--accent-cyan); font-weight: 600; text-decoration: none; margin-left: 4px;">Create
+                        an Account <i class="fa-solid fa-arrow-right" style="font-size: 0.75rem;"></i></a>
                 </div>
             </form>
 
             <div class="preset-section">
-                <button type="button" id="toggle-demo-btn" class="demo-toggle-btn" style="background: rgba(255,255,255,0.04); border: 1px dashed var(--border-subtle); border-radius: 8px; width: 100%; padding: 8px 12px; color: var(--text-muted); font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; justify-content: space-between; transition: all 0.2s;">
-                    <span><i class="fa-solid fa-flask" style="color: var(--accent-cyan); margin-right: 6px;"></i> Evaluation & Demo Logins</span>
+                <button type="button" id="toggle-demo-btn" class="demo-toggle-btn"
+                    style="background: rgba(255,255,255,0.04); border: 1px dashed var(--border-subtle); border-radius: 8px; width: 100%; padding: 8px 12px; color: var(--text-muted); font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; justify-content: space-between; transition: all 0.2s;">
+                    <span><i class="fa-solid fa-flask" style="color: var(--accent-cyan); margin-right: 6px;"></i>
+                        Evaluation & Demo Logins</span>
                     <i class="fa-solid fa-chevron-down" id="demo-chevron" style="transition: transform 0.3s;"></i>
                 </button>
-                <div id="demo-presets-container" class="preset-grid" style="display: none; margin-top: 12px;">
-                    <button type="button" class="preset-btn" data-user="admin" data-pass="admin123" title="Full system administration & settings">
+                <div id="demo-presets-container" class="preset-grid" style="display: grid; margin-top: 12px;">
+                    <button type="button" class="preset-btn" data-user="admin" data-pass="admin123"
+                        title="Full system administration & settings">
                         <i class="fa-solid fa-shield-halved" style="color: var(--accent-red);"></i>
                         <div class="preset-info">
                             <span class="preset-role">Admin</span>
                             <span class="preset-hint">admin / admin123</span>
                         </div>
                     </button>
-                    <button type="button" class="preset-btn" data-user="manager" data-pass="manager123" title="Store reports, inventory & analytics">
+                    <button type="button" class="preset-btn" data-user="manager" data-pass="manager123"
+                        title="Store reports, inventory & analytics">
                         <i class="fa-solid fa-chart-pie" style="color: var(--accent-purple);"></i>
                         <div class="preset-info">
                             <span class="preset-role">Manager</span>
                             <span class="preset-hint">manager / manager123</span>
                         </div>
                     </button>
-                    <button type="button" class="preset-btn" data-user="cashier" data-pass="cashier123" title="Cart monitoring & checkout">
+                    <button type="button" class="preset-btn" data-user="cashier" data-pass="cashier123"
+                        title="Cart monitoring & checkout">
                         <i class="fa-solid fa-cash-register" style="color: var(--accent-green);"></i>
                         <div class="preset-info">
                             <span class="preset-role">Cashier</span>
                             <span class="preset-hint">cashier / cashier123</span>
                         </div>
                     </button>
-                    <button type="button" class="preset-btn" data-user="customer" data-pass="customer123" title="Customer member portal & price finder">
+                    <button type="button" class="preset-btn" data-user="customer" data-pass="customer123"
+                        title="Customer member portal & price finder">
                         <i class="fa-solid fa-user-tag" style="color: var(--accent-cyan);"></i>
                         <div class="preset-info">
                             <span class="preset-role">Customer</span>
@@ -113,7 +131,8 @@
                     <span class="pulse-dot"></span>
                     <span>IoT Gateway Connected</span>
                 </div>
-                <a href="customer-portal.html" class="guest-link">Continue as Guest <i class="fa-solid fa-chevron-right"></i></a>
+                <a href="customer-portal.html" class="guest-link">Continue as Guest <i
+                        class="fa-solid fa-chevron-right"></i></a>
             </div>
         </div>
     </div>
@@ -146,13 +165,15 @@
             <!-- Step 1: Identifier Input -->
             <form id="forgot-step1-form" class="login-form">
                 <p style="font-size: 0.88rem; color: var(--text-secondary); line-height: 1.5; margin: 0;">
-                    Enter your <strong>Username</strong>, <strong>Registered Email</strong>, or <strong>Phone Number</strong> to receive a 6-digit verification code (OTP).
+                    Enter your <strong>Username</strong>, <strong>Registered Email</strong>, or <strong>Phone
+                        Number</strong> to receive a 6-digit verification code (OTP).
                 </p>
 
                 <div class="form-group" style="margin-top: 10px;">
                     <label for="forgot-identifier"><i class="fa-solid fa-user-tag"></i> Account Identifier</label>
                     <div class="input-with-icon">
-                        <input type="text" id="forgot-identifier" placeholder="e.g. customer, user@gmail.com, or +91..." required autocomplete="username">
+                        <input type="text" id="forgot-identifier" placeholder="e.g. customer, user@gmail.com, or +91..."
+                            required autocomplete="username">
                         <i class="fa-solid fa-id-card input-icon"></i>
                     </div>
                 </div>
@@ -181,7 +202,9 @@
                 <div class="form-group">
                     <label for="forgot-otp"><i class="fa-solid fa-shield-halved"></i> 6-Digit Verification Code</label>
                     <div class="input-with-icon">
-                        <input type="text" id="forgot-otp" maxlength="6" pattern="[0-9]{6}" placeholder="6-digit code (e.g. 123456)" required autocomplete="one-time-code" style="letter-spacing: 4px; font-weight: 700; font-size: 1.1rem; text-align: center;">
+                        <input type="text" id="forgot-otp" maxlength="6" pattern="[0-9]{6}"
+                            placeholder="6-digit code (e.g. 123456)" required autocomplete="one-time-code"
+                            style="letter-spacing: 4px; font-weight: 700; font-size: 1.1rem; text-align: center;">
                         <i class="fa-solid fa-hashtag input-icon"></i>
                     </div>
                 </div>
@@ -189,8 +212,10 @@
                 <div class="form-group">
                     <label for="forgot-new-pass"><i class="fa-solid fa-lock"></i> New Password</label>
                     <div class="input-with-icon">
-                        <input type="password" id="forgot-new-pass" placeholder="Min. 6 characters" required autocomplete="new-password">
-                        <button type="button" id="toggle-forgot-pass" class="password-toggle-btn" aria-label="Toggle password visibility">
+                        <input type="password" id="forgot-new-pass" placeholder="Min. 6 characters" required
+                            autocomplete="new-password">
+                        <button type="button" id="toggle-forgot-pass" class="password-toggle-btn"
+                            aria-label="Toggle password visibility">
                             <i class="fa-solid fa-eye" id="toggle-forgot-pass-icon"></i>
                         </button>
                     </div>
@@ -199,7 +224,8 @@
                 <div class="form-group">
                     <label for="forgot-confirm-pass"><i class="fa-solid fa-lock-open"></i> Confirm New Password</label>
                     <div class="input-with-icon">
-                        <input type="password" id="forgot-confirm-pass" placeholder="Re-enter new password" required autocomplete="new-password">
+                        <input type="password" id="forgot-confirm-pass" placeholder="Re-enter new password" required
+                            autocomplete="new-password">
                     </div>
                 </div>
 
@@ -210,9 +236,12 @@
                     </button>
                 </div>
 
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 0.85rem;">
-                    <button type="button" id="forgot-back-step1" class="text-link-btn"><i class="fa-solid fa-arrow-left"></i> Change User</button>
-                    <button type="button" id="forgot-resend-btn" class="text-link-btn"><i class="fa-solid fa-rotate-right"></i> Resend Code</button>
+                <div
+                    style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 0.85rem;">
+                    <button type="button" id="forgot-back-step1" class="text-link-btn"><i
+                            class="fa-solid fa-arrow-left"></i> Change User</button>
+                    <button type="button" id="forgot-resend-btn" class="text-link-btn"><i
+                            class="fa-solid fa-rotate-right"></i> Resend Code</button>
                 </div>
             </form>
 
@@ -235,4 +264,5 @@
 
     <script src="login.js?v=3.0.0"></script>
 </body>
+
 </html>

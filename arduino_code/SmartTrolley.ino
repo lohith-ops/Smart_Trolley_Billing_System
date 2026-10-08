@@ -81,13 +81,13 @@ void setup() {
   pinMode(BUZZER_PIN, OUTPUT);
   digitalWrite(BUZZER_PIN, LOW);
 
-  Serial.begin(9600);
+  Serial.begin(115200); // 115200 Baud matches app.py backend communication
 
-  // Read initial unpressed pin states
+  // Internal pull-up pins: unpressed state is HIGH (active-low buttons wired to GND)
   delay(50);
-  addIdleState    = digitalRead(ADD_BTN);
-  removeIdleState = digitalRead(REMOVE_BTN);
-  resetIdleState  = digitalRead(RESET_BTN);
+  addIdleState    = HIGH;
+  removeIdleState = HIGH;
+  resetIdleState  = HIGH;
 
   // LCD init
   Wire.begin();
@@ -176,15 +176,26 @@ void loop() {
     lcdShow("Mode: REMOVE", "Scan card...");
   }
 
-  // RESET Button Pressed
-  if (resetActive && (now - lastDebounceReset > DEBOUNCE_MS)) {
-    lastDebounceReset = now;
-    Serial.println("RESET");
-    beepDouble();
-    lcdShow("Cart Reset!", "Total: Rs.0.00");
-    delay(1200);
-    lcdShow("Mode: ADD", "Scan card...");
-    currentMode = "ADD";
+  // RESET Button Pressed (Requires intentional 2.5s continuous hold to prevent disconnect/reboot cart wiping)
+  static unsigned long resetPressStartTime = 0;
+  static bool resetHeldTriggered = false;
+
+  if (now > 4000 && resetActive) {
+    if (resetPressStartTime == 0) {
+      resetPressStartTime = now;
+      resetHeldTriggered = false;
+    } else if (!resetHeldTriggered && (now - resetPressStartTime >= 2500)) {
+      resetHeldTriggered = true;
+      Serial.println("CONFIRMED_HARDWARE_RESET");
+      beepDouble();
+      lcdShow("Cart Reset!", "Total: Rs.0.00");
+      delay(1200);
+      lcdShow("Mode: ADD", "Scan card...");
+      currentMode = "ADD";
+    }
+  } else {
+    resetPressStartTime = 0;
+    resetHeldTriggered = false;
   }
 
   // ── 4. RFID SCAN ─────────────────────────────────────────────────────────

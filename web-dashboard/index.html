@@ -102,6 +102,9 @@
                     </div>
                     
                     <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                        <button class="btn btn-outline" id="open-customer-assign-modal-btn" style="padding: 8px 18px; font-size: 0.85rem; font-weight: 600; border-color: rgba(168, 85, 247, 0.4); color: #c084fc; background: rgba(168, 85, 247, 0.1);">
+                            <i class="fa-solid fa-user-plus" style="margin-right: 6px;"></i> Assign Customer
+                        </button>
                         <button class="btn btn-outline" id="open-reg-modal-btn" style="padding: 8px 18px; font-size: 0.85rem; font-weight: 600; border-color: rgba(59, 130, 246, 0.4); color: #60a5fa; background: rgba(59, 130, 246, 0.1);">
                             <i class="fa-solid fa-plus-circle" style="margin-right: 6px;"></i> Register Product
                         </button>
@@ -302,6 +305,76 @@
                 <div class="form-actions">
                     <button type="button" class="btn btn-outline" id="reg-cancel-btn">Cancel</button>
                     <button type="submit" class="btn btn-checkout" style="background: linear-gradient(135deg, #3b82f6, #2563eb);">Save Product</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Customer Registration & Trolley Assignment Modal -->
+    <div class="modal-overlay" id="customer-assign-modal" style="display: none;">
+        <div class="modal-box glass-panel" style="max-width: 500px; max-height: 90vh; overflow-y: auto;">
+            <div class="modal-icon" style="color: var(--accent-purple);">
+                <i class="fa-solid fa-user-check"></i>
+            </div>
+            <h2>Assign Trolley to Customer</h2>
+            <p class="modal-sub">Bind an IoT trolley to a registered customer session</p>
+
+            <div id="assign-error-alert" style="display: none; padding: 10px 14px; background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); border-radius: 8px; color: #fca5a5; font-size: 0.85rem; margin: 12px 0;">
+                <i class="fa-solid fa-triangle-exclamation" style="margin-right: 6px;"></i>
+                <span id="assign-error-text"></span>
+            </div>
+
+            <!-- Tab Switcher: Existing vs New Customer -->
+            <div style="display: flex; gap: 8px; margin: 16px 0 12px; background: rgba(0,0,0,0.3); padding: 4px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08);">
+                <button type="button" id="tab-assign-existing" class="btn" style="flex: 1; padding: 6px; font-size: 0.8rem; background: var(--grad-primary); color: #fff;">Existing Customer</button>
+                <button type="button" id="tab-assign-new" class="btn btn-outline" style="flex: 1; padding: 6px; font-size: 0.8rem;">+ New Customer</button>
+            </div>
+
+            <form id="customer-assign-form" class="register-form">
+                <div class="form-group">
+                    <label>Selected Trolley</label>
+                    <select id="modal-assign-trolley-select" class="form-input" required>
+                        <option value="TROLLEY-001">TROLLEY-001</option>
+                        <option value="TROLLEY-002">TROLLEY-002</option>
+                        <option value="TROLLEY-003">TROLLEY-003</option>
+                    </select>
+                </div>
+
+                <!-- Existing Customer Mode -->
+                <div id="section-assign-existing">
+                    <div class="form-group">
+                        <label>Select Registered Customer</label>
+                        <select id="modal-assign-customer-select" class="form-input">
+                            <option value="">-- Choose Registered Customer --</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- New Customer Mode -->
+                <div id="section-assign-new" style="display: none;">
+                    <div class="form-group">
+                        <label>Customer Full Name *</label>
+                        <input type="text" id="modal-new-cust-name" placeholder="e.g. Ramesh Kumar" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label>Mobile Number *</label>
+                        <input type="tel" id="modal-new-cust-phone" placeholder="e.g. 9876543210" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label>Email Address (Optional)</label>
+                        <input type="email" id="modal-new-cust-email" placeholder="e.g. ramesh@example.com" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label>Customer ID (Optional - Auto-generated if blank)</label>
+                        <input type="text" id="modal-new-cust-id" placeholder="e.g. CUST-1005" class="form-input" style="text-transform: uppercase;">
+                    </div>
+                </div>
+
+                <div class="form-actions" style="margin-top: 20px;">
+                    <button type="button" class="btn btn-outline" id="customer-assign-cancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="customer-assign-submit" style="background: linear-gradient(135deg, #a855f7, #7c3aed);">
+                        <i class="fa-solid fa-link"></i> Confirm Assignment
+                    </button>
                 </div>
             </form>
         </div>

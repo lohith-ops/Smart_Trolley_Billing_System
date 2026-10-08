@@ -552,19 +552,39 @@ document.addEventListener('DOMContentLoaded', () => {
     if (notifForm) notifForm.addEventListener('submit', saveNotificationSettings);
     if (testNotifBtn) testNotifBtn.addEventListener('click', handleTestNotification);
 
-    // ── Trolley Wi-Fi Configuration ──────────────────────────────────────────
+    // ── Trolley Wi-Fi Configuration & Connection Assistant ────────────────────
     const wifiEls = {
-        form:          document.getElementById('settings-wifi-form'),
-        ssid:          document.getElementById('wifi-ssid-input'),
-        pass:          document.getElementById('wifi-password-input'),
-        serverIp:      document.getElementById('wifi-server-ip-input'),
-        serverPort:    document.getElementById('wifi-server-port-input'),
-        togglePassBtn: document.getElementById('toggle-wifi-pass-btn'),
-        passIcon:      document.getElementById('wifi-pass-icon'),
-        saveBtn:       document.getElementById('save-wifi-btn'),
-        pushUsbBtn:    document.getElementById('push-wifi-usb-btn'),
-        pushStatus:    document.getElementById('wifi-push-status')
+        form:               document.getElementById('settings-wifi-form'),
+        ssid:               document.getElementById('wifi-ssid-input'),
+        pass:               document.getElementById('wifi-password-input'),
+        serverIp:           document.getElementById('wifi-server-ip-input'),
+        serverPort:         document.getElementById('wifi-server-port-input'),
+        togglePassBtn:      document.getElementById('toggle-wifi-pass-btn'),
+        passIcon:           document.getElementById('wifi-pass-icon'),
+        saveBtn:            document.getElementById('save-wifi-btn'),
+        pushUsbBtn:         document.getElementById('push-wifi-usb-btn'),
+        pushStatus:         document.getElementById('wifi-push-status'),
+        savedIpsSelect:     document.getElementById('wifi-saved-ips-select'),
+        savedIpsChips:      document.getElementById('wifi-saved-ips-chips'),
+        useLiveIpBtn:       document.getElementById('wifi-use-live-ip-btn'),
+        knownNetsSelect:    document.getElementById('wifi-known-networks-select'),
+        refreshProfilesBtn: document.getElementById('wifi-refresh-profiles-btn'),
+        activeBadge:        document.getElementById('wifi-active-badge'),
+        activeStatusText:   document.getElementById('wifi-active-status-text'),
+        curSsid:            document.getElementById('wifi-cur-ssid'),
+        curSignal:          document.getElementById('wifi-cur-signal'),
+        curIp:              document.getElementById('wifi-cur-ip'),
+        disconnectBtn:      document.getElementById('wifi-disconnect-btn'),
+        scanBtn:            document.getElementById('wifi-scan-btn'),
+        scannedContainer:   document.getElementById('wifi-scanned-container'),
+        scannedCount:       document.getElementById('wifi-scanned-count'),
+        connectSsid:        document.getElementById('wifi-connect-ssid'),
+        connectPass:        document.getElementById('wifi-connect-pass'),
+        connectSubmitBtn:   document.getElementById('wifi-connect-submit-btn'),
+        assistantStatus:    document.getElementById('wifi-assistant-status')
     };
+
+    let cachedWifiData = null;
 
     if (wifiEls.togglePassBtn && wifiEls.pass) {
         wifiEls.togglePassBtn.addEventListener('click', () => {
@@ -576,12 +596,113 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function showAssistantStatus(msg, type = 'info', timeout = 6000) {
+        if (!wifiEls.assistantStatus) return;
+        wifiEls.assistantStatus.style.display = 'block';
+        if (type === 'success') {
+            wifiEls.assistantStatus.style.background = 'rgba(16, 185, 129, 0.15)';
+            wifiEls.assistantStatus.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+            wifiEls.assistantStatus.style.color = '#10b981';
+            wifiEls.assistantStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> ${msg}`;
+        } else if (type === 'error') {
+            wifiEls.assistantStatus.style.background = 'rgba(239, 68, 68, 0.15)';
+            wifiEls.assistantStatus.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+            wifiEls.assistantStatus.style.color = '#ef4444';
+            wifiEls.assistantStatus.innerHTML = `<i class="fa-solid fa-circle-xmark"></i> ${msg}`;
+        } else {
+            wifiEls.assistantStatus.style.background = 'rgba(59, 130, 246, 0.15)';
+            wifiEls.assistantStatus.style.border = '1px solid rgba(59, 130, 246, 0.3)';
+            wifiEls.assistantStatus.style.color = '#60a5fa';
+            wifiEls.assistantStatus.innerHTML = `<i class="fa-solid fa-circle-info"></i> ${msg}`;
+        }
+        if (timeout > 0) {
+            setTimeout(() => {
+                if (wifiEls.assistantStatus) wifiEls.assistantStatus.style.display = 'none';
+            }, timeout);
+        }
+    }
+
+    async function fetchWifiStatus() {
+        try {
+            const res = await fetch('/api/wifi/status');
+            if (!res.ok) return;
+            const data = await res.json();
+
+            if (wifiEls.curSsid) wifiEls.curSsid.textContent = data.ssid || (data.connected ? 'Connected' : 'Not Connected');
+            if (wifiEls.curSignal) wifiEls.curSignal.textContent = data.signal || '--';
+            if (wifiEls.curIp) wifiEls.curIp.textContent = data.localIP || '--';
+
+            if (wifiEls.activeBadge && wifiEls.activeStatusText) {
+                if (data.connected) {
+                    wifiEls.activeBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+                    wifiEls.activeBadge.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+                    wifiEls.activeBadge.style.color = '#10b981';
+                    wifiEls.activeStatusText.textContent = `Connected: ${data.ssid || 'Wi-Fi'} (${data.signal || ''})`;
+                } else {
+                    wifiEls.activeBadge.style.background = 'rgba(239, 68, 68, 0.15)';
+                    wifiEls.activeBadge.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+                    wifiEls.activeBadge.style.color = '#ef4444';
+                    wifiEls.activeStatusText.textContent = 'Wi-Fi Disconnected';
+                }
+            }
+        } catch (err) {
+            console.warn('Wi-Fi status fetch error:', err);
+        }
+    }
+
+    function renderSavedIps(savedIps, liveIp) {
+        if (!wifiEls.savedIpsSelect) return;
+        
+        // Populate dropdown
+        wifiEls.savedIpsSelect.innerHTML = '<option value="">-- Choose from Saved / Detected IP Addresses --</option>';
+        if (Array.isArray(savedIps)) {
+            savedIps.forEach(item => {
+                const opt = document.createElement('option');
+                opt.value = item.ip;
+                opt.textContent = `${item.ip} — ${item.label}`;
+                if (item.ip === wifiEls.serverIp.value) opt.selected = true;
+                wifiEls.savedIpsSelect.appendChild(opt);
+            });
+        }
+
+        // Render interactive chips
+        if (wifiEls.savedIpsChips && Array.isArray(savedIps)) {
+            wifiEls.savedIpsChips.innerHTML = '';
+            savedIps.forEach(item => {
+                const chip = document.createElement('button');
+                chip.type = 'button';
+                chip.className = 'btn btn-outline';
+                chip.style.cssText = `padding: 3px 8px; font-size: 0.72rem; border-radius: 12px; display: inline-flex; align-items: center; gap: 4px; ${item.isActive ? 'border-color: #10b981; color: #10b981;' : 'opacity: 0.85;'}`;
+                chip.innerHTML = `${item.isActive ? '<i class="fa-solid fa-circle" style="font-size:0.5rem; color:#10b981;"></i>' : '<i class="fa-solid fa-network-wired" style="font-size:0.6rem;"></i>'} ${item.ip}`;
+                chip.title = `${item.label} (Click to set as Server IP)`;
+                chip.addEventListener('click', () => {
+                    if (wifiEls.serverIp) wifiEls.serverIp.value = item.ip;
+                    if (wifiEls.savedIpsSelect) wifiEls.savedIpsSelect.value = item.ip;
+                    showAssistantStatus(`Trolley Server IP set to ${item.ip} (${item.label})`, 'info', 3000);
+                });
+                wifiEls.savedIpsChips.appendChild(chip);
+            });
+        }
+    }
+
+    function renderKnownNetworks(networks) {
+        if (!wifiEls.knownNetsSelect || !Array.isArray(networks)) return;
+        wifiEls.knownNetsSelect.innerHTML = '<option value="">-- Choose from Known Wi-Fi Networks --</option>';
+        networks.forEach(net => {
+            const opt = document.createElement('option');
+            opt.value = JSON.stringify(net);
+            opt.textContent = `${net.ssid} ${net.label ? `(${net.label})` : ''} ${net.hasPassword === false ? '[No Password]' : ''}`;
+            wifiEls.knownNetsSelect.appendChild(opt);
+        });
+    }
+
     async function fetchWifiSettings() {
         if (!wifiEls.ssid) return;
         try {
             const res = await fetch('/api/settings/wifi');
             if (res.ok) {
                 const data = await res.json();
+                cachedWifiData = data;
                 if (data.ssid && !wifiEls.ssid.value) wifiEls.ssid.value = data.ssid;
                 if (data.password && !wifiEls.pass.value) wifiEls.pass.value = data.password;
                 if (data.serverIP && !wifiEls.serverIp.value) wifiEls.serverIp.value = data.serverIP;
@@ -596,10 +717,271 @@ document.addEventListener('DOMContentLoaded', () => {
                         wifiEls.pushUsbBtn.innerHTML = `<i class="fa-brands fa-usb"></i> Send to Trolley (USB)`;
                     }
                 }
+
+                // Render Saved IPs & Known Networks
+                renderSavedIps(data.savedIPs, data.localIP);
+                renderKnownNetworks(data.knownNetworks);
             }
         } catch (e) {
             console.error('Error fetching Wi-Fi settings:', e);
         }
+        fetchWifiStatus();
+    }
+
+    // IP Selection Handlers
+    if (wifiEls.savedIpsSelect) {
+        wifiEls.savedIpsSelect.addEventListener('change', (e) => {
+            const val = e.target.value;
+            if (val && wifiEls.serverIp) {
+                wifiEls.serverIp.value = val;
+                showAssistantStatus(`Selected Trolley Server IP: ${val}`, 'info', 3000);
+            }
+        });
+    }
+
+    if (wifiEls.useLiveIpBtn) {
+        wifiEls.useLiveIpBtn.addEventListener('click', () => {
+            const liveIp = (cachedWifiData && cachedWifiData.localIP) || '10.140.219.241';
+            if (wifiEls.serverIp) {
+                wifiEls.serverIp.value = liveIp;
+                if (wifiEls.savedIpsSelect) wifiEls.savedIpsSelect.value = liveIp;
+                showAssistantStatus(`Set to Live Host IP: ${liveIp}`, 'success', 3500);
+            }
+        });
+    }
+
+    // Known Wi-Fi Networks Selector
+    if (wifiEls.knownNetsSelect) {
+        wifiEls.knownNetsSelect.addEventListener('change', (e) => {
+            const val = e.target.value;
+            if (!val) return;
+            try {
+                const net = JSON.parse(val);
+                if (wifiEls.ssid) wifiEls.ssid.value = net.ssid || '';
+                if (wifiEls.pass && net.pass) wifiEls.pass.value = net.pass;
+                else if (wifiEls.pass && net.password) wifiEls.pass.value = net.password;
+
+                if (wifiEls.connectSsid) wifiEls.connectSsid.value = net.ssid || '';
+                if (wifiEls.connectPass) wifiEls.connectPass.value = net.pass || net.password || '';
+
+                showAssistantStatus(`Loaded credentials for network '${net.ssid}'`, 'info', 3000);
+            } catch (err) {
+                console.error('Failed to parse network info:', err);
+            }
+        });
+    }
+
+    // Refresh Profiles Button
+    if (wifiEls.refreshProfilesBtn) {
+        wifiEls.refreshProfilesBtn.addEventListener('click', async () => {
+            const orig = wifiEls.refreshProfilesBtn.innerHTML;
+            wifiEls.refreshProfilesBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Refreshing...';
+            try {
+                const res = await fetch('/api/wifi/saved-profiles');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.profiles) renderKnownNetworks(data.profiles);
+                    showAssistantStatus(`Refreshed ${data.profiles ? data.profiles.length : 0} saved Wi-Fi profiles`, 'success', 3000);
+                }
+            } catch (err) {
+                console.error('Profile refresh error:', err);
+            } finally {
+                wifiEls.refreshProfilesBtn.innerHTML = orig;
+            }
+        });
+    }
+
+    // Scan Nearby Wi-Fi Networks
+    async function scanWifiNetworks() {
+        if (!wifiEls.scanBtn || !wifiEls.scannedContainer) return;
+        const origBtnText = wifiEls.scanBtn.innerHTML;
+        wifiEls.scanBtn.disabled = true;
+        wifiEls.scanBtn.innerHTML = '<i class="fa-solid fa-satellite-dish fa-spin"></i> Scanning...';
+        showAssistantStatus('Scanning radio waves for nearby Wi-Fi networks...', 'info', 0);
+
+        try {
+            const res = await fetch('/api/wifi/scan');
+            const data = await res.json();
+
+            if (res.ok && data.success && Array.isArray(data.networks)) {
+                if (wifiEls.scannedCount) {
+                    wifiEls.scannedCount.textContent = `Found ${data.networks.length} network${data.networks.length === 1 ? '' : 's'}`;
+                }
+
+                if (data.networks.length === 0) {
+                    wifiEls.scannedContainer.innerHTML = `
+                        <div style="text-align: center; color: var(--text-secondary); font-size: 0.82rem; padding: 25px;">
+                            No Wi-Fi networks detected in range. Ensure your Wi-Fi adapter is turned on.
+                        </div>
+                    `;
+                } else {
+                    wifiEls.scannedContainer.innerHTML = '';
+                    data.networks.forEach(net => {
+                        const row = document.createElement('div');
+                        row.style.cssText = `
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            padding: 10px 12px;
+                            background: ${net.isCurrent ? 'rgba(16, 185, 129, 0.08)' : 'rgba(255, 255, 255, 0.03)'};
+                            border: 1px solid ${net.isCurrent ? 'rgba(16, 185, 129, 0.35)' : 'var(--panel-border)'};
+                            border-radius: 8px;
+                            gap: 10px;
+                            flex-wrap: wrap;
+                        `;
+
+                        // Signal icon & color
+                        let sigColor = '#10b981';
+                        let sigIcon = 'fa-wifi';
+                        if (net.signal < 45) { sigColor = '#ef4444'; }
+                        else if (net.signal < 70) { sigColor = '#f59e0b'; }
+
+                        row.innerHTML = `
+                            <div style="display: flex; align-items: center; gap: 10px; min-width: 140px;">
+                                <i class="fa-solid ${sigIcon}" style="color: ${sigColor}; font-size: 1.1rem;" title="Signal: ${net.signal}%"></i>
+                                <div>
+                                    <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                                        ${net.ssid}
+                                        ${net.isCurrent ? '<span style="font-size: 0.65rem; background: #10b981; color: #fff; padding: 1px 6px; border-radius: 10px;">Connected</span>' : ''}
+                                    </div>
+                                    <div style="font-size: 0.72rem; color: var(--text-secondary); margin-top: 2px;">
+                                        ${net.signal}% | ${net.auth} | ${net.band || '2.4GHz'}
+                                        ${net.hasSavedProfile ? ' | <i class="fa-solid fa-key" style="color:var(--accent-cyan);" title="Saved Password Available"></i> Saved' : ''}
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 6px; margin-left: auto;">
+                                ${!net.isCurrent ? `
+                                    <button type="button" class="btn btn-outline connect-pc-btn" style="padding: 3px 8px; font-size: 0.72rem; border-color: rgba(59, 130, 246, 0.4); color: #60a5fa;" title="Connect this PC to ${net.ssid}">
+                                        <i class="fa-solid fa-link"></i> Connect PC
+                                    </button>
+                                ` : ''}
+                                <button type="button" class="btn btn-outline use-trolley-btn" style="padding: 3px 8px; font-size: 0.72rem; border-color: rgba(16, 185, 129, 0.4); color: #10b981;" title="Configure Trolley for ${net.ssid}">
+                                    <i class="fa-solid fa-arrow-left"></i> Set for Trolley
+                                </button>
+                            </div>
+                        `;
+
+                        // "Connect PC" button
+                        const connectBtn = row.querySelector('.connect-pc-btn');
+                        if (connectBtn) {
+                            connectBtn.addEventListener('click', () => {
+                                handleDirectConnect(net.ssid, net.password || '');
+                            });
+                        }
+
+                        // "Set for Trolley" button
+                        const trolleyBtn = row.querySelector('.use-trolley-btn');
+                        if (trolleyBtn) {
+                            trolleyBtn.addEventListener('click', () => {
+                                if (wifiEls.ssid) wifiEls.ssid.value = net.ssid;
+                                if (wifiEls.pass && net.password) wifiEls.pass.value = net.password;
+                                const liveIp = (cachedWifiData && cachedWifiData.localIP) || '10.140.219.241';
+                                if (wifiEls.serverIp) wifiEls.serverIp.value = liveIp;
+                                showAssistantStatus(`Applied '${net.ssid}' to Trolley configuration!`, 'success', 4000);
+                            });
+                        }
+
+                        wifiEls.scannedContainer.appendChild(row);
+                    });
+                }
+                showAssistantStatus(`Found ${data.networks.length} nearby Wi-Fi networks.`, 'success', 4000);
+            } else {
+                showAssistantStatus(data.error || 'Failed to scan Wi-Fi networks', 'error');
+            }
+        } catch (err) {
+            console.error('Scan error:', err);
+            showAssistantStatus('Error communicating with Wi-Fi scanner', 'error');
+        } finally {
+            wifiEls.scanBtn.disabled = false;
+            wifiEls.scanBtn.innerHTML = origBtnText;
+            fetchWifiStatus();
+        }
+    }
+
+    if (wifiEls.scanBtn) {
+        wifiEls.scanBtn.addEventListener('click', scanWifiNetworks);
+    }
+
+    // Direct Connect to Wi-Fi
+    async function handleDirectConnect(ssid, password) {
+        if (!ssid) {
+            ssid = wifiEls.connectSsid ? wifiEls.connectSsid.value.trim() : '';
+            password = wifiEls.connectPass ? wifiEls.connectPass.value.trim() : '';
+        }
+
+        if (!ssid) {
+            alert('Please enter or select a Wi-Fi SSID to connect.');
+            return;
+        }
+
+        const btn = wifiEls.connectSubmitBtn;
+        const origText = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Connecting...';
+        }
+
+        showAssistantStatus(`Attempting connection to '${ssid}'...`, 'info', 0);
+
+        try {
+            const token = (typeof getAuthToken === 'function') ? getAuthToken() : localStorage.getItem('smart_trolley_jwt_token');
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
+            const res = await fetch('/api/wifi/connect', {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({ ssid: ssid, password: password })
+            });
+            const data = await res.json();
+
+            if (res.ok && data.success) {
+                showAssistantStatus(`Successfully connected to '${ssid}'! Host IP: ${data.localIP || ''}`, 'success', 7000);
+                if (wifiEls.ssid) wifiEls.ssid.value = ssid;
+                if (wifiEls.pass && password) wifiEls.pass.value = password;
+                if (wifiEls.serverIp && data.localIP) wifiEls.serverIp.value = data.localIP;
+                fetchWifiStatus();
+                fetchWifiSettings();
+            } else {
+                showAssistantStatus(data.message || 'Failed to connect to network', 'error', 6000);
+            }
+        } catch (err) {
+            console.error('Connection error:', err);
+            showAssistantStatus('Error connecting to Wi-Fi network.', 'error');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = origText;
+            }
+        }
+    }
+
+    if (wifiEls.connectSubmitBtn) {
+        wifiEls.connectSubmitBtn.addEventListener('click', () => handleDirectConnect());
+    }
+
+    // Disconnect Button
+    if (wifiEls.disconnectBtn) {
+        wifiEls.disconnectBtn.addEventListener('click', async () => {
+            if (!confirm('Are you sure you want to disconnect this laptop from Wi-Fi?')) return;
+            try {
+                const token = (typeof getAuthToken === 'function') ? getAuthToken() : localStorage.getItem('smart_trolley_jwt_token');
+                const headers = { 'Content-Type': 'application/json' };
+                if (token) headers['Authorization'] = `Bearer ${token}`;
+
+                const res = await fetch('/api/wifi/disconnect', { method: 'POST', headers: headers });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    showAssistantStatus(data.message, 'info', 4000);
+                    fetchWifiStatus();
+                } else {
+                    showAssistantStatus(data.message || 'Disconnect failed', 'error');
+                }
+            } catch (err) {
+                console.error('Disconnect error:', err);
+            }
+        });
     }
 
     async function handleWifiSave(e, sendToUsb = false) {
@@ -650,6 +1032,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     wifiEls.pushStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> ${data.message}`;
                     setTimeout(() => { wifiEls.pushStatus.style.display = 'none'; }, 6000);
                 }
+
+                // Refresh IP list and Wi-Fi state
+                fetchWifiSettings();
             } else {
                 alert(`Error: ${data.message || 'Failed to save Wi-Fi settings'}`);
             }

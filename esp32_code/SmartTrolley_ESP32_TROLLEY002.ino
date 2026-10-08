@@ -727,40 +727,53 @@ void loop() {
     syncModeWithServer("REMOVE");
   }
 
-  if (resetActive && (now - lastDebounceReset > DEBOUNCE_MS)) {
-    lastDebounceReset = now;
-    Serial.println("[BTN] RESET button pressed");
-    beepDouble();
-    lcdShow("Resetting Cart", "Please wait...");
+  // RESET Button: Require intentional 2.5s continuous press to prevent brownouts/glitches from wiping cart
+  static unsigned long resetPressStartTime = 0;
+  static bool resetHeldTriggered = false;
 
-    if (WiFi.status() == WL_CONNECTED) {
-      WiFiClient client;
-      HTTPClient http;
-      http.begin(client, apiReset);
-      http.addHeader("Content-Type", "application/json");
-      http.addHeader("Connection", "close");
-      http.setTimeout(5000);
+  if (now > 4000 && resetActive) {
+    if (resetPressStartTime == 0) {
+      resetPressStartTime = now;
+      resetHeldTriggered = false;
+    } else if (!resetHeldTriggered && (now - resetPressStartTime >= 2500)) {
+      resetHeldTriggered = true;
+      Serial.println("[BTN] Intentional 2.5s RESET button hold confirmed!");
+      beepDouble();
+      lcdShow("Resetting Cart", "Please wait...");
 
-      StaticJsonDocument<128> doc;
-      doc["trolley_id"] = TROLLEY_ID;
-      String payload;
-      serializeJson(doc, payload);
+      if (WiFi.status() == WL_CONNECTED) {
+        WiFiClient client;
+        HTTPClient http;
+        http.begin(client, apiReset);
+        http.addHeader("Content-Type", "application/json");
+        http.addHeader("Connection", "close");
+        http.setTimeout(5000);
 
-      int responseCode = http.POST(payload);
-      if (responseCode == 200) {
-        lcdShow("Cart Reset!", "Total: Rs.0.00");
-        beepOnce();
+        StaticJsonDocument<128> doc;
+        doc["trolley_id"] = TROLLEY_ID;
+        doc["manual"] = true;
+        String payload;
+        serializeJson(doc, payload);
+
+        int responseCode = http.POST(payload);
+        if (responseCode == 200) {
+          lcdShow("Cart Reset!", "Total: Rs.0.00");
+          beepOnce();
+        } else {
+          lcdShow("Reset Local", "Err: " + String(responseCode));
+        }
+        http.end();
       } else {
-        lcdShow("Reset Local", "Err: " + String(responseCode));
+        lcdShow("Reset Local", "WiFi offline");
       }
-      http.end();
-    } else {
-      lcdShow("Reset Local", "WiFi offline");
-    }
 
-    delay(1500);
-    currentMode = "ADD";
-    lcdShow("Mode: ADD", "Scan card...");
+      delay(1500);
+      currentMode = "ADD";
+      lcdShow("Mode: ADD", "Scan card...");
+    }
+  } else {
+    resetPressStartTime = 0;
+    resetHeldTriggered = false;
   }
 
   // ── 5. RFID Card Reader ───────────────────────────────────────────────────

@@ -97,7 +97,8 @@ async function fetchDashboard() {
 // Update Dashboard Top Numbers
 function updateStatsUI() {
     els.revenue.innerText = `Rs.${State.revenue.toFixed(2)}`;
-    els.trolleys.innerText = State.activeCarts.length;
+    const onlineCount = State.onlineTrolleys !== undefined ? State.onlineTrolleys : (State.arduinoConnected ? 1 : 0);
+    els.trolleys.innerText = onlineCount;
     els.items.innerText = State.scannedItems;
 }
 

@@ -30,13 +30,13 @@ function refreshEls() {
     els.resetBtn = document.getElementById('reset-btn');
     els.mainResetBtn = document.getElementById('main-reset-btn');
     els.checkoutBtn = document.getElementById('checkout-btn');
-    
+
     // Receipt Modal
     els.receiptModal = document.getElementById('receipt-modal');
     els.receiptAmount = document.getElementById('receipt-amount');
     els.receiptMeta = document.getElementById('receipt-meta');
     els.modalCloseBtn = document.getElementById('modal-close-btn');
-    
+
     // Registration Modal
     els.regModal = document.getElementById('register-modal');
     els.regForm = document.getElementById('register-form');
@@ -73,7 +73,7 @@ async function initDashboard() {
     await fetchProducts();
     await fetchSimulatorTrolleys();
     await fetchDashboard();
-    
+
     // Start dashboard polling
     setInterval(fetchDashboard, 2000);
 
@@ -81,10 +81,10 @@ async function initDashboard() {
     if (els.resetBtn) els.resetBtn.addEventListener('click', resetCart);
     if (els.mainResetBtn) els.mainResetBtn.addEventListener('click', resetCart);
     if (els.simResetBtn) els.simResetBtn.addEventListener('click', resetCart);
-    
+
     if (els.checkoutBtn) els.checkoutBtn.addEventListener('click', checkoutCart);
     if (els.modalCloseBtn) els.modalCloseBtn.addEventListener('click', closeReceiptModal);
-    
+
     if (els.receiptModal) {
         els.receiptModal.addEventListener('click', (e) => {
             if (e.target === els.receiptModal) closeReceiptModal();
@@ -113,10 +113,35 @@ async function initDashboard() {
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             closeRegistrationModal();
+            closeCustomerAssignModal();
             closeReceiptModal();
             if (els.simPanel) els.simPanel.classList.remove('open');
         }
     });
+
+    // Customer Assignment Modal Events
+    const openCustAssignBtn = document.getElementById('open-customer-assign-modal-btn');
+    if (openCustAssignBtn) openCustAssignBtn.addEventListener('click', () => openCustomerAssignModal());
+
+    const custAssignCancelBtn = document.getElementById('customer-assign-cancel');
+    if (custAssignCancelBtn) custAssignCancelBtn.addEventListener('click', closeCustomerAssignModal);
+
+    const custAssignModal = document.getElementById('customer-assign-modal');
+    if (custAssignModal) {
+        custAssignModal.addEventListener('click', (e) => {
+            if (e.target === custAssignModal) closeCustomerAssignModal();
+        });
+    }
+
+    const tabAssignExisting = document.getElementById('tab-assign-existing');
+    const tabAssignNew = document.getElementById('tab-assign-new');
+    if (tabAssignExisting && tabAssignNew) {
+        tabAssignExisting.addEventListener('click', () => switchAssignTab('existing'));
+        tabAssignNew.addEventListener('click', () => switchAssignTab('new'));
+    }
+
+    const custAssignForm = document.getElementById('customer-assign-form');
+    if (custAssignForm) custAssignForm.addEventListener('submit', handleCustomerAssignSubmit);
 
     // Simulator Panel Toggle & Actions
     if (els.simToggleBtn) {
@@ -141,7 +166,7 @@ async function initDashboard() {
     // Simulator Scanner scan triggers
     if (els.simScanBtn) els.simScanBtn.addEventListener('click', triggerSimulatorScan);
     if (els.simCheckoutBtn) els.simCheckoutBtn.addEventListener('click', triggerSimulatorCheckout);
-    
+
     // Setup Payment Modal Handlers
     setupPaymentModalListeners();
 }
@@ -198,7 +223,7 @@ async function fetchDashboard() {
     try {
         const res = await fetch('/api/dashboard');
         const data = await res.json();
-        
+
         State.revenue = data.revenue;
         State.scannedItems = data.scannedItems;
         State.activeCarts = data.activeCarts;
@@ -212,8 +237,8 @@ async function fetchDashboard() {
         if (State.feed.length > 0) {
             const latestEvent = State.feed[0];
             const now = Date.now() / 1000;
-            if (latestEvent.actionType === 'UNKNOWN_SCAN' && 
-                (now - latestEvent.timestamp) < 5 && 
+            if (latestEvent.actionType === 'UNKNOWN_SCAN' &&
+                (now - latestEvent.timestamp) < 5 &&
                 State.lastProcessedUnknownUID !== latestEvent.uid) {
                 State.lastProcessedUnknownUID = latestEvent.uid;
             }
@@ -231,19 +256,21 @@ async function fetchDashboard() {
 // Update Top level statistics counters
 function updateStatsUI() {
     if (els.revenue) els.revenue.innerText = `Rs.${State.revenue.toFixed(2)}`;
-    if (els.trolleys) els.trolleys.innerText = State.trolleyCount || State.activeCarts.length;
+
+    // Active (online / actively connected) trolleys
+    const totalCount = State.trolleyCount !== undefined ? State.trolleyCount : 0;
+    const onlineCount = State.onlineTrolleys !== undefined ? State.onlineTrolleys : (State.arduinoConnected ? 1 : 0);
+    if (els.trolleys) els.trolleys.innerText = onlineCount;
     if (els.items) els.items.innerText = State.scannedItems;
-    
+
     // Count low stock products (stock < 10)
     const lowStockCount = Products.filter(p => p.stock < 10).length;
     if (els.lowstock) els.lowstock.innerText = lowStockCount;
-    
+
     // Offline devices
-    const totalCount = State.trolleyCount || 3;
-    const onlineCount = State.onlineTrolleys !== undefined ? State.onlineTrolleys : (State.arduinoConnected ? 1 : 0);
     const offlineCount = Math.max(0, totalCount - onlineCount);
     if (els.offline) els.offline.innerText = offlineCount;
-    
+
     // Pending checkouts (active carts with items > 0)
     const pendingCount = State.activeCarts.filter(c => c.itemsContained > 0).length;
     if (els.pending) els.pending.innerText = pendingCount;
@@ -268,7 +295,7 @@ function renderActiveCartAndItems() {
         const itemsEntries = Object.entries(cart.items || {});
         const trolleyId = cart.trolley_id || `TROLLEY-00${cart.id}`;
         let itemsHtml = '';
-        
+
         if (itemsEntries.length > 0) {
             itemsHtml = `
                 <div class="cart-items-detail" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">
@@ -299,14 +326,50 @@ function renderActiveCartAndItems() {
             `;
         }
 
+        const isConnected = cart.connection_status === 'connected';
+        const connBadge = isConnected ?
+            `<span class="badge" style="background:rgba(16,185,129,0.15);color:var(--accent-green);border:1px solid rgba(16,185,129,0.3);padding:2px 8px;border-radius:6px;font-size:0.75rem;"><span class="pulse-dot" style="display:inline-block;width:7px;height:7px;background:var(--accent-green);border-radius:50%;margin-right:5px;"></span>Connected</span>` :
+            `<span class="badge" style="background:rgba(239,68,68,0.15);color:#f87171;border:1px solid rgba(239,68,68,0.3);padding:2px 8px;border-radius:6px;font-size:0.75rem;"><span style="display:inline-block;width:7px;height:7px;background:#ef4444;border-radius:50%;margin-right:5px;"></span>Disconnected (Cart Saved)</span>`;
+
+        let customerHtml = '';
+        if (cart.customer_name) {
+            customerHtml = `
+                <div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap;">
+                    <span style="background:rgba(168,85,247,0.15);color:#c084fc;border:1px solid rgba(168,85,247,0.3);padding:2px 8px;border-radius:6px;font-size:0.75rem;font-weight:600;">
+                        <i class="fa-solid fa-user-check" style="margin-right:4px;"></i>${cart.customer_name} (${cart.customer_id || 'ID'})
+                    </span>
+                    ${cart.customer_phone ? `<span style="font-size:0.75rem;color:var(--text-secondary);"><i class="fa-solid fa-phone" style="margin-right:3px;"></i>${cart.customer_phone}</span>` : ''}
+                    <button class="btn btn-outline btn-unassign-cart" data-trolley-id="${trolleyId}" title="Unassign Customer" style="padding:2px 8px;font-size:0.7rem;border-color:rgba(239,68,68,0.3);color:#f87171;cursor:pointer;">Unassign</button>
+                </div>
+            `;
+        } else {
+            customerHtml = `
+                <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+                    <span style="background:rgba(59,130,246,0.12);color:#93c5fd;border:1px solid rgba(59,130,246,0.25);padding:2px 8px;border-radius:6px;font-size:0.75rem;">
+                        <i class="fa-solid fa-user-clock" style="margin-right:4px;"></i>Available
+                    </span>
+                    <button class="btn btn-outline btn-assign-cart" data-trolley-id="${trolleyId}" style="padding:2px 8px;font-size:0.7rem;border-color:rgba(168,85,247,0.4);color:#c084fc;cursor:pointer;">+ Assign Customer</button>
+                </div>
+            `;
+        }
+
+        const heartbeatText = cart.last_heartbeat_display || cart.lastActive || 'Just now';
         const productOptions = Products.map(p => `<option value="${p.uid}">${p.name} — Rs.${p.price.toFixed(2)}</option>`).join('');
 
         return `
             <div class="active-cart" style="padding: 16px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; margin-bottom: 16px;">
-                <div class="cart-header-row" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div class="cart-header-row" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px;">
                     <div class="cart-info">
-                        <h4 style="font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; gap: 8px;"><div class="cart-status"></div> ${trolleyId}</h4>
-                        <p style="font-size: 0.8rem; color: var(--text-secondary);">${cart.itemsContained} items · ${cart.lastActive}</p>
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <h4 style="font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; gap: 8px; margin: 0;">
+                                <div class="cart-status"></div> ${trolleyId}
+                            </h4>
+                            ${connBadge}
+                        </div>
+                        <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 4px 0 0 0;">
+                            ${cart.itemsContained} items · <i class="fa-regular fa-clock" style="margin-left: 4px; margin-right: 2px;"></i>Heartbeat: ${heartbeatText}
+                        </p>
+                        ${customerHtml}
                     </div>
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <div class="cart-total" style="font-size: 1.3rem; font-weight: 700; color: var(--accent-green);">Rs.${cart.total.toFixed(2)}</div>
@@ -413,6 +476,24 @@ function bindCartControlListeners() {
             checkoutCart(trolleyId);
         });
     });
+
+    // Assign Customer button on cart card
+    document.querySelectorAll('.btn-assign-cart').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const trolleyId = btn.getAttribute('data-trolley-id');
+            openCustomerAssignModal(trolleyId);
+        });
+    });
+
+    // Unassign Customer button on cart card
+    document.querySelectorAll('.btn-unassign-cart').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const trolleyId = btn.getAttribute('data-trolley-id');
+            handleCartUnassign(trolleyId);
+        });
+    });
 }
 
 // Modify cart item handler (API call)
@@ -450,7 +531,7 @@ async function modifyCartItem(uid, action, trolleyId) {
 // Render recent checkout feeds
 function renderFeed() {
     if (!els.feedContainer) return;
-    
+
     if (!State.feed || State.feed.length === 0) {
         els.feedContainer.innerHTML = `
             <div class="empty-state">
@@ -467,7 +548,7 @@ function renderFeed() {
         const trolleyLabel = item.trolley_id ? item.trolley_id.replace('TROLLEY-00', 'Trolley #').replace('TROLLEY-', 'Trolley #') : 'Trolley #1';
         const priceStr = (typeof item.productPrice === 'number') ? item.productPrice.toFixed(2) : (item.productPrice ? Number(item.productPrice).toFixed(2) : '0.00');
         const totalStr = (typeof item.total === 'number') ? item.total.toFixed(2) : (item.total ? Number(item.total).toFixed(2) : '0.00');
-        
+
         if (item.actionType === 'ADD') {
             return `
                 <div class="transaction-item">
@@ -620,7 +701,7 @@ async function setSimulatorMode(mode) {
         if (data.success) {
             State.currentMode = data.mode;
             updateSimulatorModeUI();
-            
+
             // Sim LCD feedback
             triggerLcdFeedback(`Mode: ${data.mode}`, "Scan card...");
             triggerBuzzerFeedback(1);
@@ -678,7 +759,7 @@ async function checkoutCart(trolleyId) {
 
     if (els.checkoutBtn) els.checkoutBtn.disabled = true;
     try {
-        const res  = await fetch('/api/cart/generate-bill', {
+        const res = await fetch('/api/cart/generate-bill', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ trolley_id: cart.trolley_id || targetTrolley })
@@ -704,12 +785,12 @@ async function checkoutCart(trolleyId) {
 // Show multi-stage billing modal
 function showBillingModal(billData) {
     currentBill = billData;
-    
+
     // Reset stages
     document.querySelectorAll('.payment-stage').forEach(el => el.style.display = 'none');
     const stage1 = document.getElementById('payment-stage-1');
     if (stage1) stage1.style.display = 'block';
-    
+
     // Reset payment tabs
     const tabs = document.querySelectorAll('.pay-tab');
     tabs.forEach((t, i) => {
@@ -741,12 +822,12 @@ function showBillingModal(billData) {
             itemsListContainer.innerHTML = `<p style="color:var(--text-secondary); text-align:center; font-size:0.85rem; margin:0;">No items found.</p>`;
         }
     }
-    
+
     const subtotalEl = document.getElementById('bill-subtotal');
     const cgstEl = document.getElementById('bill-cgst');
     const sgstEl = document.getElementById('bill-sgst');
     const totalEl = document.getElementById('bill-total');
-    
+
     if (subtotalEl) subtotalEl.textContent = `Rs.${billData.subtotal.toFixed(2)}`;
     if (cgstEl) cgstEl.textContent = `Rs.${billData.cgst.toFixed(2)}`;
     if (sgstEl) sgstEl.textContent = `Rs.${billData.sgst.toFixed(2)}`;
@@ -777,7 +858,7 @@ function showBillingModal(billData) {
     } catch (e) {
         console.warn('Could not auto-populate customer phone:', e);
     }
-    
+
     // Show Modal
     if (els.receiptModal) els.receiptModal.classList.add('active');
 }
@@ -825,7 +906,7 @@ function setupPaymentModalListeners() {
             document.querySelectorAll('.payment-stage').forEach(el => el.style.display = 'none');
             const stage2 = document.getElementById('payment-stage-2');
             if (stage2) stage2.style.display = 'block';
-            
+
             const upiQrImg = document.getElementById('payment-upi-qr');
             const vpaLabel = document.getElementById('payment-upi-vpa-label');
             const subLabel = document.getElementById('payment-upi-sub-label');
@@ -966,7 +1047,7 @@ function setupPaymentModalListeners() {
     document.querySelectorAll('.btn-cancel-bill').forEach(btn => {
         btn.addEventListener('click', cancelBill);
     });
-    
+
     const closeXBtn = document.getElementById('modal-close-x-btn');
     if (closeXBtn) {
         closeXBtn.addEventListener('click', cancelBill);
@@ -984,7 +1065,7 @@ function setupPaymentModalListeners() {
             tab.classList.add('active');
             tab.style.background = 'rgba(255,255,255,0.08)';
             tab.style.color = 'var(--text-primary)';
-            
+
             const target = tab.dataset.tab;
             document.querySelectorAll('.pay-panel').forEach(p => p.style.display = 'none');
             const activePanel = document.getElementById(`pay-panel-${target}`);
@@ -1003,7 +1084,7 @@ function setupPaymentModalListeners() {
             btn.disabled = true;
             const origText = btn.innerHTML;
             btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Processing...`;
-            
+
             try {
                 // If OTP was requested and entered, call verify-and-pay endpoint
                 let url = '/api/cart/pay';
@@ -1024,7 +1105,7 @@ function setupPaymentModalListeners() {
                     document.querySelectorAll('.payment-stage').forEach(el => el.style.display = 'none');
                     const stage3 = document.getElementById('payment-stage-3');
                     if (stage3) stage3.style.display = 'block';
-                    
+
                     const successAmount = document.getElementById('success-billed-amount');
                     const successMethod = document.getElementById('success-payment-method');
                     if (successAmount) successAmount.textContent = `Rs.${data.total.toFixed(2)}`;
@@ -1037,20 +1118,20 @@ function setupPaymentModalListeners() {
                         smsNotice.style.display = 'flex';
                         if (smsText) smsText.textContent = `Digital bill receipt sent via SMS to +91 ${phone}`;
                     }
-                    
+
                     const receiptUrl = `receipt.html?timestamp=${data.timestamp}&id=${data.transaction_id || ''}`;
                     const receiptLink = document.getElementById('modal-receipt-link');
                     if (receiptLink) {
                         receiptLink.href = receiptUrl;
                     }
-                    
+
                     // Automatically display full digital invoice receipt after payment
                     try {
                         window.open(receiptUrl, '_blank');
                     } catch (e) {
                         console.warn("Could not auto-open receipt tab:", e);
                     }
-                    
+
                     triggerLcdFeedback("Checked Out!", "Total: Rs.0.00");
                     triggerBuzzerFeedback(2);
                     await fetchDashboard();
@@ -1075,7 +1156,7 @@ function showRegistrationModal(uid = '') {
     refreshEls();
     regModal.classList.add('active');
     regModal.style.display = 'flex';
-    
+
     if (els.regUid) {
         els.regUid.value = uid || '';
         if (uid) {
@@ -1112,17 +1193,17 @@ function closeRegistrationModal() {
 // Submit Product registration form
 async function handleRegistration(e) {
     e.preventDefault();
-    
+
     const submitBtn = els.regForm.querySelector('button[type="submit"]');
     submitBtn.disabled = true;
     submitBtn.innerText = "Saving...";
-    
+
     const payload = {
         uid: els.regUid.value,
         name: els.regName.value,
         price: parseFloat(els.regPrice.value)
     };
-    
+
     try {
         const res = await fetch('/api/products/register', {
             method: 'POST',
@@ -1130,10 +1211,10 @@ async function handleRegistration(e) {
             body: JSON.stringify(payload)
         });
         const data = await res.json();
-        
+
         if (data.success) {
             closeRegistrationModal();
-            triggerLcdFeedback("Registered!", payload.name.substring(0,16));
+            triggerLcdFeedback("Registered!", payload.name.substring(0, 16));
             triggerBuzzerFeedback(1);
             await fetchProducts();
             await fetchDashboard();
@@ -1146,6 +1227,225 @@ async function handleRegistration(e) {
     } finally {
         submitBtn.disabled = false;
         submitBtn.innerText = "Save Product";
+    }
+}
+
+// ── Customer Assignment & Registration Modal Logic ──────────────────────────
+
+let currentAssignTab = 'existing';
+let registeredCustomersCache = [];
+
+function switchAssignTab(tab) {
+    currentAssignTab = tab;
+    const tabExisting = document.getElementById('tab-assign-existing');
+    const tabNew = document.getElementById('tab-assign-new');
+    const secExisting = document.getElementById('section-assign-existing');
+    const secNew = document.getElementById('section-assign-new');
+    const submitBtn = document.getElementById('customer-assign-submit');
+
+    if (tab === 'existing') {
+        if (tabExisting) { tabExisting.style.background = 'var(--grad-primary)'; tabExisting.style.color = '#fff'; }
+        if (tabNew) { tabNew.style.background = 'transparent'; tabNew.style.color = 'var(--text-secondary)'; }
+        if (secExisting) secExisting.style.display = 'block';
+        if (secNew) secNew.style.display = 'none';
+        if (submitBtn) submitBtn.innerHTML = '<i class="fa-solid fa-link"></i> Confirm Assignment';
+    } else {
+        if (tabNew) { tabNew.style.background = 'var(--grad-primary)'; tabNew.style.color = '#fff'; }
+        if (tabExisting) { tabExisting.style.background = 'transparent'; tabExisting.style.color = 'var(--text-secondary)'; }
+        if (secExisting) secExisting.style.display = 'none';
+        if (secNew) secNew.style.display = 'block';
+        if (submitBtn) submitBtn.innerHTML = '<i class="fa-solid fa-user-plus"></i> Register & Assign';
+    }
+}
+
+async function openCustomerAssignModal(preselectedTrolleyId) {
+    const modal = document.getElementById('customer-assign-modal');
+    if (!modal) return;
+
+    // Reset error
+    const alertBox = document.getElementById('assign-error-alert');
+    if (alertBox) alertBox.style.display = 'none';
+
+    // Populate trolley dropdown with available trolleys
+    const trolleySelect = document.getElementById('modal-assign-trolley-select');
+    if (trolleySelect) {
+        try {
+            const res = await fetch('/api/trolleys');
+            if (res.ok) {
+                const trolleys = await res.json();
+                trolleySelect.innerHTML = trolleys.map(t => {
+                    const sel = (preselectedTrolleyId && t.id === preselectedTrolleyId) ? 'selected' : '';
+                    const assignedLabel = t.assigned_customer_name ? ` (Assigned: ${t.assigned_customer_name})` : ' (Available)';
+                    return `<option value="${t.id}" ${sel}>${t.id}${assignedLabel}</option>`;
+                }).join('');
+            }
+        } catch (e) {
+            console.error("Failed to load trolleys:", e);
+        }
+        if (preselectedTrolleyId) {
+            trolleySelect.value = preselectedTrolleyId;
+        }
+    }
+
+    // Populate customers dropdown
+    await loadCustomersIntoSelect();
+
+    // Reset new customer inputs
+    const nameIn = document.getElementById('modal-new-cust-name');
+    const phoneIn = document.getElementById('modal-new-cust-phone');
+    const emailIn = document.getElementById('modal-new-cust-email');
+    const idIn = document.getElementById('modal-new-cust-id');
+    if (nameIn) nameIn.value = '';
+    if (phoneIn) phoneIn.value = '';
+    if (emailIn) emailIn.value = '';
+    if (idIn) idIn.value = '';
+
+    switchAssignTab('existing');
+
+    modal.classList.add('active');
+    modal.style.display = 'flex';
+}
+
+function closeCustomerAssignModal() {
+    const modal = document.getElementById('customer-assign-modal');
+    if (modal) {
+        modal.classList.remove('active');
+        modal.style.display = 'none';
+    }
+}
+
+async function loadCustomersIntoSelect() {
+    const select = document.getElementById('modal-assign-customer-select');
+    if (!select) return;
+
+    try {
+        const res = await fetch('/api/customers');
+        if (res.ok) {
+            registeredCustomersCache = await res.json();
+            select.innerHTML = '<option value="">-- Choose Registered Customer --</option>' +
+                registeredCustomersCache.map(c => {
+                    const assignedTag = c.assigned_trolley ? ` [Holding ${c.assigned_trolley}]` : '';
+                    return `<option value="${c.id}">${c.name} (${c.phone || c.email || 'No phone'}) - ${c.id}${assignedTag}</option>`;
+                }).join('');
+        }
+    } catch (e) {
+        console.error("Failed to load customers:", e);
+    }
+}
+
+async function handleCustomerAssignSubmit(e) {
+    e.preventDefault();
+    const alertBox = document.getElementById('assign-error-alert');
+    const alertText = document.getElementById('assign-error-text');
+    if (alertBox) alertBox.style.display = 'none';
+
+    const trolleySelect = document.getElementById('modal-assign-trolley-select');
+    const trolleyId = trolleySelect ? trolleySelect.value : 'TROLLEY-001';
+
+    let customerIdToAssign = '';
+
+    if (currentAssignTab === 'existing') {
+        const custSelect = document.getElementById('modal-assign-customer-select');
+        customerIdToAssign = custSelect ? custSelect.value : '';
+        if (!customerIdToAssign) {
+            if (alertBox && alertText) {
+                alertText.textContent = "Please select a customer from the dropdown or switch to '+ New Customer'.";
+                alertBox.style.display = 'block';
+            }
+            return;
+        }
+    } else {
+        // Register new customer first
+        const nameIn = document.getElementById('modal-new-cust-name');
+        const phoneIn = document.getElementById('modal-new-cust-phone');
+        const emailIn = document.getElementById('modal-new-cust-email');
+        const idIn = document.getElementById('modal-new-cust-id');
+
+        const name = nameIn ? nameIn.value.trim() : '';
+        const phone = phoneIn ? phoneIn.value.trim() : '';
+        const email = emailIn ? emailIn.value.trim() : '';
+        const custId = idIn ? idIn.value.trim().toUpperCase() : '';
+
+        if (!name || !phone) {
+            if (alertBox && alertText) {
+                alertText.textContent = "Customer Name and Mobile Number are required.";
+                alertBox.style.display = 'block';
+            }
+            return;
+        }
+
+        try {
+            const regRes = await fetch('/api/customers', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, phone, email, customer_id: custId })
+            });
+            const regData = await regRes.json();
+            if (!regRes.ok || !regData.success) {
+                if (alertBox && alertText) {
+                    alertText.textContent = regData.message || "Failed to register customer.";
+                    alertBox.style.display = 'block';
+                }
+                return;
+            }
+            customerIdToAssign = regData.customer ? regData.customer.id : custId;
+        } catch (err) {
+            console.error("Customer reg error:", err);
+            if (alertBox && alertText) {
+                alertText.textContent = "Server communication failure during registration.";
+                alertBox.style.display = 'block';
+            }
+            return;
+        }
+    }
+
+    // Now assign trolley to customer
+    try {
+        const assignRes = await fetch(`/api/trolleys/${encodeURIComponent(trolleyId)}/assign`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ customer_id: customerIdToAssign })
+        });
+        const assignData = await assignRes.json();
+        if (!assignRes.ok || !assignData.success) {
+            if (alertBox && alertText) {
+                alertText.textContent = assignData.message || "Failed to assign trolley.";
+                alertBox.style.display = 'block';
+            }
+            return;
+        }
+
+        closeCustomerAssignModal();
+        if (window.showToast) {
+            window.showToast("Trolley Assigned", assignData.message, "success");
+        }
+        await fetchDashboard();
+    } catch (err) {
+        console.error("Assign error:", err);
+        if (alertBox && alertText) {
+            alertText.textContent = "Server communication failure during assignment.";
+            alertBox.style.display = 'block';
+        }
+    }
+}
+
+async function handleCartUnassign(trolleyId) {
+    if (!confirm(`Release ${trolleyId} and unassign its current customer?`)) return;
+    try {
+        const res = await fetch(`/api/trolleys/${encodeURIComponent(trolleyId)}/unassign`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            if (window.showToast) window.showToast("Trolley Released", data.message, "info");
+            await fetchDashboard();
+        } else {
+            alert(data.message || "Failed to unassign trolley.");
+        }
+    } catch (e) {
+        console.error("Unassign error:", e);
+        alert("Failed to unassign trolley due to network error.");
     }
 }
 
@@ -1164,7 +1464,7 @@ async function triggerSimulatorScan() {
     }
 
     els.simScanBtn.disabled = true;
-    
+
     try {
         const res = await fetch('/api/cart/action', {
             method: 'POST',
@@ -1175,7 +1475,7 @@ async function triggerSimulatorScan() {
                 trolley_id: targetTrolley
             })
         });
-        
+
         const data = await res.json();
         if (data.success) {
             const actionSymbol = State.currentMode === "ADD" ? "+" : "-";
@@ -1270,7 +1570,7 @@ function triggerLcdFeedback(line1, line2 = "", durationMs = 0) {
         clearTimeout(lcdTimeout);
         lcdTimeout = null;
     }
-    
+
     if (els.simLcdLine1) {
         els.simLcdLine1.textContent = line1.substring(0, 16);
     }
@@ -1294,7 +1594,7 @@ function triggerLcdFeedback(line1, line2 = "", durationMs = 0) {
 // Mock Buzzer click sounds/flashes
 function triggerBuzzerFeedback(count) {
     if (!els.simBuzzerLed) return;
-    
+
     let delay = 0;
     for (let i = 0; i < count; i++) {
         setTimeout(() => {
@@ -1308,8 +1608,8 @@ function triggerBuzzerFeedback(count) {
                 osc.connect(audioCtx.destination);
                 osc.start();
                 setTimeout(() => osc.stop(), 100);
-            } catch(e) {}
-            
+            } catch (e) { }
+
             setTimeout(() => {
                 els.simBuzzerLed.classList.remove('beep');
             }, 100);

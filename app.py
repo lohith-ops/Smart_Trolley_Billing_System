@@ -6,6 +6,7 @@ import socket
 import os
 import json
 import re
+import subprocess
 from functools import wraps
 from flask import Flask, jsonify, request, send_from_directory, redirect, send_file
 from flask_cors import CORS
@@ -26,10 +27,6 @@ app = Flask(__name__, static_folder="web-dashboard", static_url_path="")
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # Disable caching for static files
 CORS(app)
 
-@app.route("/")
-def root():
-    return redirect("/login.html")
-
 # ── Authentication & Security Configuration ───────────────────────────────────
 JWT_SECRET           = os.environ.get("JWT_SECRET", "smart_trolley_secret_key_2026_jwt_token_secure")
 JWT_ALGORITHM        = "HS256"
@@ -49,6 +46,7 @@ CONFIG_FILE = "config.json"
 def load_config():
     defaults = {
         "serialPort": "COM3",
+        "baudRate": 115200,
         "upiId": "smartsupermarket@okaxis",
         "storeName": "GECM Supermarket",
         "useCustomQr": False,
@@ -165,6 +163,9 @@ class MockCollection:
         if "$set" in update:
             for k, v in update["$set"].items():
                 doc[k] = v
+        if "$inc" in update:
+            for k, v in update["$inc"].items():
+                doc[k] = doc.get(k, 0) + v
         return type('UpdateResult', (object,), {'upserted_id': None, 'matched_count': 1, 'modified_count': 1})()
     def insert_many(self, documents):
         ids = []
@@ -262,6 +263,7 @@ try:
     users_collection        = db['users']
     password_resets_collection = db['password_resets']
     otp_verifications_collection = db['otp_verifications']
+    customers_collection    = db['customers']
     mongo_ok = True
     print("[DB] Connected to local MongoDB successfully.")
 except Exception as e:
@@ -276,6 +278,7 @@ except Exception as e:
     users_collection        = db['users']
     password_resets_collection = db['password_resets']
     otp_verifications_collection = db['otp_verifications']
+    customers_collection    = db['customers']
 
     # Seed default products into mock database
     defaults = [
@@ -339,7 +342,16 @@ def init_users():
             })
             print(f"[AUTH] Seeded user account: {u['username']} ({u['role']})")
         else:
-            users_collection.update_one({"username": u["username"]}, {"$set": {"email": u["email"]}})
+            users_collection.update_one(
+                {"username": u["username"]},
+                {"$set": {
+                    "email":         u["email"],
+                    "name":          u["name"],
+                    "role":          u["role"],
+                    "status":        "Active",
+                    "password_hash": generate_password_hash(u["password"])
+                }}
+            )
 
     # Sync existing employees in db['employees'] to users_collection
     try:
@@ -455,31 +467,48 @@ def _trolley_cart_id(trolley_id: str) -> str:
     """Return the cart document _id for a trolley. Legacy 'cart_1' maps to TROLLEY-001."""
     return trolley_id
 
-def init_trolleys():
-    """Seed the trolleys collection and carts for each default trolley on startup."""
-    for t in DEFAULT_TROLLEYS:
-        tid = t["_id"]
-        existing = trolleys_collection.find_one({"_id": tid})
-        if not existing:
-            trolleys_collection.insert_one({
-                "_id":              tid,
-                "name":             t["name"],
-                "status":           "offline",
-                "battery":          0,
-                "ip_address":       "",
-                "wifi_rssi":        0,
-                "last_seen":        0,
-                "firmware_version": "2.0",
-                "cart_value":       0.0,
-                "item_count":       0,
-                "current_mode":     "ADD"
-            })
-        # Ensure cart exists for trolley
-        init_cart(tid)
+def format_heartbeat_status(last_seen, now_ts=None):
+    """Format timestamp into 24-hour display and accurate human-readable relative time."""
+    if now_ts is None:
+        now_ts = time.time()
+    last_seen = float(last_seen or 0)
+    if last_seen <= 0:
+        return {
+            "last_seen": 0,
+            "last_seen_24h": "Never",
+            "last_heartbeat_time_str": "Never",
+            "last_seen_relative": "Never",
+            "last_seen_str": "Never",
+            "last_heartbeat_display": "Never",
+            "display": "Never"
+        }
+    dt_str = datetime.datetime.fromtimestamp(last_seen).strftime("%Y-%m-%d %H:%M:%S")
+    elapsed = max(0, int(now_ts - last_seen))
+    if elapsed < 5:
+        rel = "Just now"
+    elif elapsed < 60:
+        rel = f"{elapsed}s ago"
+    elif elapsed < 3600:
+        mins = elapsed // 60
+        secs = elapsed % 60
+        rel = f"{mins}m {secs}s ago" if mins < 5 else f"{mins}m ago"
+    elif elapsed < 86400:
+        hours = elapsed // 3600
+        mins = (elapsed % 3600) // 60
+        rel = f"{hours}h {mins}m ago"
+    else:
+        days = elapsed // 86400
+        rel = f"{days}d ago"
 
-    # Backward-compat: ensure old 'cart_1' still resolves to TROLLEY-001
-    # (We now use TROLLEY-001 as _id, but keep a forwarding alias)
-    init_cart("TROLLEY-001")
+    return {
+        "last_seen": last_seen,
+        "last_seen_24h": dt_str,
+        "last_heartbeat_time_str": dt_str,
+        "last_seen_relative": rel,
+        "last_seen_str": rel,
+        "last_heartbeat_display": f"{dt_str} ({rel})",
+        "display": f"{dt_str} ({rel})"
+    }
 
 def init_cart(trolley_id: str):
     """Ensure a cart document exists for the given trolley_id."""
@@ -493,7 +522,11 @@ def init_cart(trolley_id: str):
             "total":          0.0,
             "itemsContained": 0,
             "status":         "ACTIVE",
-            "lastActive":     "Just now"
+            "lastActive":     "Just now",
+            "customer_id":    None,
+            "customer_name":  None,
+            "customer_phone": None,
+            "customer_email": None
         })
     else:
         # Ensure trolley_id field exists on older documents
@@ -502,7 +535,100 @@ def init_cart(trolley_id: str):
         if "status" not in cart:
             carts_collection.update_one({"_id": cart_id}, {"$set": {"status": "ACTIVE"}})
 
+def init_trolleys():
+    """Seed the trolleys collection and carts for each default trolley on startup."""
+    for t in DEFAULT_TROLLEYS:
+        tid = t["_id"]
+        existing = trolleys_collection.find_one({"_id": tid})
+        if not existing:
+            trolleys_collection.insert_one({
+                "_id":                     tid,
+                "name":                    t["name"],
+                "status":                  "offline",
+                "assignment_status":       "AVAILABLE",
+                "assigned_customer_id":    None,
+                "assigned_customer_name":  "",
+                "assigned_customer_phone": "",
+                "assigned_customer_email": "",
+                "assigned_at":             None,
+                "battery":                 0,
+                "ip_address":              "",
+                "wifi_rssi":               0,
+                "last_seen":               0,
+                "last_heartbeat":          0,
+                "firmware_version":        "2.0",
+                "cart_value":              0.0,
+                "item_count":              0,
+                "current_mode":            "ADD"
+            })
+        else:
+            updates = {}
+            if "assignment_status" not in existing:
+                updates["assignment_status"] = "AVAILABLE"
+            if "assigned_customer_id" not in existing:
+                updates["assigned_customer_id"] = None
+            if "assigned_customer_name" not in existing:
+                updates["assigned_customer_name"] = ""
+            if "assigned_customer_phone" not in existing:
+                updates["assigned_customer_phone"] = ""
+            if "assigned_customer_email" not in existing:
+                updates["assigned_customer_email"] = ""
+            if "last_heartbeat" not in existing:
+                updates["last_heartbeat"] = existing.get("last_seen", 0)
+            if updates:
+                trolleys_collection.update_one({"_id": tid}, {"$set": updates})
+
+        # Ensure cart exists for trolley
+        init_cart(tid)
+
+    # Backward-compat: ensure old 'cart_1' still resolves to TROLLEY-001
+    init_cart("TROLLEY-001")
+
+DEFAULT_CUSTOMERS = [
+    {
+        "id": "CUST-1001",
+        "name": "Lohith Kumar",
+        "phone": "9876543210",
+        "email": "lohith@example.com",
+        "assigned_trolley": None,
+        "total_spent": 1250.0,
+        "total_visits": 5,
+        "status": "Active",
+        "created_at": time.time() - 86400 * 30
+    },
+    {
+        "id": "CUST-1002",
+        "name": "Priya Sharma",
+        "phone": "9845012345",
+        "email": "priya@example.com",
+        "assigned_trolley": None,
+        "total_spent": 840.0,
+        "total_visits": 3,
+        "status": "Active",
+        "created_at": time.time() - 86400 * 15
+    },
+    {
+        "id": "CUST-1003",
+        "name": "Rahul Verma",
+        "phone": "9123456780",
+        "email": "rahul@example.com",
+        "assigned_trolley": None,
+        "total_spent": 320.0,
+        "total_visits": 2,
+        "status": "Active",
+        "created_at": time.time() - 86400 * 5
+    }
+]
+
+def init_customers():
+    """Seed default customers in MongoDB."""
+    for c in DEFAULT_CUSTOMERS:
+        existing = customers_collection.find_one({"id": c["id"]})
+        if not existing:
+            customers_collection.insert_one(dict(c))
+
 init_trolleys()
+init_customers()
 init_users()
 
 # ── Static File Routes ────────────────────────────────────────────────────────
@@ -633,11 +759,15 @@ def process_scan(action, uid, trolley_id="TROLLEY-001"):
         }
     })
 
-    # Sync cart_value & item_count to trolleys collection
+    # Sync cart_value, item_count, and live heartbeat timestamp to trolleys collection
+    now_ts = time.time()
     trolleys_collection.update_one({"_id": trolley_id}, {
         "$set": {
-            "cart_value": total,
-            "item_count": items_contained
+            "cart_value":     total,
+            "item_count":     items_contained,
+            "last_seen":      now_ts,
+            "last_heartbeat": now_ts,
+            "status":         "online"
         }
     })
 
@@ -1559,26 +1689,51 @@ def get_dashboard():
     for c in all_carts:
         items_scanned += c.get("itemsContained", 0)
 
-    # Active carts
+    # Active carts (preserve cart and customer session across disconnections and refresh)
     active_carts = []
+    now_ts = time.time()
     for c in all_carts:
-        if c.get("itemsContained", 0) > 0:
-            raw_id = c["_id"]
-            # Provide a short display id: last segment after '-' or full id
+        raw_id = c["_id"]
+        tid = c.get("trolley_id", raw_id)
+        if tid == "cart_1":
+            continue  # Skip redundant legacy cart document
+
+        t_obj = trolleys_collection.find_one({"_id": tid}) or {}
+        t_last_seen = t_obj.get("last_seen", 0)
+        t_is_online = (t_last_seen > 0) and ((now_ts - t_last_seen) < 45)
+        is_assigned = (t_obj.get("assignment_status") == "ASSIGNED") or bool(t_obj.get("assigned_customer_id"))
+        has_items = c.get("itemsContained", 0) > 0
+
+        # Preserve in active carts if cart has items OR trolley is currently assigned to a customer!
+        if has_items or is_assigned:
             display_id = raw_id.split("-")[-1] if "-" in str(raw_id) else str(raw_id)
+            hb = format_heartbeat_status(t_last_seen, now_ts)
             active_carts.append({
-                "id":             display_id,
-                "trolley_id":     c.get("trolley_id", raw_id),
-                "total":          c["total"],
-                "itemsContained": c["itemsContained"],
-                "lastActive":     c.get("lastActive", ""),
-                "items":          c.get("items", {}),
-                "status":         c.get("status", "ACTIVE")
+                "id":                      display_id,
+                "trolley_id":              tid,
+                "total":                   c.get("total", 0.0),
+                "itemsContained":          c.get("itemsContained", 0),
+                "lastActive":              c.get("lastActive", ""),
+                "items":                   c.get("items", {}),
+                "status":                  c.get("status", "ACTIVE"),
+                "customer_name":           t_obj.get("assigned_customer_name") or c.get("customer_name") or "Guest",
+                "customer_id":             t_obj.get("assigned_customer_id") or c.get("customer_id"),
+                "customer_phone":          t_obj.get("assigned_customer_phone") or c.get("customer_phone", ""),
+                "customer_email":          t_obj.get("assigned_customer_email") or c.get("customer_email", ""),
+                "assignment_status":       "ASSIGNED" if is_assigned else "AVAILABLE",
+                "connection_status":       "connected" if t_is_online else "disconnected",
+                "trolley_status":          "online" if t_is_online else "offline",
+                "last_seen_24h":           hb["last_seen_24h"],
+                "last_seen_str":           hb["last_seen_str"],
+                "last_seen_relative":      hb["last_seen_relative"],
+                "last_heartbeat_display":  hb["last_heartbeat_display"]
             })
 
     # Trolley summary
     all_trolleys = list(trolleys_collection.find({}))
-    online_count = sum(1 for t in all_trolleys if t.get("status") == "online")
+    online_count = sum(1 for t in all_trolleys if (t.get("status") == "online" and t.get("last_seen", 0) > 0 and (now_ts - t.get("last_seen", 0)) < OFFLINE_THRESHOLD_SECS))
+    if global_ser is not None and global_ser.is_open:
+        online_count = max(online_count, 1)
     total_trolleys = len(all_trolleys)
 
     # Feed (most recent 6 events)
@@ -1806,15 +1961,39 @@ def verify_and_pay():
     timestamp   = time.time()
     phone_used  = phone or otp_record.get("phone", "")
 
+    # Look up trolley for customer metadata
+    trolley = trolleys_collection.find_one({"_id": trolley_id}) or {}
+    cust_id = trolley.get("assigned_customer_id")
+    cust_name = trolley.get("assigned_customer_name", "")
+    if not phone_used and trolley.get("assigned_customer_phone"):
+        phone_used = trolley.get("assigned_customer_phone")
+
+    invoice_id = f"INV-{int(timestamp)}-{random.randint(1000, 9999)}"
+
     txn_res = transactions_collection.insert_one({
-        "trolley_id":    trolley_id,
-        "items":         saved_items,
-        "total":         total,
-        "paymentMethod": payment_method,
-        "customerPhone": phone_used,
-        "timestamp":     timestamp
+        "invoiceId":        invoice_id,
+        "trolley_id":       trolley_id,
+        "items":            saved_items,
+        "total":            total,
+        "finalTotal":       total,
+        "paymentMethod":    payment_method,
+        "customerPhone":    phone_used,
+        "customer_id":      cust_id,
+        "customer_name":    cust_name,
+        "timestamp":        timestamp,
+        "date":             datetime.datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
     })
     txn_id = str(txn_res.inserted_id)
+
+    # Update customer record if registered
+    if cust_id:
+        customers_collection.update_one(
+            {"id": cust_id},
+            {
+                "$inc": {"total_spent": total, "total_visits": 1},
+                "$set": {"last_visit": timestamp, "assigned_trolley": None}
+            }
+        )
 
     carts_collection.update_one({"_id": cart_id}, {
         "$set": {
@@ -1825,14 +2004,24 @@ def verify_and_pay():
             "lastActive":     f"Paid via {payment_method} (Verified)"
         }
     })
+    # Release trolley to AVAILABLE
     trolleys_collection.update_one({"_id": trolley_id}, {
-        "$set": {"cart_value": 0.0, "item_count": 0}
+        "$set": {
+            "cart_value":              0.0,
+            "item_count":              0,
+            "assignment_status":       "AVAILABLE",
+            "assigned_customer_id":    None,
+            "assigned_customer_name":  "",
+            "assigned_customer_phone": "",
+            "assigned_at":             None
+        }
     })
     db['feed'].insert_one({
         "actionType":    "CHECKOUT",
         "total":         total,
         "paymentMethod": payment_method,
         "customerPhone": phone_used,
+        "customer_name": cust_name,
         "trolley_id":    trolley_id,
         "timestamp":     timestamp
     })
@@ -1850,13 +2039,19 @@ def verify_and_pay():
         "success":        True,
         "message":        "OTP verified and payment successful!",
         "transaction_id": txn_id,
+        "invoiceId":      invoice_id,
+        "finalTotal":     total,
         "trolley_id":     trolley_id,
         "total":          total,
+        "customer_name":  cust_name,
+        "customer_id":    cust_id,
         "items":          saved_items,
         "timestamp":      timestamp
     })
 
 @app.route("/api/cart/pay", methods=["POST"])
+@app.route("/api/cart/checkout", methods=["POST"])
+@app.route("/api/checkout", methods=["POST"])
 def pay_bill():
     data = request.json or {}
     trolley_id     = data.get("trolley_id", "TROLLEY-001")
@@ -1872,15 +2067,40 @@ def pay_bill():
     total       = cart["total"]
     timestamp   = time.time()
 
+    # Look up trolley for customer metadata
+    trolley = trolleys_collection.find_one({"_id": trolley_id}) or {}
+    cust_id = trolley.get("assigned_customer_id")
+    cust_name = trolley.get("assigned_customer_name", "")
+    if not phone and trolley.get("assigned_customer_phone"):
+        phone = trolley.get("assigned_customer_phone")
+
+    invoice_id = f"INV-{int(timestamp)}-{random.randint(1000, 9999)}"
+
     txn_res = transactions_collection.insert_one({
-        "trolley_id":    trolley_id,
-        "items":         saved_items,
-        "total":         total,
-        "paymentMethod": payment_method,
-        "customerPhone": phone,
-        "timestamp":     timestamp
+        "invoiceId":        invoice_id,
+        "trolley_id":       trolley_id,
+        "items":            saved_items,
+        "total":            total,
+        "finalTotal":       total,
+        "paymentMethod":    payment_method,
+        "paymentReference": data.get("paymentReference", ""),
+        "customerPhone":    phone,
+        "customer_id":      cust_id,
+        "customer_name":    cust_name,
+        "timestamp":        timestamp,
+        "date":             datetime.datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
     })
     txn_id = str(txn_res.inserted_id)
+
+    # Update customer record if registered
+    if cust_id:
+        customers_collection.update_one(
+            {"id": cust_id},
+            {
+                "$inc": {"total_spent": total, "total_visits": 1},
+                "$set": {"last_visit": timestamp, "assigned_trolley": None}
+            }
+        )
 
     carts_collection.update_one({"_id": cart_id}, {
         "$set": {
@@ -1891,14 +2111,24 @@ def pay_bill():
             "lastActive":     f"Paid via {payment_method}"
         }
     })
+    # Release trolley to AVAILABLE
     trolleys_collection.update_one({"_id": trolley_id}, {
-        "$set": {"cart_value": 0.0, "item_count": 0}
+        "$set": {
+            "cart_value":              0.0,
+            "item_count":              0,
+            "assignment_status":       "AVAILABLE",
+            "assigned_customer_id":    None,
+            "assigned_customer_name":  "",
+            "assigned_customer_phone": "",
+            "assigned_at":             None
+        }
     })
     db['feed'].insert_one({
         "actionType":    "CHECKOUT",
         "total":         total,
         "paymentMethod": payment_method,
         "customerPhone": phone,
+        "customer_name": cust_name,
         "trolley_id":    trolley_id,
         "timestamp":     timestamp
     })
@@ -1913,16 +2143,15 @@ def pay_bill():
         "success":        True,
         "message":        "Payment successful",
         "transaction_id": txn_id,
+        "invoiceId":      invoice_id,
+        "finalTotal":     total,
         "trolley_id":     trolley_id,
         "total":          total,
+        "customer_name":  cust_name,
+        "customer_id":    cust_id,
         "items":          saved_items,
         "timestamp":      timestamp
     })
-
-# Backward-compat alias
-@app.route("/api/checkout", methods=["POST"])
-def checkout():
-    return pay_bill()
 
 # ── Simulator Mode API ────────────────────────────────────────────────────────
 
@@ -1958,7 +2187,20 @@ def get_trolleys():
         tid        = t["_id"]
         last_seen  = t.get("last_seen", 0)
         is_online  = (last_seen > 0) and ((now_ts - last_seen) < OFFLINE_THRESHOLD_SECS)
+        conn_status = "connected" if is_online else "disconnected"
         status     = "online" if is_online else "offline"
+
+        is_assigned = (t.get("assignment_status") == "ASSIGNED") or bool(t.get("assigned_customer_id"))
+        assign_status = "ASSIGNED" if is_assigned else "AVAILABLE"
+
+        if is_assigned and is_online:
+            disp_status = "Assigned (Connected)"
+        elif is_assigned and not is_online:
+            disp_status = "Assigned (Disconnected)"
+        elif not is_assigned and is_online:
+            disp_status = "Available (Connected)"
+        else:
+            disp_status = "Available (Offline)"
 
         # Pull live cart data
         cart = carts_collection.find_one({"_id": _trolley_cart_id(tid)})
@@ -1966,35 +2208,40 @@ def get_trolleys():
         item_count  = cart.get("itemsContained", 0) if cart else 0
         cart_status = cart.get("status", "ACTIVE") if cart else "ACTIVE"
 
-        last_seen_str = "Never"
-        if last_seen > 0:
-            elapsed = int(now_ts - last_seen)
-            if elapsed < 60:
-                last_seen_str = f"{elapsed}s ago"
-            elif elapsed < 3600:
-                last_seen_str = f"{elapsed // 60}m ago"
-            else:
-                last_seen_str = f"{elapsed // 3600}h ago"
+        hb = format_heartbeat_status(last_seen, now_ts)
 
         result.append({
-            "id":               tid,
-            "name":             t.get("name", tid),
-            "status":           status,
-            "battery":          t.get("battery", 0),
-            "ip_address":       t.get("ip_address", ""),
-            "wifi_rssi":        t.get("wifi_rssi", 0),
-            "last_seen":        last_seen,
-            "last_seen_str":    last_seen_str,
-            "firmware_version": t.get("firmware_version", ""),
-            "cart_value":       cart_value,
-            "item_count":       item_count,
-            "cart_status":      cart_status,
-            "current_mode":     t.get("current_mode", "ADD"),
+            "id":                      tid,
+            "name":                    t.get("name", tid),
+            "status":                  status,
+            "connection_status":       conn_status,
+            "assignment_status":       assign_status,
+            "display_status":          disp_status,
+            "assigned_customer_id":    t.get("assigned_customer_id"),
+            "assigned_customer_name":  t.get("assigned_customer_name", ""),
+            "assigned_customer_phone": t.get("assigned_customer_phone", ""),
+            "assigned_customer_email": t.get("assigned_customer_email", ""),
+            "assigned_at":             t.get("assigned_at"),
+            "battery":                 t.get("battery", 0),
+            "ip_address":              t.get("ip_address", ""),
+            "wifi_rssi":               t.get("wifi_rssi", 0),
+            "last_seen":               last_seen,
+            "last_heartbeat":          t.get("last_heartbeat", last_seen),
+            "last_heartbeat_time_str": hb["last_heartbeat_time_str"],
+            "last_seen_24h":           hb["last_seen_24h"],
+            "last_seen_str":           hb["last_seen_str"],
+            "last_seen_relative":      hb["last_seen_relative"],
+            "last_heartbeat_display":  hb["last_heartbeat_display"],
+            "firmware_version":        t.get("firmware_version", ""),
+            "cart_value":              cart_value,
+            "item_count":              item_count,
+            "cart_status":             cart_status,
+            "current_mode":            t.get("current_mode", "ADD"),
             # Legacy fields kept for backward compatibility with old trolleys.js
-            "customer":         t.get("customer", "None"),
-            "items":            item_count,
-            "total":            cart_value,
-            "latency":          t.get("latency", 0)
+            "customer":                t.get("assigned_customer_name") or t.get("customer", "None"),
+            "items":                   item_count,
+            "total":                   cart_value,
+            "latency":                 t.get("latency", 0)
         })
 
     return jsonify(result)
@@ -2009,7 +2256,20 @@ def get_trolley_detail(trolley_id):
 
     last_seen = t.get("last_seen", 0)
     is_online = (last_seen > 0) and ((now_ts - last_seen) < OFFLINE_THRESHOLD_SECS)
+    conn_status = "connected" if is_online else "disconnected"
     status    = "online" if is_online else "offline"
+
+    is_assigned = (t.get("assignment_status") == "ASSIGNED") or bool(t.get("assigned_customer_id"))
+    assign_status = "ASSIGNED" if is_assigned else "AVAILABLE"
+
+    if is_assigned and is_online:
+        disp_status = "Assigned (Connected)"
+    elif is_assigned and not is_online:
+        disp_status = "Assigned (Disconnected)"
+    elif not is_assigned and is_online:
+        disp_status = "Available (Connected)"
+    else:
+        disp_status = "Available (Offline)"
 
     cart = carts_collection.find_one({"_id": _trolley_cart_id(trolley_id)})
     cart_data = {}
@@ -2019,32 +2279,40 @@ def get_trolley_detail(trolley_id):
             "total":          cart.get("total", 0.0),
             "itemsContained": cart.get("itemsContained", 0),
             "status":         cart.get("status", "ACTIVE"),
-            "lastActive":     cart.get("lastActive", "")
+            "lastActive":     cart.get("lastActive", ""),
+            "customer_id":    cart.get("customer_id") or t.get("assigned_customer_id"),
+            "customer_name":  cart.get("customer_name") or t.get("assigned_customer_name"),
+            "customer_phone": cart.get("customer_phone") or t.get("assigned_customer_phone")
         }
 
-    last_seen_str = "Never"
-    if last_seen > 0:
-        elapsed = int(now_ts - last_seen)
-        if elapsed < 60:
-            last_seen_str = f"{elapsed}s ago"
-        elif elapsed < 3600:
-            last_seen_str = f"{elapsed // 60}m ago"
-        else:
-            last_seen_str = f"{elapsed // 3600}h ago"
+    hb = format_heartbeat_status(last_seen, now_ts)
 
     return jsonify({
-        "success":          True,
-        "id":               trolley_id,
-        "name":             t.get("name", trolley_id),
-        "status":           status,
-        "battery":          t.get("battery", 0),
-        "ip_address":       t.get("ip_address", ""),
-        "wifi_rssi":        t.get("wifi_rssi", 0),
-        "last_seen":        last_seen,
-        "last_seen_str":    last_seen_str,
-        "firmware_version": t.get("firmware_version", ""),
-        "current_mode":     t.get("current_mode", "ADD"),
-        "cart":             cart_data
+        "success":                 True,
+        "id":                      trolley_id,
+        "name":                    t.get("name", trolley_id),
+        "status":                  status,
+        "connection_status":       conn_status,
+        "assignment_status":       assign_status,
+        "display_status":          disp_status,
+        "assigned_customer_id":    t.get("assigned_customer_id"),
+        "assigned_customer_name":  t.get("assigned_customer_name", ""),
+        "assigned_customer_phone": t.get("assigned_customer_phone", ""),
+        "assigned_customer_email": t.get("assigned_customer_email", ""),
+        "assigned_at":             t.get("assigned_at"),
+        "battery":                 t.get("battery", 0),
+        "ip_address":              t.get("ip_address", ""),
+        "wifi_rssi":               t.get("wifi_rssi", 0),
+        "last_seen":               last_seen,
+        "last_heartbeat":          t.get("last_heartbeat", last_seen),
+        "last_heartbeat_time_str": hb["last_heartbeat_time_str"],
+        "last_seen_24h":           hb["last_seen_24h"],
+        "last_seen_str":           hb["last_seen_str"],
+        "last_seen_relative":      hb["last_seen_relative"],
+        "last_heartbeat_display":  hb["last_heartbeat_display"],
+        "firmware_version":        t.get("firmware_version", ""),
+        "current_mode":            t.get("current_mode", "ADD"),
+        "cart":                    cart_data
     })
 
 @app.route("/api/trolleys/<trolley_id>/cart", methods=["GET"])
@@ -2067,7 +2335,7 @@ def get_trolley_cart(trolley_id):
 @app.route("/api/trolleys", methods=["POST"])
 @app.route("/api/trolley/register", methods=["POST"])
 def register_trolley():
-    """Register or update a trolley in the registry. Can be called from Web UI or ESP32."""
+    """Register or update a trolley in the registry. Preserves active cart and customer session."""
     data = request.json or {}
     trolley_id = (data.get("trolley_id") or data.get("id") or "").strip().upper()
     name = (data.get("name") or trolley_id).strip()
@@ -2076,30 +2344,77 @@ def register_trolley():
     section = data.get("section", "General")
 
     if not trolley_id:
-        return jsonify({"success": False, "message": "Trolley ID is required (e.g. TROLLEY-004)"}), 400
+        return jsonify({"success": False, "message": "Trolley ID is required (e.g. TROLLEY-001)"}), 400
 
     now_ts = time.time()
-    trolleys_collection.update_one(
-        {"_id": trolley_id},
-        {"$set": {
-            "_id":              trolley_id,
-            "name":             name,
-            "firmware_version": fw_ver,
-            "ip_address":       ip_addr,
-            "section":          section,
-            "status":           data.get("status", "offline"),
-            "battery":          data.get("battery", 100),
-            "wifi_rssi":        data.get("wifi_rssi", -50),
-            "cart_value":       0.0,
-            "item_count":       0,
-            "current_mode":     "ADD",
-            "last_seen":        now_ts if data.get("status") == "online" else 0
-        }},
-        upsert=True
-    )
+    existing = trolleys_collection.find_one({"_id": trolley_id})
+    if not existing:
+        trolleys_collection.insert_one({
+            "_id":                     trolley_id,
+            "name":                    name,
+            "firmware_version":        fw_ver,
+            "ip_address":              ip_addr,
+            "section":                 section,
+            "status":                  data.get("status", "online"),
+            "assignment_status":       "AVAILABLE",
+            "assigned_customer_id":    None,
+            "assigned_customer_name":  "",
+            "assigned_customer_phone": "",
+            "assigned_at":             None,
+            "battery":                 data.get("battery", 100),
+            "wifi_rssi":               data.get("wifi_rssi", -50),
+            "cart_value":              0.0,
+            "item_count":              0,
+            "current_mode":            "ADD",
+            "last_seen":               now_ts,
+            "last_heartbeat":          now_ts
+        })
+    else:
+        # DO NOT wipe existing cart, items, or customer assignment!
+        trolleys_collection.update_one(
+            {"_id": trolley_id},
+            {"$set": {
+                "name":             name if name != trolley_id else existing.get("name", trolley_id),
+                "firmware_version": fw_ver,
+                "ip_address":       ip_addr or existing.get("ip_address", ""),
+                "section":          section,
+                "status":           data.get("status", "online"),
+                "battery":          data.get("battery", existing.get("battery", 100)),
+                "wifi_rssi":        data.get("wifi_rssi", existing.get("wifi_rssi", -50)),
+                "last_seen":        now_ts,
+                "last_heartbeat":   now_ts
+            }}
+        )
+
     init_cart(trolley_id)
-    print(f"[TROLLEY] Registered: {trolley_id} ({name})")
-    return jsonify({"success": True, "message": f"Trolley {trolley_id} ({name}) registered successfully!"})
+    cart = carts_collection.find_one({"_id": _trolley_cart_id(trolley_id)}) or {}
+    trolley_doc = trolleys_collection.find_one({"_id": trolley_id}) or {}
+
+    cust_name = trolley_doc.get("assigned_customer_name") or "Guest"
+    cust_id = trolley_doc.get("assigned_customer_id")
+    cart_total = cart.get("total", 0.0)
+    item_count = cart.get("itemsContained", 0)
+
+    # Sync cart totals in trolley doc
+    trolleys_collection.update_one({"_id": trolley_id}, {"$set": {"cart_value": cart_total, "item_count": item_count}})
+
+    print(f"[TROLLEY] Registered: {trolley_id} ({name}) | Cart: Rs.{cart_total:.2f} ({item_count} items) | Customer: {cust_name}")
+
+    return jsonify({
+        "status":     "success",
+        "success":    True,
+        "message":    f"Trolley {trolley_id} registered successfully",
+        "trolley_id": trolley_id,
+        "mode":       trolley_doc.get("current_mode", "ADD"),
+        "cart": {
+            "item_count":   item_count,
+            "total_amount": cart_total
+        },
+        "customer": {
+            "customer_id":   cust_id,
+            "customer_name": cust_name
+        }
+    })
 
 @app.route("/api/trolleys/<trolley_id>", methods=["DELETE"])
 @require_auth(roles=["admin", "manager"])
@@ -2116,7 +2431,8 @@ def delete_trolley(trolley_id):
 def trolley_heartbeat():
     """
     Periodic heartbeat from ESP32.
-    Updates battery, RSSI, IP, last_seen, and marks trolley as online.
+    Updates battery, RSSI, IP, last_seen, last_heartbeat, and marks trolley as online.
+    Heartbeat failure only affects online/offline status and NEVER resets the cart.
     """
     data = request.json or {}
     trolley_id = data.get("trolley_id")
@@ -2125,42 +2441,288 @@ def trolley_heartbeat():
 
     now_ts = time.time()
 
-    # Auto-register unknown trolleys on first heartbeat
     existing = trolleys_collection.find_one({"_id": trolley_id})
     if not existing:
         trolleys_collection.insert_one({
-            "_id":              trolley_id,
-            "name":             data.get("name", trolley_id),
-            "status":           "online",
-            "battery":          data.get("battery", 0),
-            "ip_address":       data.get("ip_address", ""),
-            "wifi_rssi":        data.get("wifi_rssi", 0),
-            "last_seen":        now_ts,
-            "firmware_version": data.get("firmware_version", "2.0"),
-            "cart_value":       0.0,
-            "item_count":       0,
-            "current_mode":     "ADD"
+            "_id":                     trolley_id,
+            "name":                    data.get("name", trolley_id),
+            "status":                  "online",
+            "assignment_status":       "AVAILABLE",
+            "assigned_customer_id":    None,
+            "assigned_customer_name":  "",
+            "assigned_customer_phone": "",
+            "assigned_at":             None,
+            "battery":                 data.get("battery", 0),
+            "ip_address":              data.get("ip_address", ""),
+            "wifi_rssi":               data.get("wifi_rssi", 0),
+            "last_seen":               now_ts,
+            "last_heartbeat":          now_ts,
+            "firmware_version":        data.get("firmware_version", "2.0"),
+            "cart_value":              0.0,
+            "item_count":              0,
+            "current_mode":            "ADD"
         })
         init_cart(trolley_id)
         print(f"[HEARTBEAT] Auto-registered new trolley: {trolley_id}")
     else:
-        trolleys_collection.update_one({"_id": trolley_id}, {
-            "$set": {
-                "status":    "online",
-                "battery":   data.get("battery", existing.get("battery", 0)),
-                "ip_address":data.get("ip_address", existing.get("ip_address", "")),
-                "wifi_rssi": data.get("wifi_rssi", existing.get("wifi_rssi", 0)),
-                "last_seen": now_ts,
-                "firmware_version": data.get("firmware_version", existing.get("firmware_version", "2.0"))
-            }
-        })
+        update_fields = {
+            "status":         "online",
+            "last_seen":      now_ts,
+            "last_heartbeat": now_ts
+        }
+        if "battery" in data:
+            update_fields["battery"] = data["battery"]
+        if "wifi_rssi" in data:
+            update_fields["wifi_rssi"] = data["wifi_rssi"]
+        if "ip_address" in data and data["ip_address"]:
+            update_fields["ip_address"] = data["ip_address"]
+        if "firmware_version" in data and data["firmware_version"]:
+            update_fields["firmware_version"] = data["firmware_version"]
 
-    print(f"[HEARTBEAT] {trolley_id} | Battery: {data.get('battery', 0)}% | RSSI: {data.get('wifi_rssi', 0)} dBm | IP: {data.get('ip_address', '')}")
+        trolleys_collection.update_one({"_id": trolley_id}, {"$set": update_fields})
+
+    hb = format_heartbeat_status(now_ts, now_ts)
     return jsonify({
-        "success":   True,
-        "trolley_id": trolley_id,
-        "server_time": now_ts
+        "success":                 True,
+        "trolley_id":               trolley_id,
+        "status":                  "online",
+        "server_time":             now_ts,
+        "last_heartbeat_time_str": hb["last_heartbeat_time_str"],
+        "last_seen_str":           hb["last_seen_str"]
     })
+
+# ── Customer Registration & Trolley Assignment APIs ──────────────────────────
+
+@app.route("/api/customers", methods=["GET"])
+def get_customers():
+    """Return all registered customers."""
+    cust_list = list(customers_collection.find({}, {"_id": 0}))
+    return jsonify(cust_list)
+
+@app.route("/api/customers", methods=["POST"])
+def register_customer():
+    """Register a new customer."""
+    data = request.json or {}
+    cust_id = (data.get("customer_id") or data.get("id") or "").strip().upper()
+    name    = (data.get("name") or "").strip()
+    phone   = (data.get("phone") or data.get("mobile") or "").strip()
+    email   = (data.get("email") or "").strip()
+
+    if not name:
+        return jsonify({"success": False, "message": "Customer name is required"}), 400
+    if not phone:
+        return jsonify({"success": False, "message": "Phone / Mobile number is required"}), 400
+
+    if not cust_id:
+        cust_id = f"CUST-{random.randint(1000, 9999)}"
+
+    # Check for existing duplicate id
+    if customers_collection.find_one({"$or": [{"id": cust_id}, {"customer_id": cust_id}]}):
+        return jsonify({"success": False, "message": f"Customer ID '{cust_id}' is already registered."}), 400
+
+    # Check for existing duplicate phone
+    if customers_collection.find_one({"phone": phone}):
+        return jsonify({"success": False, "message": f"Phone number '{phone}' is already registered to another customer."}), 400
+
+    cust_doc = {
+        "id":               cust_id,
+        "customer_id":      cust_id,
+        "name":             name,
+        "phone":            phone,
+        "email":            email,
+        "assigned_trolley": None,
+        "total_spent":      0.0,
+        "total_visits":     0,
+        "status":           "Active",
+        "created_at":       time.time()
+    }
+    customers_collection.insert_one(cust_doc)
+    doc_copy = dict(cust_doc)
+    doc_copy.pop("_id", None)
+    return jsonify({"success": True, "message": "Customer registered successfully", "customer": doc_copy}), 201
+
+@app.route("/api/customers/<cust_id>", methods=["GET"])
+def get_customer_detail(cust_id):
+    cust_id = cust_id.strip()
+    cust = customers_collection.find_one({"$or": [{"id": cust_id}, {"customer_id": cust_id}]}, {"_id": 0})
+    if not cust:
+        return jsonify({"success": False, "message": "Customer not found"}), 404
+    return jsonify({"success": True, "customer": cust})
+
+@app.route("/api/customers/<cust_id>", methods=["PUT"])
+@require_auth(roles=["admin", "manager"])
+def update_customer(cust_id):
+    cust_id = cust_id.strip()
+    data = request.json or {}
+    updates = {}
+    for k in ["name", "phone", "email", "status"]:
+        if k in data:
+            updates[k] = data[k]
+    if updates:
+        res = customers_collection.update_one(
+            {"$or": [{"id": cust_id}, {"customer_id": cust_id}]},
+            {"$set": updates}
+        )
+        if res.matched_count == 0:
+            return jsonify({"success": False, "message": "Customer not found"}), 404
+    return jsonify({"success": True, "message": "Customer updated successfully"})
+
+@app.route("/api/customers/<cust_id>", methods=["DELETE"])
+@require_auth(roles=["admin", "manager"])
+def delete_customer(cust_id):
+    cust_id = cust_id.strip()
+    # If customer is currently assigned to a trolley, release the trolley
+    assigned_t = trolleys_collection.find_one({"assigned_customer_id": cust_id})
+    if assigned_t:
+        trolleys_collection.update_one(
+            {"_id": assigned_t["_id"]},
+            {"$set": {
+                "assignment_status":       "AVAILABLE",
+                "assigned_customer_id":    None,
+                "assigned_customer_name":  "",
+                "assigned_customer_phone": "",
+                "assigned_at":             None
+            }}
+        )
+    customers_collection.delete_one({"$or": [{"id": cust_id}, {"customer_id": cust_id}]})
+    return jsonify({"success": True, "message": "Customer deleted successfully"})
+
+@app.route("/api/trolleys/<trolley_id>/assign", methods=["POST"])
+def assign_trolley_to_customer(trolley_id):
+    """Assign an active trolley to a customer with mutual exclusion."""
+    trolley_id = trolley_id.strip().upper()
+    data = request.json or {}
+    cust_id = (data.get("customer_id") or data.get("id") or "").strip()
+
+    if not cust_id:
+        return jsonify({"success": False, "message": "Customer ID is required for trolley assignment"}), 400
+
+    trolley = trolleys_collection.find_one({"_id": trolley_id})
+    if not trolley:
+        return jsonify({"success": False, "message": f"Trolley {trolley_id} not found"}), 404
+
+    # MUTUAL EXCLUSION CHECK 1: Trolley already assigned to another customer
+    if trolley.get("assignment_status") == "ASSIGNED" and trolley.get("assigned_customer_id") != cust_id:
+        assigned_to = trolley.get("assigned_customer_name") or trolley.get("assigned_customer_id")
+        return jsonify({
+            "success": False,
+            "message": f"Trolley {trolley_id} is already assigned to customer '{assigned_to}'."
+        }), 400
+
+    if cust_id.lower() == "guest":
+        actual_cust_id = "guest"
+        cust_name = "Guest Shopper"
+        cust_phone = ""
+        cust_email = ""
+    else:
+        customer = customers_collection.find_one({"$or": [{"id": cust_id}, {"customer_id": cust_id}]})
+        if not customer:
+            return jsonify({"success": False, "message": f"Customer '{cust_id}' not found. Please register customer first."}), 404
+
+        actual_cust_id = customer.get("id") or cust_id
+        cust_name = customer.get("name", "")
+        cust_phone = customer.get("phone", "")
+        cust_email = customer.get("email", "")
+
+        # MUTUAL EXCLUSION CHECK 2: Customer already has another trolley assigned
+        other_trolley = trolleys_collection.find_one({
+            "assigned_customer_id": actual_cust_id,
+            "_id": {"$ne": trolley_id}
+        })
+        if other_trolley:
+            return jsonify({
+                "success": False,
+                "message": f"Customer '{customer.get('name')}' is already assigned to {other_trolley['_id']}. Please release that trolley first."
+            }), 400
+
+    now_ts = time.time()
+    trolleys_collection.update_one(
+        {"_id": trolley_id},
+        {"$set": {
+            "assignment_status":       "ASSIGNED",
+            "assigned_customer_id":    actual_cust_id,
+            "assigned_customer_name":  cust_name,
+            "assigned_customer_phone": cust_phone,
+            "assigned_customer_email": cust_email,
+            "assigned_at":             now_ts
+        }}
+    )
+
+    if actual_cust_id != "guest":
+        customers_collection.update_one(
+            {"$or": [{"id": actual_cust_id}, {"customer_id": actual_cust_id}]},
+            {"$set": {"assigned_trolley": trolley_id}}
+        )
+
+    # Persist customer metadata to carts_collection
+    cart_id = _trolley_cart_id(trolley_id)
+    carts_collection.update_one(
+        {"_id": cart_id},
+        {"$set": {
+            "customer_id":             actual_cust_id,
+            "customer_name":           cust_name,
+            "customer_phone":          cust_phone,
+            "customer_email":          cust_email,
+            "assignment_status":       "ASSIGNED"
+        }},
+        upsert=True
+    )
+
+    print(f"[ASSIGNMENT] {trolley_id} assigned to {cust_name} ({actual_cust_id})")
+
+    return jsonify({
+        "success": True,
+        "message": f"Trolley {trolley_id} assigned to {cust_name}.",
+        "trolley_id": trolley_id,
+        "customer": {
+            "id":    actual_cust_id,
+            "name":  cust_name,
+            "phone": cust_phone,
+            "email": cust_email
+        }
+    })
+
+@app.route("/api/trolleys/<trolley_id>/unassign", methods=["POST"])
+def unassign_trolley(trolley_id):
+    """Release a trolley from customer assignment back to AVAILABLE."""
+    trolley_id = trolley_id.strip().upper()
+    trolley = trolleys_collection.find_one({"_id": trolley_id})
+    if not trolley:
+        return jsonify({"success": False, "message": f"Trolley {trolley_id} not found"}), 404
+
+    cust_id = trolley.get("assigned_customer_id")
+    if cust_id:
+        customers_collection.update_one(
+            {"$or": [{"id": cust_id}, {"customer_id": cust_id}]},
+            {"$set": {"assigned_trolley": None}}
+        )
+
+    trolleys_collection.update_one(
+        {"_id": trolley_id},
+        {"$set": {
+            "assignment_status":       "AVAILABLE",
+            "assigned_customer_id":    None,
+            "assigned_customer_name":  "",
+            "assigned_customer_phone": "",
+            "assigned_customer_email": "",
+            "assigned_at":             None
+        }}
+    )
+
+    cart_id = _trolley_cart_id(trolley_id)
+    carts_collection.update_one(
+        {"_id": cart_id},
+        {"$set": {
+            "customer_id":             None,
+            "customer_name":           "",
+            "customer_phone":          "",
+            "customer_email":          "",
+            "assignment_status":       "AVAILABLE"
+        }}
+    )
+
+    print(f"[UNASSIGNMENT] {trolley_id} released to AVAILABLE status")
+    return jsonify({"success": True, "message": f"Trolley {trolley_id} is now AVAILABLE."})
 
 # ── Background: Offline Detection Thread ─────────────────────────────────────
 
@@ -2186,9 +2748,15 @@ def offline_detection_loop():
 @app.route("/api/transactions", methods=["GET"])
 def get_transactions():
     trolley_filter = request.args.get("trolley_id")
+    customer_filter = request.args.get("customer_id")
+    phone_filter = request.args.get("phone")
     query = {}
     if trolley_filter:
         query["trolley_id"] = trolley_filter
+    if customer_filter:
+        query["$or"] = [{"customer_id": customer_filter}, {"customerPhone": customer_filter}]
+    elif phone_filter:
+        query["customerPhone"] = phone_filter
     transactions = list(transactions_collection.find(query, {"_id": 0}).sort("timestamp", -1))
     return jsonify(transactions)
 
@@ -2426,15 +2994,77 @@ def get_local_ip():
     except Exception:
         return "127.0.0.1"
 
+def get_all_known_ips(cfg, current_ip):
+    """Compile a list of all saved, active, and known IP addresses for Wi-Fi setup."""
+    saved_ips = []
+    seen = set()
+
+    def add_ip(ip_val, label_str, category_str, is_active=False):
+        if not ip_val or ip_val in seen:
+            return
+        seen.add(ip_val)
+        saved_ips.append({
+            "ip": ip_val,
+            "label": label_str,
+            "category": category_str,
+            "isActive": is_active
+        })
+
+    # 1. Current Live Host IP
+    add_ip(current_ip, f"Live Active Wi-Fi IP ({current_ip}) [Recommended]", "live", True)
+
+    # 2. Configured IP in config.json
+    cfg_ip = cfg.get("serverIP")
+    if cfg_ip:
+        add_ip(cfg_ip, f"Configured in config.json ({cfg_ip})", "config")
+
+    # 3. All network interfaces from hostname
+    try:
+        import socket
+        for iface_ip in socket.gethostbyname_ex(socket.gethostname())[2]:
+            if not iface_ip.startswith("127."):
+                add_ip(iface_ip, f"Network Adapter IP ({iface_ip})", "adapter")
+    except Exception:
+        pass
+
+    # 4. Known Firmware IPs
+    add_ip("10.221.37.241", "ESP32 Firmware Default (10.221.37.241)", "firmware")
+    add_ip("10.175.93.241", "ESP32 NVS Fallback (10.175.93.241)", "firmware")
+    add_ip("192.168.1.101", "Trolley 001 Lab Static IP (192.168.1.101)", "static")
+    add_ip("192.168.1.104", "Trolley 002 Lab Static IP (192.168.1.104)", "static")
+
+    # 5. Custom saved historical IPs from config
+    for custom in cfg.get("savedIPs", []):
+        add_ip(custom, f"Custom Saved IP ({custom})", "custom")
+
+    # 6. Localhost
+    add_ip("127.0.0.1", "Localhost Loopback (127.0.0.1)", "loopback")
+
+    return saved_ips
+
+def get_known_wifi_networks():
+    """List of known Wi-Fi networks from firmware and hotspot profiles."""
+    return [
+        {"ssid": "Redmi 13C 5G", "pass": "111111111", "label": "Active Hotspot (Redmi 13C 5G)"},
+        {"ssid": "Yogaraj", "pass": "1234567890", "label": "ESP32 Default Wi-Fi (Yogaraj)"},
+        {"ssid": "Nandini K Y", "pass": "333444455555", "label": "Saved Hotspot (Nandini K Y)"},
+        {"ssid": "motorolaedge50fusion", "pass": "111111111", "label": "Saved Hotspot (motorolaedge50fusion)"},
+        {"ssid": "OnePlus Nord CE 2 Lite 5G", "pass": "8970868217", "label": "Config Stored Wi-Fi"}
+    ]
+
 @app.route("/api/settings/wifi", methods=["GET"])
 def get_wifi_settings():
     cfg = load_config()
     current_ip = get_local_ip()
+    saved_ips = get_all_known_ips(cfg, current_ip)
+    known_nets = get_known_wifi_networks()
     return jsonify({
-        "ssid":            cfg.get("wifiSSID", "Yogaraj"),
-        "password":        cfg.get("wifiPassword", "1234567890"),
+        "ssid":            cfg.get("wifiSSID", "Redmi 13C 5G"),
+        "password":        cfg.get("wifiPassword", "111111111"),
         "serverIP":        cfg.get("serverIP", current_ip),
         "localIP":         current_ip,
+        "savedIPs":        saved_ips,
+        "knownNetworks":   known_nets,
         "serverPort":      cfg.get("serverPort", 5000),
         "serialConnected": bool(global_ser and global_ser.is_open),
         "serialPort":      SERIAL_PORT
@@ -2457,6 +3087,13 @@ def update_wifi_settings():
     cfg["wifiPassword"] = password
     cfg["serverIP"]     = server_ip
     cfg["serverPort"]   = server_port
+
+    # Persist in savedIPs list if new
+    saved_list = cfg.get("savedIPs", [])
+    if server_ip and server_ip not in saved_list:
+        saved_list.append(server_ip)
+        cfg["savedIPs"] = saved_list
+
     save_config(cfg)
 
     usb_sent = False
@@ -2478,6 +3115,221 @@ def update_wifi_settings():
         "serverIP": server_ip,
         "serverPort": server_port
     })
+
+# ---------------------------------------------------------------------------
+# Wi-Fi Networks Management & Connection Assistant
+# ---------------------------------------------------------------------------
+
+def get_wifi_interface_status():
+    """Retrieve active Wi-Fi interface details on Windows."""
+    try:
+        res = subprocess.run(['netsh', 'wlan', 'show', 'interfaces'], capture_output=True, text=True, errors='ignore', timeout=5)
+        state_m = re.search(r'^\s*State\s*:\s*(.+)$', res.stdout, re.M)
+        ssid_m = re.search(r'^\s*SSID\s*:\s*(.+)$', res.stdout, re.M)
+        signal_m = re.search(r'^\s*Signal\s*:\s*(.+)$', res.stdout, re.M)
+        bssid_m = re.search(r'^\s*AP BSSID\s*:\s*(.+)$', res.stdout, re.M)
+        desc_m = re.search(r'^\s*Description\s*:\s*(.+)$', res.stdout, re.M)
+        state = state_m.group(1).strip() if state_m else "disconnected"
+        ssid = ssid_m.group(1).strip() if ssid_m else ""
+        signal = signal_m.group(1).strip() if signal_m else "0%"
+        bssid = bssid_m.group(1).strip() if bssid_m else ""
+        desc = desc_m.group(1).strip() if desc_m else "Wi-Fi Adapter"
+        return {
+            "state": state,
+            "connected": state.lower() == "connected",
+            "ssid": ssid,
+            "signal": signal,
+            "bssid": bssid,
+            "adapter": desc,
+            "localIP": get_local_ip()
+        }
+    except Exception as e:
+        return {
+            "state": "unknown",
+            "connected": False,
+            "ssid": "",
+            "signal": "0%",
+            "bssid": "",
+            "adapter": "Unknown",
+            "localIP": get_local_ip(),
+            "error": str(e)
+        }
+
+@app.route("/api/wifi/status", methods=["GET"])
+def api_wifi_status():
+    status = get_wifi_interface_status()
+    cfg = load_config()
+    status["configuredSSID"] = cfg.get("wifiSSID", "")
+    status["configuredServerIP"] = cfg.get("serverIP", status["localIP"])
+    status["serverPort"] = cfg.get("serverPort", 5000)
+    return jsonify(status)
+
+@app.route("/api/wifi/saved-profiles", methods=["GET"])
+def api_wifi_saved_profiles():
+    """Returns saved Windows Wi-Fi profiles and their known passwords."""
+    try:
+        res = subprocess.run(['netsh', 'wlan', 'show', 'profiles'], capture_output=True, text=True, errors='ignore', timeout=5)
+        names = [p.strip() for p in re.findall(r'All User Profile\s*:\s*(.+)', res.stdout)]
+        
+        from concurrent.futures import ThreadPoolExecutor
+        def fetch_key(name):
+            try:
+                p_res = subprocess.run(['netsh', 'wlan', 'show', 'profile', f'name={name}', 'key=clear'], capture_output=True, text=True, errors='ignore', timeout=3)
+                km = re.search(r'Key Content\s*:\s*(.+)', p_res.stdout)
+                pwd = km.group(1).strip() if km else ''
+                return {"ssid": name, "hasPassword": bool(pwd), "password": pwd}
+            except Exception:
+                return {"ssid": name, "hasPassword": False, "password": ""}
+
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            profiles = list(ex.map(fetch_key, names[:25]))
+            
+        return jsonify({"success": True, "profiles": profiles})
+    except Exception as e:
+        return jsonify({"success": False, "profiles": [], "error": str(e)})
+
+@app.route("/api/wifi/scan", methods=["GET"])
+def api_wifi_scan():
+    """Scans for nearby visible Wi-Fi networks in range."""
+    try:
+        status = get_wifi_interface_status()
+        current_ssid = status.get("ssid", "")
+
+        res = subprocess.run(['netsh', 'wlan', 'show', 'networks', 'mode=bssid'], capture_output=True, text=True, errors='ignore', timeout=8)
+        blocks = re.split(r'\nSSID\s+\d+\s+:\s*', res.stdout)
+        networks = []
+        seen = set()
+
+        for b in blocks[1:]:
+            lines = b.split('\n')
+            ssid = lines[0].strip()
+            if not ssid or ssid in seen:
+                continue
+            seen.add(ssid)
+
+            auth = re.search(r'Authentication\s*:\s*(.+)', b)
+            signal = re.search(r'Signal\s*:\s*(\d+)%', b)
+            band = re.search(r'Band\s*:\s*(.+)', b)
+            bssid = re.search(r'BSSID\s+\d+\s*:\s*([0-9a-fA-F:]+)', b)
+
+            # Check if profile exists and get clear key
+            p_res = subprocess.run(['netsh', 'wlan', 'show', 'profile', f'name={ssid}', 'key=clear'], capture_output=True, text=True, errors='ignore', timeout=2)
+            km = re.search(r'Key Content\s*:\s*(.+)', p_res.stdout)
+            has_profile = 'All User Profile' in p_res.stdout or 'User Profile' in p_res.stdout
+            pwd = km.group(1).strip() if km else ''
+
+            networks.append({
+                "ssid": ssid,
+                "auth": auth.group(1).strip() if auth else "WPA2-Personal",
+                "signal": int(signal.group(1)) if signal else 50,
+                "band": band.group(1).strip() if band else "2.4 GHz",
+                "bssid": bssid.group(1).strip() if bssid else "",
+                "isCurrent": (ssid.lower() == current_ssid.lower()),
+                "hasSavedProfile": has_profile,
+                "password": pwd
+            })
+
+        # Sort by active first, then signal strength descending
+        networks.sort(key=lambda x: (not x["isCurrent"], -x["signal"]))
+
+        return jsonify({
+            "success": True,
+            "currentSSID": current_ssid,
+            "connected": status.get("connected", False),
+            "networks": networks
+        })
+    except Exception as e:
+        return jsonify({"success": False, "networks": [], "error": str(e)}), 500
+
+@app.route("/api/wifi/connect", methods=["POST"])
+def api_wifi_connect():
+    """Connect the host system to a Wi-Fi network."""
+    data = request.json or {}
+    ssid = (data.get("ssid") or "").strip()
+    password = (data.get("password") or "").strip()
+
+    if not ssid:
+        return jsonify({"success": False, "message": "SSID is required."}), 400
+
+    try:
+        # Check if Windows already has a profile for this SSID
+        p_check = subprocess.run(['netsh', 'wlan', 'show', 'profile', f'name={ssid}'], capture_output=True, text=True, errors='ignore', timeout=3)
+        profile_exists = "All User Profile" in p_check.stdout or "User Profile" in p_check.stdout
+
+        if not profile_exists and password:
+            # Create a WPA2 profile XML and add it
+            import tempfile
+            xml_content = f"""<?xml version="1.0"?>
+<WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">
+    <name>{ssid}</name>
+    <SSIDConfig>
+        <SSID>
+            <name>{ssid}</name>
+        </SSID>
+    </SSIDConfig>
+    <connectionType>ESS</connectionType>
+    <connectionMode>auto</connectionMode>
+    <MSM>
+        <security>
+            <authEncryption>
+                <authentication>WPA2PSK</authentication>
+                <encryption>AES</encryption>
+                <useOneX>false</useOneX>
+            </authEncryption>
+            <sharedKey>
+                <keyType>passPhrase</keyType>
+                <protected>false</protected>
+                <keyMaterial>{password}</keyMaterial>
+            </sharedKey>
+        </security>
+    </MSM>
+</WLANProfile>"""
+            temp_xml = os.path.join(tempfile.gettempdir(), f"wifi_prof_{int(time.time())}.xml")
+            with open(temp_xml, "w", encoding="utf-8") as f:
+                f.write(xml_content)
+            try:
+                subprocess.run(['netsh', 'wlan', 'add', 'profile', f'filename={temp_xml}', 'user=all'], capture_output=True, text=True, errors='ignore', timeout=5)
+            finally:
+                if os.path.exists(temp_xml):
+                    try: os.remove(temp_xml)
+                    except Exception: pass
+
+        # Initiate connection
+        cmd = ['netsh', 'wlan', 'connect', f'name={ssid}']
+        c_res = subprocess.run(cmd, capture_output=True, text=True, errors='ignore', timeout=8)
+        
+        # Give Windows a brief moment to associate and acquire IP
+        time.sleep(2.5)
+        new_status = get_wifi_interface_status()
+        new_ip = get_local_ip()
+
+        # Also update config.json with this SSID and new IP
+        cfg = load_config()
+        cfg["wifiSSID"] = ssid
+        if password:
+            cfg["wifiPassword"] = password
+        cfg["serverIP"] = new_ip
+        save_config(cfg)
+
+        return jsonify({
+            "success": True,
+            "message": f"Connection command issued to '{ssid}'.",
+            "connected": new_status.get("connected", False),
+            "currentSSID": new_status.get("ssid", ssid),
+            "signal": new_status.get("signal", "0%"),
+            "localIP": new_ip
+        })
+    except Exception as e:
+        return jsonify({"success": False, "message": f"Connection error: {str(e)}"}), 500
+
+@app.route("/api/wifi/disconnect", methods=["POST"])
+def api_wifi_disconnect():
+    """Disconnect active Wi-Fi connection."""
+    try:
+        subprocess.run(['netsh', 'wlan', 'disconnect'], capture_output=True, text=True, errors='ignore', timeout=5)
+        return jsonify({"success": True, "message": "Disconnected from Wi-Fi network."})
+    except Exception as e:
+        return jsonify({"success": False, "message": f"Disconnect error: {str(e)}"}), 500
 
 @app.route("/api/settings/database", methods=["POST"])
 @require_auth(roles=["admin"])
@@ -2804,36 +3656,288 @@ def manage_feedback():
             "date":     datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         })
         return jsonify({"success": True, "message": "Feedback submitted successfully"})
-        return jsonify({"success": True, "message": "Feedback submitted successfully"})
 
 # ── Customer Portal API ───────────────────────────────────────────────────────
 
 @app.route("/api/customer/profile", methods=["GET"])
 def get_customer_profile():
-    transactions = list(transactions_collection.find({}, {"_id": 0}))
-    points = sum(int(tx.get("total", 0) // 10) for tx in transactions)
-    return jsonify({
-        "memberId":  "MEM-872910",
-        "name":      "Lohith Kumar",
-        "email":     "lohith.k@gmail.com",
-        "phone":     "+91 98765 43210",
-        "tier":      "Gold Member",
-        "points":    points + 150,
-        "savedAddresses": [
-            "123, 4th Cross, Green Glen Layout, Bangalore - 560103",
-            "Office: Tech Park Phase 2, Outer Ring Road, Bangalore"
-        ],
-        "wishlist": [
-            {"name": "Rice 1kg",  "price": 60.0, "category": "Grains"},
-            {"name": "Sugar 1kg", "price": 45.0, "category": "Grains"}
+    """Return dynamic customer profile, live assigned trolley, cart contents, and recent receipts."""
+    cust_id = request.args.get("customer_id") or request.args.get("id")
+    phone = request.args.get("phone")
+
+    # If auth header provided, attempt JWT decode
+    auth_header = request.headers.get("Authorization", "")
+    if not cust_id and not phone and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1]
+        try:
+            payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            user_phone = payload.get("phone")
+            user_email = payload.get("email")
+            user_role = payload.get("role")
+            if user_role == "guest":
+                cust_id = "guest"
+            elif user_phone:
+                phone = user_phone
+            elif user_email:
+                cust_match = customers_collection.find_one({"email": user_email})
+                if cust_match:
+                    cust_id = cust_match.get("id")
+        except Exception:
+            pass
+
+    # GUEST PROFILE HANDLING
+    if (cust_id and cust_id.strip().lower() == "guest") or request.args.get("is_guest") == "true":
+        req_trolley = request.args.get("trolley_id")
+        trolley_doc = None
+        if req_trolley:
+            trolley_doc = trolleys_collection.find_one({"_id": req_trolley.strip().upper()})
+        if not trolley_doc:
+            trolley_doc = trolleys_collection.find_one({"assigned_customer_id": "guest"})
+
+        assigned_trolley_id = trolley_doc["_id"] if trolley_doc else None
+        active_trolley_data = None
+
+        if assigned_trolley_id:
+            cart_doc = carts_collection.find_one({"_id": _trolley_cart_id(assigned_trolley_id)})
+            now_ts = time.time()
+            last_hb = trolley_doc.get("last_seen", trolley_doc.get("last_heartbeat", 0)) if trolley_doc else 0
+            hb_details = format_heartbeat_status(last_hb, now_ts)
+            is_connected = False
+            if trolley_doc:
+                is_connected = (trolley_doc.get("status") == "online") and (now_ts - float(last_hb or 0) <= OFFLINE_THRESHOLD_SECS)
+
+            items_list = []
+            cart_total = 0.0
+            item_count = 0
+            if cart_doc:
+                cart_total = float(cart_doc.get("total", 0.0))
+                raw_items = cart_doc.get("items", {})
+                if isinstance(raw_items, dict):
+                    for rfid, it in raw_items.items():
+                        qty = it.get("qty", 1)
+                        item_count += qty
+                        items_list.append({
+                            "rfid": rfid,
+                            "name": it.get("name", "Unknown Item"),
+                            "price": float(it.get("price", 0.0)),
+                            "qty": qty,
+                            "total": float(it.get("price", 0.0)) * qty,
+                            "shelf": it.get("shelf", "Aisle A"),
+                            "offer": it.get("offer", "Standard Price")
+                        })
+
+            active_trolley_data = {
+                "trolley_id": assigned_trolley_id,
+                "is_connected": is_connected,
+                "current_mode": trolley_doc.get("current_mode", "ADD"),
+                "total": cart_total,
+                "items_count": item_count,
+                "items": items_list,
+                "heartbeat": hb_details
+            }
+
+        return jsonify({
+            "customer": {
+                "id": "GUEST",
+                "customer_id": "GUEST",
+                "name": "Guest Shopper",
+                "phone": "",
+                "email": "",
+                "tier": "Guest Access",
+                "points": 0,
+                "total_spent": 0.0,
+                "total_visits": 1,
+                "assigned_trolley": assigned_trolley_id,
+                "status": "Guest",
+                "wishlist": [],
+                "is_guest": True
+            },
+            "active_trolley": active_trolley_data,
+            "recent_transactions": []
+        })
+
+    customer = None
+    if cust_id:
+        customer = customers_collection.find_one({"$or": [{"id": cust_id}, {"customer_id": cust_id}]})
+    elif phone:
+        customer = customers_collection.find_one({"phone": phone})
+
+    if not customer:
+        customer = customers_collection.find_one({})
+        if not customer:
+            init_customers()
+            customer = customers_collection.find_one({})
+
+    actual_cust_id = customer.get("id") or customer.get("customer_id", "CUST-1001")
+    actual_phone = customer.get("phone", "")
+    actual_name = customer.get("name", "Valued Customer")
+    actual_email = customer.get("email", "")
+
+    # Calculate real Tier and Points
+    total_spent = float(customer.get("total_spent", 0.0))
+    total_visits = int(customer.get("total_visits", 0))
+
+    if total_spent >= 5000:
+        tier = "Platinum VIP"
+    elif total_spent >= 1500:
+        tier = "Gold Member"
+    elif total_spent >= 500:
+        tier = "Silver Member"
+    else:
+        tier = "Bronze Member"
+
+    points = int(total_spent // 10) + (total_visits * 15)
+
+    # Wishlist from customer doc or defaults
+    wishlist = customer.get("wishlist")
+    if wishlist is None:
+        wishlist = [
+            {"name": "Rice 1kg", "price": 60.0, "category": "Grains", "shelf": "Aisle A - Shelf 1", "offer": "Buy 1 Get 1 Free"},
+            {"name": "Sugar 1kg", "price": 45.0, "category": "Grains", "shelf": "Aisle A - Shelf 2", "offer": "Standard Price"}
         ]
+        customers_collection.update_one(
+            {"$or": [{"id": actual_cust_id}, {"customer_id": actual_cust_id}]},
+            {"$set": {"wishlist": wishlist}}
+        )
+
+    # Active Trolley details if customer currently has an assigned trolley
+    assigned_trolley_id = customer.get("assigned_trolley")
+    active_trolley_data = None
+
+    if assigned_trolley_id:
+        trolley_doc = trolleys_collection.find_one({"_id": assigned_trolley_id})
+        cart_doc = carts_collection.find_one({"_id": _trolley_cart_id(assigned_trolley_id)})
+        
+        now_ts = time.time()
+        last_hb = trolley_doc.get("last_seen", trolley_doc.get("last_heartbeat", 0)) if trolley_doc else 0
+        hb_details = format_heartbeat_status(last_hb, now_ts)
+        is_connected = False
+        if trolley_doc:
+            is_connected = (trolley_doc.get("status") == "online") and (now_ts - float(last_hb or 0) <= OFFLINE_THRESHOLD_SECS)
+
+        cart_items_list = []
+        cart_total = 0.0
+        item_count = 0
+        cart_status = "ACTIVE"
+        if cart_doc:
+            cart_total = float(cart_doc.get("total", 0.0))
+            cart_status = cart_doc.get("status", "ACTIVE")
+            items_dict = cart_doc.get("items", {})
+            for uid, item in items_dict.items():
+                qty = item.get("quantity", item.get("qty", 1))
+                price = float(item.get("price", 0.0))
+                cart_items_list.append({
+                    "uid": uid,
+                    "name": item.get("name", "Unknown Item"),
+                    "price": price,
+                    "quantity": qty,
+                    "subtotal": round(price * qty, 2),
+                    "offer": item.get("offer", "Standard Price")
+                })
+                item_count += qty
+
+        active_trolley_data = {
+            "trolley_id": assigned_trolley_id,
+            "trolley_name": trolley_doc.get("name", assigned_trolley_id) if trolley_doc else assigned_trolley_id,
+            "is_connected": is_connected,
+            "status_label": "🟢 Connected (Hardware Online)" if is_connected else "🟡 Disconnected (Cart Preserved in DB)",
+            "last_seen_str": hb_details.get("last_seen_str", "N/A"),
+            "last_heartbeat_time_str": hb_details.get("last_heartbeat_time_str", "N/A"),
+            "battery_level": trolley_doc.get("battery_level", 85) if trolley_doc else 85,
+            "current_mode": trolley_doc.get("current_mode", "ADD") if trolley_doc else "ADD",
+            "cart_status": cart_status,
+            "items": cart_items_list,
+            "items_count": item_count,
+            "subtotal": cart_total,
+            "gst": round(cart_total * 0.18, 2),
+            "grand_total": round(cart_total * 1.18, 2)
+        }
+
+    # Fetch customer's real transaction history
+    tx_query = {"$or": [{"customer_id": actual_cust_id}, {"customerPhone": actual_phone}]}
+    tx_list = list(transactions_collection.find(tx_query, {"_id": 0}).sort("timestamp", -1).limit(20))
+    # Fallback to all transactions if none matched (e.g. initial demo)
+    if not tx_list:
+        tx_list = list(transactions_collection.find({}, {"_id": 0}).sort("timestamp", -1).limit(10))
+
+    return jsonify({
+        "success": True,
+        "customer": {
+            "id": actual_cust_id,
+            "customer_id": actual_cust_id,
+            "memberId": actual_cust_id,
+            "name": actual_name,
+            "email": actual_email,
+            "phone": actual_phone,
+            "tier": tier,
+            "points": points,
+            "total_spent": total_spent,
+            "total_visits": total_visits,
+            "assigned_trolley": assigned_trolley_id,
+            "status": customer.get("status", "Active"),
+            "wishlist": wishlist,
+            "savedAddresses": [
+                "123, 4th Cross, Green Glen Layout, Bangalore - 560103",
+                "Office: Tech Park Phase 2, Outer Ring Road, Bangalore"
+            ]
+        },
+        "active_trolley": active_trolley_data,
+        "recent_transactions": tx_list
     })
+
+@app.route("/api/customer/wishlist", methods=["POST", "DELETE"])
+def update_customer_wishlist():
+    cust_id = request.args.get("customer_id") or request.args.get("id")
+    if not cust_id:
+        cust = customers_collection.find_one({})
+        cust_id = cust["id"] if cust else "CUST-1001"
+
+    customer = customers_collection.find_one({"$or": [{"id": cust_id}, {"customer_id": cust_id}]})
+    if not customer:
+        return jsonify({"success": False, "message": "Customer not found"}), 404
+
+    wishlist = list(customer.get("wishlist", []))
+
+    if request.method == "POST":
+        data = request.json or {}
+        item_name = data.get("name", "").strip()
+        price = float(data.get("price", 0.0))
+        category = data.get("category", "General")
+        shelf = data.get("shelf", "General Aisle")
+        offer = data.get("offer", "Standard Price")
+
+        if not item_name:
+            return jsonify({"success": False, "message": "Item name is required"}), 400
+
+        if any(w.get("name", "").lower() == item_name.lower() for w in wishlist):
+            return jsonify({"success": True, "message": "Item already in wishlist", "wishlist": wishlist})
+
+        wishlist.append({
+            "name": item_name,
+            "price": price,
+            "category": category,
+            "shelf": shelf,
+            "offer": offer
+        })
+        customers_collection.update_one({"_id": customer["_id"]}, {"$set": {"wishlist": wishlist}})
+        return jsonify({"success": True, "message": f"Added '{item_name}' to wishlist", "wishlist": wishlist})
+
+    elif request.method == "DELETE":
+        data = request.json or {}
+        item_name = (data.get("name") or request.args.get("name") or "").strip().lower()
+        if not item_name:
+            return jsonify({"success": False, "message": "Item name is required to remove"}), 400
+
+        wishlist = [w for w in wishlist if w.get("name", "").lower() != item_name]
+        customers_collection.update_one({"_id": customer["_id"]}, {"$set": {"wishlist": wishlist}})
+        return jsonify({"success": True, "message": "Removed from wishlist", "wishlist": wishlist})
 
 # ── Arduino Serial Loop (backward-compatible, targets TROLLEY-001) ────────────
 
 def serial_loop():
     global global_ser, current_mode, SERIAL_PORT
-    BAUD_RATE = 115200  # Matched with ESP32 Serial.begin(115200)
+    cfg = load_config()
+    BAUD_RATE = int(cfg.get("baudRate", 115200))
     last_heartbeat_time = 0
     last_warn_time = 0
     SERIAL_TROLLEY_ID = "TROLLEY-001"  # Arduino always maps to Trolley-001
@@ -2841,6 +3945,8 @@ def serial_loop():
     while True:
         if global_ser is None or not global_ser.is_open:
             try:
+                cfg = load_config()
+                BAUD_RATE = int(cfg.get("baudRate", 115200))
                 global_ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
                 print(f"Connected to hardware on {SERIAL_PORT}")
                 last_warn_time = 0
@@ -2901,21 +4007,13 @@ def serial_loop():
             if line:
                 print(f"Arduino: {line}")
 
-                if line.startswith("BTN_STATE:") or line.startswith("[BTN DIAG"):
-                    if "RESET=0" in line:
-                        print("[BTN] ✅ Reset button IS being pressed — triggering reset")
-                        perform_reset(SERIAL_TROLLEY_ID)
-                        send_command_to_arduino("LCD:Cart Reset!|Total: Rs.0.00")
-                        send_command_to_arduino("BEEP:2")
-
-                elif (line == "RESET"
-                      or line.upper() == "RESET"
-                      or line.startswith("Reset")
-                      or "BTN] RESET" in line
-                      or "Bill cleared" in line):
-                    print("[RESET] Hardware reset button triggered")
+                if line in ["CONFIRMED_HARDWARE_RESET"] or "[INTENTIONAL_RESET]" in line:
+                    print("[RESET] Verified intentional hardware reset button triggered (held for >2.5s)")
                     perform_reset(SERIAL_TROLLEY_ID)
                     send_command_to_arduino("LCD:Cart Reset!|Total: Rs.0.00")
+                    send_command_to_arduino("BEEP:2")
+                elif line in ["HARDWARE_BTN_RESET", "CMD:RESET"]:
+                    print(f"[RESET IGNORED] Transient reset pulse '{line}' received on startup/disconnect. Ignored to preserve cart.")
 
                 elif line == "MODE:ADD" or "BTN] ADD" in line:
                     current_mode = "ADD"

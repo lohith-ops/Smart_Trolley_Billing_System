@@ -1,10 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart Trolley - Multi-Trolley Fleet Monitor</title>
-    <meta name="description" content="Real-time fleet monitor for all active Smart Trolleys. View battery, Wi-Fi signal, cart value and device health.">
+    <meta name="description"
+        content="Real-time fleet monitor for all active Smart Trolleys. View battery, Wi-Fi signal, cart value and device health.">
     <!-- Google Fonts: Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,6 +18,7 @@
     <!-- Auth Guard -->
     <script src="auth.js"></script>
 </head>
+
 <body class="dark-theme">
     <div class="app-container">
         <!-- Sidebar (populated dynamically by shared.js) -->
@@ -29,7 +32,8 @@
                     Multi-Trolley Fleet Monitor
                 </div>
                 <div class="header-actions">
-                    <button class="btn btn-outline" id="add-trolley-btn" style="color: var(--accent-cyan); border-color: rgba(6, 182, 212, 0.4); padding: 6px 14px; font-size: 0.85rem;">
+                    <button class="btn btn-outline" id="add-trolley-btn"
+                        style="color: var(--accent-cyan); border-color: rgba(6, 182, 212, 0.4); padding: 6px 14px; font-size: 0.85rem;">
                         <i class="fa-solid fa-plus"></i> Add Trolley
                     </button>
                     <button class="icon-btn"><i class="fa-regular fa-bell"></i></button>
@@ -41,27 +45,35 @@
             </header>
 
             <!-- Fleet Summary Stats Bar -->
-            <div class="glass-panel" style="padding:16px 24px;display:flex;flex-wrap:wrap;gap:24px;align-items:center;margin-bottom:4px;">
+            <div class="glass-panel"
+                style="padding:16px 24px;display:flex;flex-wrap:wrap;gap:24px;align-items:center;margin-bottom:4px;">
                 <div style="display:flex;align-items:center;gap:10px;">
-                    <div style="width:38px;height:38px;border-radius:10px;background:rgba(16,185,129,0.15);display:flex;align-items:center;justify-content:center;">
+                    <div
+                        style="width:38px;height:38px;border-radius:10px;background:rgba(16,185,129,0.15);display:flex;align-items:center;justify-content:center;">
                         <i class="fa-solid fa-circle-check" style="color:var(--accent-green);font-size:1rem;"></i>
                     </div>
                     <div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:2px;">Online Trolleys</div>
-                        <div style="font-size:1.4rem;font-weight:700;color:var(--accent-green);" id="stat-online-count">—</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:2px;">Online Trolleys
+                        </div>
+                        <div style="font-size:1.4rem;font-weight:700;color:var(--accent-green);" id="stat-online-count">
+                            —</div>
                     </div>
                 </div>
                 <div style="display:flex;align-items:center;gap:10px;">
-                    <div style="width:38px;height:38px;border-radius:10px;background:rgba(99,102,241,0.15);display:flex;align-items:center;justify-content:center;">
+                    <div
+                        style="width:38px;height:38px;border-radius:10px;background:rgba(99,102,241,0.15);display:flex;align-items:center;justify-content:center;">
                         <i class="fa-solid fa-cart-shopping" style="color:var(--accent-purple);font-size:1rem;"></i>
                     </div>
                     <div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:2px;">Total Trolleys</div>
-                        <div style="font-size:1.4rem;font-weight:700;color:var(--accent-purple);" id="stat-total-count">—</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:2px;">Total Trolleys
+                        </div>
+                        <div style="font-size:1.4rem;font-weight:700;color:var(--accent-purple);" id="stat-total-count">
+                            —</div>
                     </div>
                 </div>
                 <div style="display:flex;align-items:center;gap:10px;">
-                    <div style="width:38px;height:38px;border-radius:10px;background:rgba(251,191,36,0.15);display:flex;align-items:center;justify-content:center;">
+                    <div
+                        style="width:38px;height:38px;border-radius:10px;background:rgba(251,191,36,0.15);display:flex;align-items:center;justify-content:center;">
                         <i class="fa-solid fa-battery-half" style="color:#f59e0b;font-size:1rem;"></i>
                     </div>
                     <div>
@@ -70,26 +82,42 @@
                     </div>
                 </div>
                 <div style="display:flex;align-items:center;gap:10px;">
-                    <div style="width:38px;height:38px;border-radius:10px;background:rgba(6,182,212,0.15);display:flex;align-items:center;justify-content:center;">
+                    <div
+                        style="width:38px;height:38px;border-radius:10px;background:rgba(6,182,212,0.15);display:flex;align-items:center;justify-content:center;">
                         <i class="fa-solid fa-basket-shopping" style="color:var(--accent-cyan);font-size:1rem;"></i>
                     </div>
                     <div>
-                        <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:2px;">Trolleys with Items</div>
-                        <div style="font-size:1.4rem;font-weight:700;color:var(--accent-cyan);" id="stat-active-count">—</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:2px;">Trolleys with
+                            Items</div>
+                        <div style="font-size:1.4rem;font-weight:700;color:var(--accent-cyan);" id="stat-active-count">—
+                        </div>
                     </div>
                 </div>
             </div>
 
             <!-- Filters & Search Toolbar -->
-            <div class="glass-panel" style="padding:16px 24px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:16px;">
-                <div style="display:flex;gap:10px;" id="filter-container">
-                    <button class="btn btn-outline active-filter" data-filter="all" style="padding:6px 12px;font-size:0.85rem;">All Trolleys</button>
-                    <button class="btn btn-outline" data-filter="online"  style="padding:6px 12px;font-size:0.85rem;">Online</button>
-                    <button class="btn btn-outline" data-filter="offline" style="padding:6px 12px;font-size:0.85rem;">Offline</button>
+            <div class="glass-panel"
+                style="padding:16px 24px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:16px;">
+                <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;" id="filter-container">
+                    <button class="btn btn-outline active-filter" data-filter="all"
+                        style="padding:6px 12px;font-size:0.85rem;">All Trolleys</button>
+                    <button class="btn btn-outline" data-filter="online"
+                        style="padding:6px 12px;font-size:0.85rem;">Online</button>
+                    <button class="btn btn-outline" data-filter="offline"
+                        style="padding:6px 12px;font-size:0.85rem;">Offline</button>
+                    <button class="btn btn-outline" data-filter="available"
+                        style="padding:6px 12px;font-size:0.85rem;">Available</button>
+                    <button class="btn btn-outline" data-filter="assigned"
+                        style="padding:6px 12px;font-size:0.85rem;">Assigned</button>
                 </div>
-                <div class="header-search" style="margin:0;width:280px;">
-                    <i class="fa-solid fa-search search-icon"></i>
-                    <input type="text" id="trolley-search" placeholder="Search by trolley ID or name...">
+                <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+                    <div class="header-search" style="margin:0;width:260px;">
+                        <i class="fa-solid fa-search search-icon"></i>
+                        <input type="text" id="trolley-search" placeholder="Search by trolley ID or customer...">
+                    </div>
+                    <button class="btn btn-primary" id="open-cust-assign-modal-btn" style="padding:6px 14px;font-size:0.85rem;background:linear-gradient(135deg, #a855f7, #7c3aed);">
+                        <i class="fa-solid fa-user-plus" style="margin-right:6px;"></i> Assign Customer
+                    </button>
                 </div>
             </div>
 
@@ -108,11 +136,12 @@
             </div>
             <h2>Register Smart Trolley</h2>
             <p class="modal-sub">Add a new IoT shopping trolley to the supermarket fleet</p>
-            
+
             <form id="trolley-form" class="register-form" style="margin-top: 15px;">
                 <div class="form-group">
                     <label>Trolley ID</label>
-                    <input type="text" id="modal-trolley-id" required placeholder="e.g. TROLLEY-004" class="form-input" style="text-transform: uppercase;">
+                    <input type="text" id="modal-trolley-id" required placeholder="e.g. TROLLEY-004" class="form-input"
+                        style="text-transform: uppercase;">
                 </div>
                 <div class="form-group">
                     <label>Display Name</label>
@@ -132,11 +161,80 @@
                     <label>Firmware Version</label>
                     <input type="text" id="modal-trolley-fw" value="2.0" class="form-input">
                 </div>
-                
+
                 <div class="form-actions" style="margin-top: 20px;">
                     <button type="button" class="btn btn-outline" id="modal-trolley-cancel">Cancel</button>
-                    <button type="submit" class="btn btn-primary" id="modal-trolley-submit" style="background: var(--grad-primary);">
+                    <button type="submit" class="btn btn-primary" id="modal-trolley-submit"
+                        style="background: var(--grad-primary);">
                         <i class="fa-solid fa-check"></i> Save Trolley
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Customer Registration & Trolley Assignment Modal -->
+    <div class="modal-overlay" id="customer-assign-modal" style="display: none;">
+        <div class="modal-box glass-panel" style="max-width: 500px; max-height: 90vh; overflow-y: auto;">
+            <div class="modal-icon" style="color: var(--accent-purple);">
+                <i class="fa-solid fa-user-check"></i>
+            </div>
+            <h2>Assign Trolley to Customer</h2>
+            <p class="modal-sub">Bind an active trolley to a customer session</p>
+
+            <div id="assign-error-alert" style="display: none; padding: 10px 14px; background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); border-radius: 8px; color: #fca5a5; font-size: 0.85rem; margin: 12px 0;">
+                <i class="fa-solid fa-triangle-exclamation" style="margin-right: 6px;"></i>
+                <span id="assign-error-text"></span>
+            </div>
+
+            <!-- Tab Switcher: Existing vs New Customer -->
+            <div style="display: flex; gap: 8px; margin: 16px 0 12px; background: rgba(0,0,0,0.3); padding: 4px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08);">
+                <button type="button" id="tab-assign-existing" class="btn" style="flex: 1; padding: 6px; font-size: 0.8rem; background: var(--grad-primary); color: #fff;">Existing Customer</button>
+                <button type="button" id="tab-assign-new" class="btn btn-outline" style="flex: 1; padding: 6px; font-size: 0.8rem;">+ New Customer</button>
+            </div>
+
+            <form id="customer-assign-form" class="register-form">
+                <div class="form-group">
+                    <label>Selected Trolley</label>
+                    <select id="modal-assign-trolley-select" class="form-input" required>
+                        <!-- Populated dynamically -->
+                    </select>
+                </div>
+
+                <!-- Existing Customer Mode -->
+                <div id="section-assign-existing">
+                    <div class="form-group">
+                        <label>Select Registered Customer</label>
+                        <select id="modal-assign-customer-select" class="form-input">
+                            <option value="">-- Choose Registered Customer --</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- New Customer Mode -->
+                <div id="section-assign-new" style="display: none;">
+                    <div class="form-group">
+                        <label>Customer Full Name *</label>
+                        <input type="text" id="modal-new-cust-name" placeholder="e.g. Ramesh Kumar" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label>Mobile Number *</label>
+                        <input type="tel" id="modal-new-cust-phone" placeholder="e.g. 9876543210" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label>Email Address (Optional)</label>
+                        <input type="email" id="modal-new-cust-email" placeholder="e.g. ramesh@example.com" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label>Customer ID (Optional - Auto-generated if blank)</label>
+                        <input type="text" id="modal-new-cust-id" placeholder="e.g. CUST-1005" class="form-input" style="text-transform: uppercase;">
+                    </div>
+                </div>
+
+                <div class="form-actions" style="margin-top: 20px;">
+                    <button type="button" class="btn btn-outline" id="customer-assign-cancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="customer-assign-submit" style="background: linear-gradient(135deg, #a855f7, #7c3aed);">
+                        <i class="fa-solid fa-link"></i> Confirm Assignment
                     </button>
                 </div>
             </form>
@@ -147,4 +245,5 @@
     <script src="shared.js"></script>
     <script src="trolleys.js"></script>
 </body>
+
 </html>

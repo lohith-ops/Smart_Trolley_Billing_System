@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Trolley - Customer Member Portal</title>
+    <title>Smart Trolley - Shopper Member Hub</title>
     <!-- Google Fonts: Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -14,6 +14,138 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Auth Guard -->
     <script src="auth.js"></script>
+    <style>
+        .tier-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .tier-bronze { background: linear-gradient(135deg, #a16207, #78350f); color: #fef3c7; }
+        .tier-silver { background: linear-gradient(135deg, #64748b, #475569); color: #f8fafc; }
+        .tier-gold { background: linear-gradient(135deg, #f59e0b, #b45309); color: #fff; box-shadow: 0 2px 10px rgba(245, 158, 11, 0.4); }
+        .tier-platinum { background: linear-gradient(135deg, #06b6d4, #2563eb); color: #fff; box-shadow: 0 2px 10px rgba(6, 182, 212, 0.4); }
+
+        .stat-chip {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 10px 12px;
+            text-align: center;
+        }
+        .stat-chip .val {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+        }
+        .stat-chip .lbl {
+            font-size: 0.72rem;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        .active-cart-panel {
+            background: rgba(15, 23, 42, 0.75);
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+        }
+        .active-cart-panel.connected {
+            border-color: rgba(16, 185, 129, 0.5);
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.15);
+        }
+        .active-cart-panel.disconnected {
+            border-color: rgba(245, 158, 11, 0.5);
+            box-shadow: 0 0 20px rgba(245, 158, 11, 0.15);
+        }
+
+        .cart-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .cart-table th {
+            text-align: left;
+            padding: 10px 14px;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--panel-border);
+            text-transform: uppercase;
+        }
+        .cart-table td {
+            padding: 12px 14px;
+            font-size: 0.88rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .hub-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            border-bottom: 1px solid var(--panel-border);
+            padding-bottom: 8px;
+        }
+        .hub-tab-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            font-weight: 600;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .hub-tab-btn.active {
+            background: rgba(6, 182, 212, 0.15);
+            color: var(--accent-cyan);
+            border: 1px solid rgba(6, 182, 212, 0.3);
+        }
+        .hub-tab-btn:hover:not(.active) {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-primary);
+        }
+
+        .catalog-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 16px;
+        }
+        .catalog-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--panel-border);
+            border-radius: 10px;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+        .catalog-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(6, 182, 212, 0.4);
+        }
+
+        .customer-select-pill {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--panel-border);
+            color: var(--text-primary);
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            outline: none;
+        }
+        .customer-select-pill option {
+            background: #111827;
+            color: #fff;
+        }
+    </style>
 </head>
 <body class="dark-theme">
     <div class="app-container">
@@ -22,71 +154,204 @@
 
         <!-- Main Content Area -->
         <main class="main-content">
+            <!-- Top Header -->
             <header class="top-header glass-panel">
-                <div style="font-weight: 600; font-size: 1.1rem; color: var(--text-primary);" id="portal-header-title">
-                    Shopper Member Hub
+                <div style="display: flex; align-items: center; gap: 16px;">
+                    <div>
+                        <div style="font-weight: 700; font-size: 1.15rem; color: var(--text-primary);" id="portal-header-title">
+                            <i class="fa-solid fa-gem" style="color: var(--accent-cyan); margin-right: 8px;"></i>Shopper Member Hub
+                        </div>
+                        <div style="font-size: 0.75rem; color: var(--text-secondary);">
+                            Real-time Smart Trolley Cart • Member Loyalty • Digital Receipts
+                        </div>
+                    </div>
                 </div>
-                <div class="header-actions" id="portal-header-actions">
+
+                <div class="header-actions" id="portal-header-actions" style="display: flex; align-items: center; gap: 12px;">
+                    <!-- Customer Switcher for Shopper Demo / Multi-Customer -->
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 0.8rem; color: var(--text-secondary);"><i class="fa-solid fa-user-tag"></i> Shopper:</span>
+                        <select id="portal-customer-select" class="customer-select-pill">
+                            <option value="">Loading customers...</option>
+                        </select>
+                        <button id="portal-register-modal-btn" class="btn btn-outline" style="padding: 6px 10px; font-size: 0.8rem;" title="Register New Customer">
+                            <i class="fa-solid fa-user-plus"></i> New
+                        </button>
+                    </div>
+
                     <a href="login.html" class="btn btn-outline" id="portal-login-nav-btn" style="display: none; padding: 6px 12px; font-size: 0.85rem; text-decoration: none;">
-                        <i class="fa-solid fa-right-to-bracket"></i> Sign In / Register
+                        <i class="fa-solid fa-right-to-bracket"></i> Sign In
                     </a>
                     <button class="btn btn-outline" id="portal-logout-btn" style="display: none; padding: 6px 12px; font-size: 0.85rem;">
                         <i class="fa-solid fa-sign-out-alt"></i> Logout
                     </button>
-                    <div class="user-profile" id="portal-user-profile" style="display: flex;">
-                        <img id="portal-avatar-img" src="https://ui-avatars.com/api/?name=User&background=06b6d4&color=fff" alt="User">
-                        <span id="portal-header-username">Guest Shopper</span>
+                    <div class="user-profile" id="portal-user-profile" style="display: flex; align-items: center; gap: 8px;">
+                        <img id="portal-avatar-img" src="https://ui-avatars.com/api/?name=Shopper&background=06b6d4&color=fff" alt="User" style="width: 32px; height: 32px; border-radius: 50%;">
+                        <span id="portal-header-username" style="font-size: 0.9rem; font-weight: 600;">Guest Shopper</span>
                     </div>
                 </div>
             </header>
 
-            <!-- Customer Portal Dashboard -->
-            <div id="portal-dashboard-container" class="portal-grid" style="display: grid;">
-                <!-- Left: Profile Summary -->
+            <!-- Customer Portal Main Grid -->
+            <div id="portal-dashboard-container" class="portal-grid" style="display: grid; margin-top: 20px;">
+                <!-- Left Column: Member Profile Summary -->
                 <div class="glass-panel profile-sidebar">
-                    <img src="https://ui-avatars.com/api/?name=Lohith+Kumar&background=06b6d4&color=fff" alt="Lohith Kumar">
-                    <h3 style="margin-top: 8px;" id="portal-name">Lohith Kumar</h3>
-                    <span class="trolley-status-badge active" style="font-size: 0.8rem; padding: 4px 10px;" id="portal-tier">Gold Member</span>
-                    
-                    <div class="points-badge" id="portal-points">
-                        <i class="fa-solid fa-award"></i> 230 Points
-                    </div>
-                    
-                    <div style="text-align: left; width: 100%; font-size: 0.85rem; color: var(--text-secondary); display: flex; flex-direction: column; gap: 8px; margin-top: 16px; border-top: 1px solid var(--panel-border); padding-top: 16px;">
-                        <span><strong style="color: var(--text-primary);">Email:</strong> <span id="portal-email">lohith.k@gmail.com</span></span>
-                        <span><strong style="color: var(--text-primary);">Phone:</strong> <span id="portal-phone">+91 98765 43210</span></span>
-                    </div>
-
-                    <a href="feedback.html" class="btn btn-outline" style="margin-top: 16px; width: 100%; text-align: center; text-decoration: none; font-size: 0.85rem; color: #f59e0b; border-color: rgba(245, 158, 11, 0.4);">
-                        <i class="fa-solid fa-star" style="margin-right: 6px;"></i> Rate Shopping Experience
-                    </a>
-                </div>
-
-                <!-- Right: Active Cart and History -->
-                <div style="display: flex; flex-direction: column; gap: 24px;">
-                    <!-- Saved Wishlist -->
-                    <div class="glass-panel" style="padding: 24px;">
-                        <h3 style="font-weight:600; font-size:1.1rem; margin-bottom:16px;">
-                            <i class="fa-solid fa-heart" style="margin-right: 8px; color: var(--accent-red);"></i>My Wishlist Products
-                        </h3>
-                        <div id="portal-wishlist-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
-                            <!-- Injected dynamically -->
+                    <img id="portal-profile-avatar" src="https://ui-avatars.com/api/?name=Guest+Shopper&background=64748b&color=fff" alt="Profile Avatar">
+                    <div style="text-align: center;">
+                        <h3 style="margin-top: 4px; font-size: 1.2rem; font-weight: 700;" id="portal-name">Guest Shopper</h3>
+                        <div style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px;">
+                            <span id="portal-cust-id-badge" style="background: rgba(255,255,255,0.08); padding: 2px 8px; border-radius: 6px; font-family: monospace;">Guest Session</span>
                         </div>
                     </div>
 
-                    <!-- Invoice Locker / Shopping Receipts History -->
+                    <!-- Tier Badge -->
+                    <div id="portal-tier-container">
+                        <span class="tier-badge" id="portal-tier" style="background: rgba(148, 163, 184, 0.2); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3);">
+                            <i class="fa-solid fa-user"></i> Guest Access
+                        </span>
+                    </div>
+
+                    <!-- Points Badge -->
+                    <div class="points-badge" id="portal-points" style="width: 100%; text-align: center;">
+                        <i class="fa-solid fa-award"></i> 0 Points
+                    </div>
+
+                    <!-- Member Lifetime Stats Chips -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%;">
+                        <div class="stat-chip">
+                            <div class="val" id="portal-total-spent">₹0.00</div>
+                            <div class="lbl">Total Spent</div>
+                        </div>
+                        <div class="stat-chip">
+                            <div class="val" id="portal-total-visits">1</div>
+                            <div class="lbl">Store Visits</div>
+                        </div>
+                    </div>
+
+                    <!-- Contact Details -->
+                    <div style="text-align: left; width: 100%; font-size: 0.85rem; color: var(--text-secondary); display: flex; flex-direction: column; gap: 10px; margin-top: 10px; border-top: 1px solid var(--panel-border); padding-top: 16px;">
+                        <div>
+                            <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 2px;">Mobile / Phone</div>
+                            <div style="color: var(--text-primary); font-weight: 500;" id="portal-phone">Not Registered</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 2px;">Email Address</div>
+                            <div style="color: var(--text-primary); font-weight: 500;" id="portal-email">Guest Session</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 2px;">Assigned Smart Trolley</div>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span id="portal-sidebar-trolley-badge" class="trolley-status-badge available" style="font-size: 0.75rem;">None Assigned</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Guest Mode Callout Card -->
+                    <div id="portal-guest-cta" style="margin-top: 14px; padding: 12px; background: rgba(6, 182, 212, 0.08); border: 1px dashed rgba(6, 182, 212, 0.35); border-radius: 8px; font-size: 0.78rem; color: var(--text-secondary); text-align: center; display: none;">
+                        <i class="fa-solid fa-gift" style="color: var(--accent-cyan); font-size: 1.1rem; margin-bottom: 4px; display: block;"></i>
+                        <span>Shopping as <strong>Guest</strong>. <a href="login.html" style="color: var(--accent-cyan); font-weight: 600; text-decoration: underline;">Sign In</a> or <a href="register.html" style="color: var(--accent-cyan); font-weight: 600; text-decoration: underline;">Register</a> to earn loyalty rewards, access digital tax receipts, and save your wishlist!</span>
+                    </div>
+
+                    <!-- Rate Experience Button -->
+                    <button id="portal-open-feedback-btn" class="btn btn-outline" style="margin-top: 12px; width: 100%; text-align: center; font-size: 0.85rem; color: #f59e0b; border-color: rgba(245, 158, 11, 0.4);">
+                        <i class="fa-solid fa-star" style="margin-right: 6px;"></i> Rate Shopping Experience
+                    </button>
+                </div>
+
+                <!-- Right Column: Live Smart Trolley, Wishlist & Invoices -->
+                <div style="display: flex; flex-direction: column; gap: 24px;">
+
+                    <!-- SECTION 1: Active Smart Trolley & Live Cart Widget -->
+                    <div id="portal-active-trolley-card" class="glass-panel" style="padding: 24px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+                            <div>
+                                <h3 style="font-weight: 700; font-size: 1.15rem; margin: 0; display: flex; align-items: center; gap: 10px;">
+                                    <i class="fa-solid fa-cart-shopping" style="color: var(--accent-cyan);"></i>
+                                    <span>Active Smart Trolley & Live Cart</span>
+                                    <span id="portal-trolley-id-pill" style="font-size: 0.8rem; background: rgba(6, 182, 212, 0.15); color: var(--accent-cyan); padding: 3px 8px; border-radius: 6px; font-family: monospace; display: none;">TROLLEY-001</span>
+                                </h3>
+                                <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px;">
+                                    Real-time synchronized cart session preserved in MongoDB across reboots & disconnects
+                                </div>
+                            </div>
+                            <div id="portal-trolley-actions-header" style="display: flex; align-items: center; gap: 10px;">
+                                <!-- Connection badge -->
+                                <span id="portal-trolley-conn-badge" class="trolley-status-badge offline" style="font-size: 0.78rem;">
+                                    No Trolley Paired
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Active Cart Content Box (Populated Dynamically) -->
+                        <div id="portal-active-trolley-content">
+                            <!-- Empty State or Live Cart Table injected here -->
+                        </div>
+                    </div>
+
+                    <!-- SECTION 2: Catalog & Wishlist Tabs -->
                     <div class="glass-panel" style="padding: 24px;">
-                        <h3 style="font-weight:600; font-size:1.1rem; margin-bottom:16px;">
-                            <i class="fa-solid fa-receipt" style="margin-right: 8px; color: var(--accent-cyan);"></i>Shopping Invoice Locker
-                        </h3>
+                        <div class="hub-tabs">
+                            <button class="hub-tab-btn active" id="tab-wishlist-btn" onclick="switchHubTab('wishlist')">
+                                <i class="fa-solid fa-heart" style="color: var(--accent-red); margin-right: 6px;"></i> My Saved Wishlist (<span id="wishlist-count">0</span>)
+                            </button>
+                            <button class="hub-tab-btn" id="tab-catalog-btn" onclick="switchHubTab('catalog')">
+                                <i class="fa-solid fa-store" style="color: var(--accent-cyan); margin-right: 6px;"></i> Browse Store Catalog & Deals
+                            </button>
+                        </div>
+
+                        <!-- Tab 1: Wishlist Container -->
+                        <div id="portal-wishlist-tab-pane">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">
+                                    Products saved for your shopping trip with aisle locations & live prices.
+                                </div>
+                            </div>
+                            <div id="portal-wishlist-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px;">
+                                <!-- Injected dynamically -->
+                            </div>
+                        </div>
+
+                        <!-- Tab 2: Store Catalog Container -->
+                        <div id="portal-catalog-tab-pane" style="display: none;">
+                            <div style="display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;">
+                                <input type="text" id="portal-catalog-search" placeholder="Search catalog items (e.g. Milk, Rice)..." class="customer-select-pill" style="flex: 1; min-width: 200px;">
+                                <select id="portal-catalog-category" class="customer-select-pill">
+                                    <option value="ALL">All Categories</option>
+                                    <option value="Grains">Grains</option>
+                                    <option value="Dairy">Dairy</option>
+                                    <option value="Bakery">Bakery</option>
+                                    <option value="Beverages">Beverages</option>
+                                </select>
+                            </div>
+                            <div id="portal-catalog-grid" class="catalog-grid">
+                                <!-- Catalog cards injected here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SECTION 3: Shopping Invoice Locker & Receipts -->
+                    <div class="glass-panel" style="padding: 24px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <div>
+                                <h3 style="font-weight: 700; font-size: 1.15rem; margin: 0; display: flex; align-items: center; gap: 8px;">
+                                    <i class="fa-solid fa-receipt" style="color: var(--accent-cyan);"></i>Shopping Invoice Locker
+                                </h3>
+                                <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px;">
+                                    Download or view verified thermal receipts from your past shopping visits
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="table-responsive">
                             <table class="transactions-table">
                                 <thead>
                                     <tr>
-                                        <th>Checkout Date</th>
-                                        <th>Total Purchase</th>
+                                        <th>Date & Time</th>
+                                        <th>Trolley</th>
+                                        <th>Payment</th>
+                                        <th>Total Paid</th>
                                         <th>GST (18%)</th>
-                                        <th>Invoice Receipt</th>
+                                        <th>Digital Receipt</th>
                                     </tr>
                                 </thead>
                                 <tbody id="portal-receipts-body">
@@ -98,6 +363,78 @@
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- MODAL: Register New Customer -->
+    <div id="portal-register-modal" class="modal-overlay">
+        <div class="modal-box" style="max-width: 440px;">
+            <button class="modal-close-x" id="portal-close-reg-modal">&times;</button>
+            <div class="modal-icon" style="background: rgba(6, 182, 212, 0.1); color: var(--accent-cyan);">
+                <i class="fa-solid fa-user-plus"></i>
+            </div>
+            <h2>Register Shopper</h2>
+            <p class="modal-sub">Create a new shopper account for loyalty points and smart trolley tracking.</p>
+
+            <form id="portal-reg-form" style="display: flex; flex-direction: column; gap: 14px; margin-top: 16px;">
+                <div>
+                    <label style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 4px;">Customer Name *</label>
+                    <input type="text" id="reg-cust-name" required placeholder="e.g. Ramesh Patel" class="customer-select-pill" style="width: 100%;">
+                </div>
+                <div>
+                    <label style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 4px;">Mobile / Phone Number *</label>
+                    <input type="tel" id="reg-cust-phone" required placeholder="e.g. 9845012345" class="customer-select-pill" style="width: 100%;">
+                </div>
+                <div>
+                    <label style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 4px;">Email Address (Optional)</label>
+                    <input type="email" id="reg-cust-email" placeholder="e.g. ramesh@example.com" class="customer-select-pill" style="width: 100%;">
+                </div>
+                <div>
+                    <label style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 4px;">Customer ID (Optional, auto-generated)</label>
+                    <input type="text" id="reg-cust-id" placeholder="e.g. CUST-1004" class="customer-select-pill" style="width: 100%;">
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;">
+                    <button type="button" class="btn btn-outline" id="portal-cancel-reg-btn">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="portal-submit-reg-btn">
+                        <i class="fa-solid fa-check"></i> Register Account
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: Rate Experience / Feedback -->
+    <div id="portal-feedback-modal" class="modal-overlay">
+        <div class="modal-box" style="max-width: 440px;">
+            <button class="modal-close-x" id="portal-close-feedback-modal">&times;</button>
+            <div class="modal-icon" style="background: rgba(245, 158, 11, 0.1); color: #f59e0b;">
+                <i class="fa-solid fa-star"></i>
+            </div>
+            <h2>Rate Shopping Experience</h2>
+            <p class="modal-sub">How was your automated smart trolley checkout experience today?</p>
+
+            <form id="portal-feedback-form" style="display: flex; flex-direction: column; gap: 16px; margin-top: 16px;">
+                <div style="text-align: center;">
+                    <div style="font-size: 1.8rem; display: flex; justify-content: center; gap: 8px; cursor: pointer;" id="star-rating-box">
+                        <i class="fa-solid fa-star star-item" data-val="1" style="color: #f59e0b;"></i>
+                        <i class="fa-solid fa-star star-item" data-val="2" style="color: #f59e0b;"></i>
+                        <i class="fa-solid fa-star star-item" data-val="3" style="color: #f59e0b;"></i>
+                        <i class="fa-solid fa-star star-item" data-val="4" style="color: #f59e0b;"></i>
+                        <i class="fa-solid fa-star star-item" data-val="5" style="color: #f59e0b;"></i>
+                    </div>
+                    <span id="star-rating-text" style="font-size: 0.85rem; color: #f59e0b; font-weight: 600; margin-top: 6px; display: inline-block;">5 Stars - Excellent!</span>
+                </div>
+                <div>
+                    <label style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 4px;">Comments or Suggestions</label>
+                    <textarea id="portal-feedback-comments" rows="3" placeholder="Tell us what you liked about smart trolley billing..." class="customer-select-pill" style="width: 100%; resize: vertical;"></textarea>
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button type="button" class="btn btn-outline" id="portal-cancel-feedback-btn">Cancel</button>
+                    <button type="submit" class="btn btn-primary" style="background: #f59e0b; border-color: #f59e0b;">
+                        <i class="fa-solid fa-paper-plane"></i> Submit Feedback
+                    </button>
+                </div>
+            </form>
+        </div>
     </div>
 
     <!-- Application Logic -->

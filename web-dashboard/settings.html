@@ -134,49 +134,156 @@
                     </form>
                 </div>
 
-                <!-- 📡 Trolley Wi-Fi & Network Setup -->
-                <div class="glass-panel settings-card">
-                    <h3><i class="fa-solid fa-wifi" style="color: var(--accent-cyan);"></i> Trolley Wi-Fi & Network Setup</h3>
-                    <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.4;">
-                        Configure the Wi-Fi credentials and laptop Server IP for your trolleys. You can push settings directly to a USB-connected trolley or save them for wireless trolleys.
-                    </p>
-
-                    <form id="settings-wifi-form">
-                        <div class="form-group">
-                            <label>Wi-Fi Network Name (SSID)</label>
-                            <input type="text" id="wifi-ssid-input" placeholder="e.g. Redmi 13C 5G or College-WiFi" required class="form-input">
+                <!-- 📡 Trolley Wi-Fi Connection Manager & Network Setup -->
+                <div class="glass-panel settings-card" style="grid-column: 1 / -1;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; margin-bottom: 8px;">
+                        <div>
+                            <h3 style="margin-bottom: 6px; border-bottom: none; padding-bottom: 0;">
+                                <i class="fa-solid fa-wifi" style="color: var(--accent-cyan);"></i> Wi-Fi Connection Manager & Trolley Network Setup
+                            </h3>
+                            <p style="font-size: 0.85rem; color: var(--text-secondary); margin: 0; line-height: 1.4;">
+                                Scan and connect to Wi-Fi networks, view all saved IP addresses, and synchronize connection parameters to smart trolleys.
+                            </p>
                         </div>
-                        <div class="form-group">
-                            <label>Wi-Fi Password</label>
-                            <div style="position: relative;">
-                                <input type="password" id="wifi-password-input" placeholder="Enter Wi-Fi Password" class="form-input" style="padding-right: 40px;">
-                                <button type="button" id="toggle-wifi-pass-btn" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-secondary); cursor: pointer;" title="Show/Hide Password">
-                                    <i class="fa-solid fa-eye" id="wifi-pass-icon"></i>
+                        <div id="wifi-active-badge" style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 20px; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); font-size: 0.82rem; color: #10b981; font-weight: 500;">
+                            <span class="status-indicator active" style="width: 8px; height: 8px; border-radius: 50%; background: #10b981; box-shadow: 0 0 8px #10b981;"></span>
+                            <span id="wifi-active-status-text">Detecting Wi-Fi...</span>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 24px; margin-top: 18px;">
+                        
+                        <!-- Left Column: Trolley Setup & Saved IPs -->
+                        <div style="background: rgba(0,0,0,0.22); border: 1px solid var(--panel-border); border-radius: 12px; padding: 18px;">
+                            <h4 style="font-size: 0.95rem; color: var(--text-primary); margin: 0 0 14px 0; display: flex; align-items: center; gap: 8px;">
+                                <i class="fa-solid fa-microchip" style="color: var(--accent-cyan);"></i> Trolley Wi-Fi Configuration
+                            </h4>
+
+                            <!-- Quick Select Known Wi-Fi Networks -->
+                            <div class="form-group" style="margin-bottom: 12px;">
+                                <label style="font-size: 0.8rem; font-weight: 500; display: flex; justify-content: space-between;">
+                                    <span>Quick-Select Saved Wi-Fi Profile</span>
+                                    <span style="font-size: 0.72rem; color: var(--accent-cyan); cursor: pointer;" id="wifi-refresh-profiles-btn" title="Refresh saved Wi-Fi profiles"><i class="fa-solid fa-rotate"></i> Refresh</span>
+                                </label>
+                                <select id="wifi-known-networks-select" class="form-input" style="width: 100%; font-size: 0.85rem; padding: 8px 10px;">
+                                    <option value="">-- Choose from Known Wi-Fi Networks --</option>
+                                </select>
+                            </div>
+
+                            <form id="settings-wifi-form">
+                                <div class="form-group" style="margin-bottom: 12px;">
+                                    <label style="font-size: 0.8rem; font-weight: 500;">Wi-Fi Network Name (SSID)</label>
+                                    <input type="text" id="wifi-ssid-input" placeholder="e.g. Redmi 13C 5G or College-WiFi" required class="form-input" style="width: 100%;">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 14px;">
+                                    <label style="font-size: 0.8rem; font-weight: 500;">Wi-Fi Password</label>
+                                    <div style="position: relative;">
+                                        <input type="password" id="wifi-password-input" placeholder="Enter Wi-Fi Password" class="form-input" style="width: 100%; padding-right: 40px;">
+                                        <button type="button" id="toggle-wifi-pass-btn" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-secondary); cursor: pointer;" title="Show/Hide Password">
+                                            <i class="fa-solid fa-eye" id="wifi-pass-icon"></i>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Saved & Detected IP Addresses Section -->
+                                <div style="background: rgba(255,255,255,0.03); border: 1px dashed var(--panel-border); border-radius: 8px; padding: 12px; margin-bottom: 14px;">
+                                    <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary); display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                        <span><i class="fa-solid fa-network-wired" style="color: var(--accent-cyan);"></i> Saved IP Addresses</span>
+                                        <button type="button" id="wifi-use-live-ip-btn" class="btn btn-outline" style="padding: 2px 8px; font-size: 0.72rem; border-color: rgba(16, 185, 129, 0.4); color: #10b981;">
+                                            <i class="fa-solid fa-bolt"></i> Use Live Host IP
+                                        </button>
+                                    </label>
+                                    <select id="wifi-saved-ips-select" class="form-input" style="width: 100%; font-size: 0.82rem; padding: 6px 10px; margin-bottom: 8px;">
+                                        <option value="">-- Select from Saved / Detected IP Addresses --</option>
+                                    </select>
+                                    <div id="wifi-saved-ips-chips" style="display: flex; flex-wrap: wrap; gap: 6px; max-height: 80px; overflow-y: auto;">
+                                        <!-- Populated dynamically -->
+                                    </div>
+                                </div>
+
+                                <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 10px; margin-bottom: 14px;">
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label style="font-size: 0.8rem; font-weight: 500;">Laptop Server IP</label>
+                                        <input type="text" id="wifi-server-ip-input" placeholder="e.g. 10.140.219.241" required class="form-input" style="width: 100%;">
+                                    </div>
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label style="font-size: 0.8rem; font-weight: 500;">Port</label>
+                                        <input type="number" id="wifi-server-port-input" value="5000" required class="form-input" style="width: 100%;">
+                                    </div>
+                                </div>
+
+                                <div style="display: flex; gap: 10px; margin-top: 14px;">
+                                    <button type="submit" id="save-wifi-btn" class="btn btn-outline" style="flex: 1;">
+                                        <i class="fa-solid fa-save"></i> Save Settings
+                                    </button>
+                                    <button type="button" id="push-wifi-usb-btn" class="btn btn-checkout" style="flex: 1.2; background: var(--grad-primary);">
+                                        <i class="fa-brands fa-usb"></i> Send to Trolley (USB)
+                                    </button>
+                                </div>
+                                <div id="wifi-push-status" style="margin-top: 10px; font-size: 0.82rem; text-align: center; display: none;"></div>
+                            </form>
+                        </div>
+
+                        <!-- Right Column: Live Wi-Fi Connection Assistant & Scanner -->
+                        <div style="background: rgba(0,0,0,0.22); border: 1px solid var(--panel-border); border-radius: 12px; padding: 18px; display: flex; flex-direction: column;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                <h4 style="font-size: 0.95rem; color: var(--text-primary); margin: 0; display: flex; align-items: center; gap: 8px;">
+                                    <i class="fa-solid fa-tower-broadcast" style="color: var(--accent-cyan);"></i> Live Wi-Fi Network Assistant
+                                </h4>
+                                <div style="display: flex; gap: 8px;">
+                                    <button type="button" id="wifi-scan-btn" class="btn btn-primary" style="padding: 4px 12px; font-size: 0.78rem;">
+                                        <i class="fa-solid fa-satellite-dish"></i> Scan Networks
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Current Network Info Box -->
+                            <div id="wifi-current-info-card" style="background: rgba(255,255,255,0.03); border: 1px solid var(--panel-border); border-radius: 8px; padding: 12px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                                <div>
+                                    <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">Current Host Network</div>
+                                    <div style="font-size: 0.95rem; font-weight: 600; color: var(--text-primary); margin-top: 2px;" id="wifi-cur-ssid">Redmi 13C 5G</div>
+                                    <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+                                        Signal: <span id="wifi-cur-signal" style="color: #10b981; font-weight: 600;">--</span> | Host IP: <span id="wifi-cur-ip" style="color: var(--accent-cyan);">--</span>
+                                    </div>
+                                </div>
+                                <button type="button" id="wifi-disconnect-btn" class="btn btn-outline" style="padding: 4px 10px; font-size: 0.75rem; border-color: rgba(239, 68, 68, 0.4); color: #ef4444;" title="Disconnect laptop from Wi-Fi">
+                                    <i class="fa-solid fa-power-off"></i> Disconnect
                                 </button>
                             </div>
-                        </div>
-                        <div class="form-group">
-                            <label>Laptop Server IP (Auto-Detected)</label>
-                            <input type="text" id="wifi-server-ip-input" placeholder="e.g. 10.221.37.241" required class="form-input">
-                            <span style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px; display: block;">
-                                This laptop's local network IP. The trolley sends billing data to this address.
-                            </span>
-                        </div>
-                        <div class="form-group">
-                            <label>Flask Server Port</label>
-                            <input type="number" id="wifi-server-port-input" value="5000" required class="form-input">
+
+                            <!-- Connect to Any Network Form (Quick Connect) -->
+                            <div style="background: rgba(0,0,0,0.18); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 10px; margin-bottom: 12px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                    <span style="font-size: 0.78rem; font-weight: 600; color: var(--text-secondary);">Direct Connect to Wi-Fi</span>
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1.2fr 1fr auto; gap: 8px;">
+                                    <input type="text" id="wifi-connect-ssid" placeholder="Network SSID" class="form-input" style="font-size: 0.8rem; padding: 6px 8px;">
+                                    <input type="password" id="wifi-connect-pass" placeholder="Password (if any)" class="form-input" style="font-size: 0.8rem; padding: 6px 8px;">
+                                    <button type="button" id="wifi-connect-submit-btn" class="btn btn-outline" style="font-size: 0.78rem; padding: 6px 12px; background: rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.4); color: #60a5fa; white-space: nowrap;">
+                                        <i class="fa-solid fa-link"></i> Connect
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Scanned Networks Section -->
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <span style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary);">
+                                    <i class="fa-solid fa-list-check" style="color: var(--accent-cyan);"></i> Available Networks Nearby
+                                </span>
+                                <span id="wifi-scanned-count" style="font-size: 0.75rem; color: var(--text-secondary);">Click Scan Networks to search</span>
+                            </div>
+
+                            <div id="wifi-scanned-container" style="flex: 1; min-height: 180px; max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
+                                <div style="text-align: center; color: var(--text-secondary); font-size: 0.82rem; padding: 30px 10px;">
+                                    <i class="fa-solid fa-satellite-dish" style="font-size: 1.6rem; opacity: 0.4; margin-bottom: 8px; display: block;"></i>
+                                    Click <strong>Scan Networks</strong> to search for nearby Wi-Fi routers and mobile hotspots.
+                                </div>
+                            </div>
+
+                            <div id="wifi-assistant-status" style="margin-top: 10px; font-size: 0.82rem; display: none; padding: 8px; border-radius: 6px;"></div>
                         </div>
 
-                        <div style="display: flex; gap: 10px; margin-top: 14px;">
-                            <button type="submit" id="save-wifi-btn" class="btn btn-outline" style="flex: 1;">
-                                <i class="fa-solid fa-save"></i> Save Settings
-                            </button>
-                            <button type="button" id="push-wifi-usb-btn" class="btn btn-checkout" style="flex: 1.2; background: var(--grad-primary);">
-                                <i class="fa-brands fa-usb"></i> Send to Trolley (USB)
-                            </button>
-                        </div>
-                        <div id="wifi-push-status" style="margin-top: 12px; font-size: 0.82rem; text-align: center; display: none;"></div>
-                    </form>
+                    </div>
                 </div>
 
                 <!-- 📧 Email & 📱 SMS Notification Gateway -->

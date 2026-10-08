@@ -27,7 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetchFn('/api/dashboard');
             if (res.ok) {
                 const data = await res.json();
-                
+
                 // Update UI Indicators
                 if (pulseDot && statusText) {
                     if (data.arduinoConnected) {
@@ -55,16 +55,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (data.feed && data.feed.length > 0) {
                     const latestEvent = data.feed[0];
                     const eventKey = `${latestEvent.actionType}_${latestEvent.timestamp}`;
-                    
+
                     if (!processedFeedTimestamps.has(eventKey)) {
                         processedFeedTimestamps.add(eventKey);
                         const elapsed = (Date.now() / 1000) - latestEvent.timestamp;
-                        
+
                         if (elapsed < 5 && window.showToast) {
                             const trolleyLabel = latestEvent.trolley_id ? latestEvent.trolley_id.replace('TROLLEY-00', 'Trolley #').replace('TROLLEY-', 'Trolley #') : 'Trolley #1';
                             const priceStr = (typeof latestEvent.productPrice === 'number') ? latestEvent.productPrice.toFixed(2) : (latestEvent.productPrice ? Number(latestEvent.productPrice).toFixed(2) : '0.00');
                             const totalStr = (typeof latestEvent.total === 'number') ? latestEvent.total.toFixed(2) : (latestEvent.total ? Number(latestEvent.total).toFixed(2) : '0.00');
-                            
+
                             if (latestEvent.actionType === "UNKNOWN_SCAN") {
                                 window.showToast("New Card Scanned", `Unknown card UID ${latestEvent.uid} detected on ${trolleyLabel}. Register it now.`, "warning");
                             } else if (latestEvent.actionType === "ADD") {
@@ -102,17 +102,17 @@ document.addEventListener('DOMContentLoaded', () => {
 function renderSidebar() {
     const sidebar = document.querySelector('.sidebar');
     if (!sidebar) return;
-    
+
     const user = (window.getAuthUser && window.getAuthUser()) || { name: 'Guest User', role: 'guest', username: 'guest' };
     const role = (user.role || 'guest').toLowerCase();
 
     // Helper to calculate role tag style & avatar initials
     const roleColors = {
-        'admin':   { bg: 'rgba(244, 63, 94, 0.15)', text: '#f43f5e', border: '#f43f5e' },
+        'admin': { bg: 'rgba(244, 63, 94, 0.15)', text: '#f43f5e', border: '#f43f5e' },
         'manager': { bg: 'rgba(192, 132, 252, 0.15)', text: '#c084fc', border: '#c084fc' },
         'cashier': { bg: 'rgba(16, 185, 129, 0.15)', text: '#10b981', border: '#10b981' },
-        'customer':{ bg: 'rgba(6, 182, 212, 0.15)', text: '#06b6d4', border: '#06b6d4' },
-        'guest':   { bg: 'rgba(148, 163, 184, 0.15)', text: '#94a3b8', border: '#94a3b8' }
+        'customer': { bg: 'rgba(6, 182, 212, 0.15)', text: '#06b6d4', border: '#06b6d4' },
+        'guest': { bg: 'rgba(148, 163, 184, 0.15)', text: '#94a3b8', border: '#94a3b8' }
     };
     const roleStyle = roleColors[role] || roleColors['guest'];
     const initials = (user.name || user.username || 'U')
@@ -203,8 +203,8 @@ function renderSidebar() {
     customerNavItems = `
         <div class="sidebar-group-label">Customer Portal</div>
         <a href="customer-portal.html" class="nav-item" id="nav-customer-portal">
-            <i class="fa-solid fa-user-circle"></i>
-            <span>Member Portal</span>
+            <i class="fa-solid fa-gem"></i>
+            <span>Shopper Member Hub</span>
         </a>
         <a href="product-search.html" class="nav-item" id="nav-product-search">
             <i class="fa-solid fa-search"></i>
@@ -278,7 +278,7 @@ function renderSidebar() {
 function highlightActiveLink() {
     const currentPath = window.location.pathname.split('/').pop() || 'index.html';
     const navItems = document.querySelectorAll('.sidebar-nav .nav-item');
-    
+
     navItems.forEach(item => {
         const itemHref = item.getAttribute('href');
         if (itemHref === currentPath || (currentPath === '' && itemHref === 'index.html')) {
@@ -302,18 +302,18 @@ function initToastContainer() {
     }
 }
 
-window.showToast = function(title, message, type = 'info') {
+window.showToast = function (title, message, type = 'info') {
     initToastContainer();
     const container = document.getElementById('toast-container');
-    
+
     const toast = document.createElement('div');
     toast.className = 'toast glass-panel';
-    
+
     let iconClass = 'fa-info-circle info';
     if (type === 'success') iconClass = 'fa-check-circle success';
     else if (type === 'warning') iconClass = 'fa-exclamation-triangle warning';
     else if (type === 'error') iconClass = 'fa-times-circle error';
-    
+
     toast.innerHTML = `
         <div class="toast-icon">
             <i class="fa-solid ${iconClass}"></i>
@@ -324,18 +324,18 @@ window.showToast = function(title, message, type = 'info') {
         </div>
         <button class="toast-close"><i class="fa-solid fa-xmark"></i></button>
     `;
-    
+
     container.appendChild(toast);
-    
+
     setTimeout(() => {
         toast.classList.add('show');
     }, 50);
-    
+
     toast.querySelector('.toast-close').addEventListener('click', () => {
         toast.classList.remove('show');
         setTimeout(() => toast.remove(), 400);
     });
-    
+
     setTimeout(() => {
         if (toast.parentNode) {
             toast.classList.remove('show');
@@ -351,11 +351,11 @@ function updateHeaderProfile() {
     const user = (window.getAuthUser && window.getAuthUser()) || { name: 'User', role: 'guest', username: 'user' };
     const userProfiles = document.querySelectorAll('.user-profile');
     const roleColors = {
-        'admin':   'f43f5e',
+        'admin': 'f43f5e',
         'manager': 'c084fc',
         'cashier': '10b981',
-        'customer':'06b6d4',
-        'guest':   '64748b'
+        'customer': '06b6d4',
+        'guest': '64748b'
     };
     const role = (user.role || 'guest').toLowerCase();
     const cleanColor = roleColors[role] || '10b981';

@@ -1,5 +1,6 @@
 {
     "serialPort": "COM3",
+    "baudRate": 115200,
     "upiId": "9353180038@ybl",
     "storeName": "GECM Supermarket",
     "useCustomQr": false,
@@ -13,8 +14,11 @@
     "twilioAuthToken": "",
     "twilioFromPhone": "",
     "useG1Credits": true,
-    "wifiSSID": "OnePlus Nord CE 2 Lite 5G",
-    "wifiPassword": "8970868217",
-    "serverIP": "10.221.37.241",
-    "serverPort": 5000
+    "wifiSSID": "Redmi 13C 5G",
+    "wifiPassword": "111111111",
+    "serverIP": "10.140.219.241",
+    "serverPort": 5000,
+    "savedIPs": [
+        "10.140.219.241"
+    ]
 }

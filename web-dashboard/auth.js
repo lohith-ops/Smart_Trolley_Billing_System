@@ -4,7 +4,7 @@
 
 const AUTH_CONFIG = {
     TOKEN_KEY: 'smart_trolley_jwt_token',
-    USER_KEY:  'smart_trolley_user_profile',
+    USER_KEY: 'smart_trolley_user_profile',
     PUBLIC_PAGES: ['login.html', 'register.html', 'receipt.html', 'customer-portal.html', 'product-search.html', 'navigation.html', 'feedback.html'],
     ROLE_PERMISSIONS: {
         'admin': ['*'],
@@ -41,7 +41,7 @@ function parseJwt(token) {
     try {
         const base64Url = token.split('.')[1];
         const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-        const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+        const jsonPayload = decodeURIComponent(atob(base64).split('').map(function (c) {
             return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
         }).join(''));
         return JSON.parse(jsonPayload);
@@ -63,7 +63,7 @@ function isAuthenticated() {
         localStorage.removeItem(AUTH_CONFIG.USER_KEY);
         return false;
     }
-    
+
     // Check if token expired
     const nowSecs = Math.floor(Date.now() / 1000);
     if (payload.exp <= nowSecs) {
@@ -83,11 +83,11 @@ function setAuthSession(token, user) {
 }
 
 // Expose immediately to global scope
-window.AUTH_CONFIG     = AUTH_CONFIG;
-window.getAuthToken    = getAuthToken;
-window.getAuthUser     = getAuthUser;
+window.AUTH_CONFIG = AUTH_CONFIG;
+window.getAuthToken = getAuthToken;
+window.getAuthUser = getAuthUser;
 window.isAuthenticated = isAuthenticated;
-window.setAuthSession  = setAuthSession;
+window.setAuthSession = setAuthSession;
 
 /**
  * Clears session and redirects to login page
@@ -95,11 +95,11 @@ window.setAuthSession  = setAuthSession;
 function logoutUser() {
     localStorage.removeItem(AUTH_CONFIG.TOKEN_KEY);
     localStorage.removeItem(AUTH_CONFIG.USER_KEY);
-    
+
     if (window.showToast) {
         window.showToast("Signed Out", "You have been securely signed out.", "info");
     }
-    
+
     setTimeout(() => {
         window.location.href = 'login.html';
     }, 200);
@@ -109,14 +109,14 @@ function logoutUser() {
  * Global Fetch Interceptor: Automatically attaches JWT header to all /api/ calls
  */
 const originalNativeFetch = window.fetch;
-window.fetch = async function(resource, init = {}) {
+window.fetch = async function (resource, init = {}) {
     let url = typeof resource === 'string' ? resource : (resource && resource.url ? resource.url : '');
     const token = getAuthToken();
-    
+
     if (token && url && (url.startsWith('/api/') || url.includes('/api/')) && !url.includes('/api/auth/login')) {
         init = init || {};
         let headers = init.headers;
-        
+
         if (headers instanceof Headers) {
             if (!headers.has('Authorization')) {
                 headers.set('Authorization', `Bearer ${token}`);
@@ -134,10 +134,10 @@ window.fetch = async function(resource, init = {}) {
         }
         init.headers = headers;
     }
-    
+
     try {
         const response = await originalNativeFetch(resource, init);
-        
+
         // Intercept 401 Unauthorized
         if (response.status === 401) {
             const currentPage = window.location.pathname.split('/').pop() || 'index.html';
@@ -146,7 +146,7 @@ window.fetch = async function(resource, init = {}) {
                 logoutUser();
             }
         }
-        
+
         return response;
     } catch (err) {
         throw err;
@@ -199,6 +199,8 @@ function setGuestSession(token, user) {
     localStorage.setItem(AUTH_CONFIG.USER_KEY, JSON.stringify(guestUser));
     if (token) {
         localStorage.setItem(AUTH_CONFIG.TOKEN_KEY, token);
+    } else {
+        localStorage.removeItem(AUTH_CONFIG.TOKEN_KEY);
     }
 }
 
