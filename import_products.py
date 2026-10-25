@@ -23,7 +23,7 @@ import argparse
 from pymongo import MongoClient
 
 # ── Config ──────────────────────────────────────────────────────────────────
-MONGO_URI = "mongodb://localhost:27017/"
+MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017/")
 DB_NAME   = "smart_trolley"
 
 # Path to the source dataset.json (relative or absolute)

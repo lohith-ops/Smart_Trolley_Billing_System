@@ -43,6 +43,7 @@ function refreshEls() {
     els.regUid = document.getElementById('reg-uid');
     els.regName = document.getElementById('reg-name');
     els.regPrice = document.getElementById('reg-price');
+    els.regCategory = document.getElementById('reg-category');
     els.regCancelBtn = document.getElementById('reg-cancel-btn');
     els.regCloseXBtn = document.getElementById('reg-close-x-btn');
     els.regModalSub = document.getElementById('reg-modal-sub');
@@ -668,13 +669,17 @@ function renderFeed() {
 
 // Update ALL mode toggle buttons on the page (top bar + simulator panel)
 function updateSimulatorModeUI() {
+    const isAnyTrolleyOnline = (State.onlineTrolleys > 0) || Boolean(State.arduinoConnected);
+
     document.querySelectorAll('.sim-mode-opt').forEach(opt => {
         const optMode = opt.getAttribute('data-mode');
         if (optMode === State.currentMode) {
             opt.classList.add('active');
-            opt.style.background = 'linear-gradient(135deg, var(--accent-cyan, #22d3ee), #6366f1)';
-            opt.style.color = '#fff';
-            opt.style.boxShadow = '0 0 12px rgba(34,211,238,0.35)';
+            opt.style.background = isAnyTrolleyOnline
+                ? 'linear-gradient(135deg, var(--accent-cyan, #22d3ee), #6366f1)'
+                : 'rgba(148, 163, 184, 0.2)';
+            opt.style.color = isAnyTrolleyOnline ? '#fff' : 'var(--text-secondary, #94a3b8)';
+            opt.style.boxShadow = isAnyTrolleyOnline ? '0 0 12px rgba(34,211,238,0.35)' : 'none';
         } else {
             opt.classList.remove('active');
             opt.style.background = 'transparent';
@@ -683,8 +688,21 @@ function updateSimulatorModeUI() {
         }
     });
 
+    const activeModeLabel = document.getElementById('active-scanner-mode-header');
+    if (activeModeLabel) {
+        if (!isAnyTrolleyOnline) {
+            activeModeLabel.innerHTML = `<i class="fa-solid fa-power-off" style="margin-right: 6px; color: #f87171;"></i> Mode: <span style="color:#f87171;font-weight:600;font-size:0.85rem;background:rgba(239,68,68,0.15);padding:2px 8px;border-radius:4px;border:1px solid rgba(239,68,68,0.3);margin-left:4px;">Trolley Disconnected</span>`;
+        } else {
+            activeModeLabel.innerHTML = `<i class="fa-solid fa-sliders" style="margin-right: 6px; color: var(--accent-cyan);"></i> Active Scanner Mode:`;
+        }
+    }
+
     if (typeof lcdTimeout === 'undefined' || !lcdTimeout) {
-        triggerLcdFeedback(`Mode: ${State.currentMode}`, "Scan card...");
+        if (isAnyTrolleyOnline) {
+            triggerLcdFeedback(getSimLcdHeaderLine(), "Scan card...");
+        } else {
+            triggerLcdFeedback(getSimLcdHeaderLine(), "WiFi: Offline");
+        }
     }
 }
 
@@ -804,8 +822,8 @@ function showBillingModal(billData) {
         }
     });
     document.querySelectorAll('.pay-panel').forEach(p => p.style.display = 'none');
-    const upiPanel = document.getElementById('pay-panel-upi');
-    if (upiPanel) upiPanel.style.display = 'block';
+    const razorpayPanel = document.getElementById('pay-panel-razorpay') || document.getElementById('pay-panel-upi');
+    if (razorpayPanel) razorpayPanel.style.display = 'block';
 
     // Populate Stage 1 Breakdown
     const itemsListContainer = document.getElementById('billing-items-list');
@@ -832,6 +850,14 @@ function showBillingModal(billData) {
     if (cgstEl) cgstEl.textContent = `Rs.${billData.cgst.toFixed(2)}`;
     if (sgstEl) sgstEl.textContent = `Rs.${billData.sgst.toFixed(2)}`;
     if (totalEl) totalEl.textContent = `Rs.${billData.total.toFixed(2)}`;
+
+    // Populate stage 2 comfortable amount display and dynamic button
+    const stage2AmountEl = document.getElementById('payment-stage2-amount');
+    if (stage2AmountEl) stage2AmountEl.textContent = `Rs.${billData.total.toFixed(2)}`;
+    const stage2TrolleyEl = document.getElementById('payment-stage2-trolley');
+    if (stage2TrolleyEl) stage2TrolleyEl.innerHTML = `<i class="fa-solid fa-cart-shopping"></i> Trolley: <strong>${billData.trolley_id || 'TROLLEY-001'}</strong>`;
+    const rzpTextEl = document.getElementById('btn-razorpay-text');
+    if (rzpTextEl) rzpTextEl.textContent = `Pay Rs.${billData.total.toFixed(2)} with Razorpay`;
 
     // Reset OTP section state
     const phoneInput = document.getElementById('checkout-customer-phone');
@@ -906,6 +932,16 @@ function setupPaymentModalListeners() {
             document.querySelectorAll('.payment-stage').forEach(el => el.style.display = 'none');
             const stage2 = document.getElementById('payment-stage-2');
             if (stage2) stage2.style.display = 'block';
+
+            if (currentBill) {
+                const totalAmount = currentBill.total.toFixed(2);
+                const stage2AmountEl = document.getElementById('payment-stage2-amount');
+                if (stage2AmountEl) stage2AmountEl.textContent = `Rs.${totalAmount}`;
+                const stage2TrolleyEl = document.getElementById('payment-stage2-trolley');
+                if (stage2TrolleyEl) stage2TrolleyEl.innerHTML = `<i class="fa-solid fa-cart-shopping"></i> Trolley: <strong>${currentBill.trolley_id || 'TROLLEY-001'}</strong>`;
+                const rzpTextEl = document.getElementById('btn-razorpay-text');
+                if (rzpTextEl) rzpTextEl.textContent = `Pay Rs.${totalAmount} with Razorpay`;
+            }
 
             const upiQrImg = document.getElementById('payment-upi-qr');
             const vpaLabel = document.getElementById('payment-upi-vpa-label');
@@ -1147,6 +1183,164 @@ function setupPaymentModalListeners() {
             }
         });
     });
+
+    // Official Razorpay Checkout Button Handler
+    const rzpBtn = document.getElementById('btn-launch-razorpay');
+    if (rzpBtn) {
+        rzpBtn.addEventListener('click', async () => {
+            const targetTrolley = (currentBill && currentBill.trolley_id) ? currentBill.trolley_id : (els.simTrolleySelect ? els.simTrolleySelect.value : 'TROLLEY-001');
+            const phone = phoneInput ? phoneInput.value.trim() : '';
+
+            rzpBtn.disabled = true;
+            const origText = rzpBtn.innerHTML;
+            rzpBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Initializing Razorpay Gateway...`;
+
+            try {
+                // Step 1: Create real/sandbox order on server
+                const orderRes = await fetch('/api/payment/razorpay/create-order', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ trolley_id: targetTrolley, phone: phone })
+                });
+                const orderData = await orderRes.json();
+                if (!orderRes.ok || !orderData.success) {
+                    alert(orderData.message || 'Failed to initiate Razorpay order.');
+                    rzpBtn.disabled = false;
+                    rzpBtn.innerHTML = origText;
+                    return;
+                }
+
+                // Step 2: Open official Razorpay modal if SDK loaded
+                if (typeof window.Razorpay === 'function') {
+                    const options = {
+                        key: orderData.key_id,
+                        amount: orderData.amount,
+                        currency: orderData.currency || "INR",
+                        name: orderData.store_name || "GECM Supermarket",
+                        description: `Smart Shopping Trolley Bill [${targetTrolley}]`,
+                        image: "https://cdn.razorpay.com/static/assets/logo/rzp.png",
+                        order_id: orderData.order_id && !orderData.order_id.startsWith('order_demo_') ? orderData.order_id : undefined,
+                        prefill: {
+                            name: "Billing Customer",
+                            email: "customer@smartsupermarket.com",
+                            contact: phone ? (phone.startsWith('+91') ? phone : `+91${phone.replace(/\D/g, '').slice(-10)}`) : "+919876543210"
+                        },
+                        notes: {
+                            trolley_id: targetTrolley
+                        },
+                        theme: {
+                            color: "#2563eb"
+                        },
+                        handler: async function (response) {
+                            rzpBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Verifying Payment Signature...`;
+                            try {
+                                const verifyRes = await fetch('/api/payment/razorpay/verify', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        trolley_id: targetTrolley,
+                                        razorpay_payment_id: response.razorpay_payment_id,
+                                        razorpay_order_id: response.razorpay_order_id || orderData.order_id,
+                                        razorpay_signature: response.razorpay_signature || '',
+                                        phone: phone
+                                    })
+                                });
+                                const verifyData = await verifyRes.json();
+                                if (verifyData.success) {
+                                    finishSuccessfulPayment(verifyData, 'Razorpay');
+                                } else {
+                                    alert(verifyData.message || 'Payment signature verification failed.');
+                                }
+                            } catch (e) {
+                                alert('Network error verifying payment.');
+                            } finally {
+                                rzpBtn.disabled = false;
+                                rzpBtn.innerHTML = origText;
+                            }
+                        },
+                        modal: {
+                            ondismiss: function () {
+                                rzpBtn.disabled = false;
+                                rzpBtn.innerHTML = origText;
+                            }
+                        }
+                    };
+                    const rzp = new window.Razorpay(options);
+                    rzp.on('payment.failed', function (resp) {
+                        alert(`Payment failed: ${resp.error ? resp.error.description : 'Transaction cancelled'}`);
+                        rzpBtn.disabled = false;
+                        rzpBtn.innerHTML = origText;
+                    });
+                    rzp.open();
+                } else {
+                    // Fallback simulation in test mode if offline from Razorpay CDN
+                    const demoPaymentId = `pay_test_${Math.floor(Date.now() / 1000)}${Math.floor(Math.random() * 900 + 100)}`;
+                    const confirmPay = confirm(`Razorpay test checkout initialized.\n\nOrder ID: ${orderData.order_id}\nAmount: Rs.${(orderData.amount / 100).toFixed(2)}\n\nConfirm simulated test payment (${demoPaymentId})?`);
+                    if (confirmPay) {
+                        const verifyRes = await fetch('/api/payment/razorpay/verify', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                trolley_id: targetTrolley,
+                                razorpay_payment_id: demoPaymentId,
+                                razorpay_order_id: orderData.order_id,
+                                razorpay_signature: 'demo_sig',
+                                phone: phone
+                            })
+                        });
+                        const verifyData = await verifyRes.json();
+                        if (verifyData.success) {
+                            finishSuccessfulPayment(verifyData, 'Razorpay (Test)');
+                        } else {
+                            alert(verifyData.message || 'Verification failed');
+                        }
+                    }
+                    rzpBtn.disabled = false;
+                    rzpBtn.innerHTML = origText;
+                }
+            } catch (err) {
+                console.error("Razorpay initiation error:", err);
+                alert("Network error connecting to payment gateway.");
+                rzpBtn.disabled = false;
+                rzpBtn.innerHTML = origText;
+            }
+        });
+    }
+
+    function finishSuccessfulPayment(data, method) {
+        document.querySelectorAll('.payment-stage').forEach(el => el.style.display = 'none');
+        const stage3 = document.getElementById('payment-stage-3');
+        if (stage3) stage3.style.display = 'block';
+
+        const successAmount = document.getElementById('success-billed-amount');
+        const successMethod = document.getElementById('success-payment-method');
+        if (successAmount) successAmount.textContent = `Rs.${(data.total || data.finalTotal || 0).toFixed(2)}`;
+        if (successMethod) successMethod.textContent = `Paid via ${method} (Verified)`;
+
+        const phone = phoneInput ? phoneInput.value.trim() : '';
+        const smsNotice = document.getElementById('success-sms-notice');
+        const smsText = document.getElementById('success-sms-text');
+        if (smsNotice && phone) {
+            smsNotice.style.display = 'flex';
+            if (smsText) smsText.textContent = `Digital bill receipt sent via SMS to +91 ${phone}`;
+        }
+
+        const receiptUrl = `receipt.html?timestamp=${data.timestamp}&id=${data.transaction_id || ''}`;
+        const receiptLink = document.getElementById('modal-receipt-link');
+        if (receiptLink) {
+            receiptLink.href = receiptUrl;
+        }
+
+        try {
+            window.open(receiptUrl, '_blank');
+        } catch (e) {
+            console.warn("Could not auto-open receipt tab:", e);
+        }
+
+        triggerLcdFeedback("Payment Success!", "Total: Rs.0.00");
+        triggerBuzzerFeedback(2);
+        fetchDashboard();
+    }
 }
 
 // Open Product Register Modal
@@ -1169,9 +1363,26 @@ function showRegistrationModal(uid = '') {
     }
     if (els.regName) els.regName.value = '';
     if (els.regPrice) els.regPrice.value = '';
+    if (els.regCategory) els.regCategory.value = 'Grains';
     if (els.regModalSub) {
         els.regModalSub.textContent = uid ? 'Unknown RFID Card Scanned' : 'Assign RFID Card to Catalog';
     }
+    
+    // Auto-detect category as user types product name
+    if (els.regName && !els.regName._hasCatListener) {
+        els.regName._hasCatListener = true;
+        els.regName.addEventListener('input', () => {
+            const nl = (els.regName.value || '').toLowerCase();
+            if (!els.regCategory) return;
+            if (/rice|basmati|wheat|grain|oat|flour|atta|dal|pulse|sugar/.test(nl)) els.regCategory.value = 'Grains';
+            else if (/milk|cheese|cheddar|butter|curd|yogurt|cream|dairy|egg/.test(nl)) els.regCategory.value = 'Dairy';
+            else if (/bread|toast|bun|cake|muffin|bakery|croissant/.test(nl)) els.regCategory.value = 'Bakery';
+            else if (/apple|banana|orange|fruit|vegetable|tomato|potato|onion/.test(nl)) els.regCategory.value = 'Produce';
+            else if (/juice|soda|water|tea|coffee|drink|cola/.test(nl)) els.regCategory.value = 'Beverages';
+            else if (/chip|chips|snack|chocolate|candy|biscuit/.test(nl)) els.regCategory.value = 'Snacks';
+        });
+    }
+
     setTimeout(() => {
         if (uid && els.regName) els.regName.focus();
         else if (els.regUid) els.regUid.focus();
@@ -1198,14 +1409,22 @@ async function handleRegistration(e) {
     submitBtn.disabled = true;
     submitBtn.innerText = "Saving...";
 
+    let catVal = els.regCategory ? els.regCategory.value : 'Grains';
+    const nameVal = (els.regName.value || '').trim();
+    if (nameVal.toLowerCase().includes('rice') && catVal.toLowerCase() === 'dairy') {
+        catVal = 'Grains';
+    }
+
     const payload = {
         uid: els.regUid.value,
-        name: els.regName.value,
-        price: parseFloat(els.regPrice.value)
+        name: nameVal,
+        price: parseFloat(els.regPrice.value),
+        category: catVal
     };
 
     try {
-        const res = await fetch('/api/products/register', {
+        const fetchFn = window.authFetch || fetch;
+        const res = await fetchFn('/api/products/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -1216,6 +1435,9 @@ async function handleRegistration(e) {
             closeRegistrationModal();
             triggerLcdFeedback("Registered!", payload.name.substring(0, 16));
             triggerBuzzerFeedback(1);
+            if (window.showToast) {
+                window.showToast("Product Registered", `${payload.name} registered under ${catVal}.`, "success");
+            }
             await fetchProducts();
             await fetchDashboard();
         } else {
@@ -1564,6 +1786,19 @@ async function triggerSimulatorCheckout() {
 
 let lcdTimeout = null;
 
+function getSimLcdHeaderLine() {
+    const isAnyTrolleyOnline = (State.onlineTrolleys > 0) || Boolean(State.arduinoConnected);
+    let rssi = -58;
+    if (State.activeCarts && State.activeCarts.length > 0) {
+        const c = State.activeCarts[0];
+        if (c.wifi_rssi) rssi = c.wifi_rssi;
+    }
+    const modeStr = (State.currentMode === 'REMOVE') ? 'Mode: REM' : 'Mode: ADD';
+    const sigStr = isAnyTrolleyOnline ? `${rssi}dBm` : `${rssi}dBm*`;
+    const spaces = Math.max(1, 16 - (modeStr.length + sigStr.length));
+    return (modeStr + ' '.repeat(spaces) + sigStr).substring(0, 16);
+}
+
 // Mock LCD character display writes with timer support
 function triggerLcdFeedback(line1, line2 = "", durationMs = 0) {
     if (lcdTimeout) {
@@ -1580,11 +1815,12 @@ function triggerLcdFeedback(line1, line2 = "", durationMs = 0) {
 
     if (durationMs > 0) {
         lcdTimeout = setTimeout(() => {
+            const isAnyTrolleyOnline = (State.onlineTrolleys > 0) || Boolean(State.arduinoConnected);
             if (els.simLcdLine1) {
-                els.simLcdLine1.textContent = `Mode: ${State.currentMode}`;
+                els.simLcdLine1.textContent = getSimLcdHeaderLine();
             }
             if (els.simLcdLine2) {
-                els.simLcdLine2.textContent = "Scan card...";
+                els.simLcdLine2.textContent = isAnyTrolleyOnline ? "Scan card..." : "WiFi: Reconn...";
             }
             lcdTimeout = null;
         }, durationMs);

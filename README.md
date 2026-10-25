@@ -10,6 +10,7 @@ An IoT-based retail solution designed to modernize the shopping and checkout exp
 *   **Real-time LCD Feedback:** A 16x2 I2C LCD screen on the trolley displays the item name and the running checkout total.
 *   **Acoustic Status Alerts:** A 5V buzzer chirps on scans, double-beeps on resetting, and emits warning beep sequences on errors.
 *   **Glassmorphic Web UI:** A premium dark-themed dashboard showing today's revenue, active trolleys, item counts, and live transaction streams.
+*   **Real Payment Gateway (Razorpay):** Integrates automated payment gateway processing supporting live UPI apps (Google Pay, PhonePe, Paytm, BHIM), debit/credit cards, and NetBanking with cryptographic HMAC-SHA256 signature verification and digital tax receipts.
 *   **Product Registry:** A dynamically triggered registration interface that prompts the administrator to register new, unrecognized RFID cards directly from the live feed.
 
 ---

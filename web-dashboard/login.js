@@ -11,7 +11,7 @@ function initLoginPage() {
     const errorMsg = document.getElementById('login-error-msg');
     const togglePassBtn = document.getElementById('toggle-password');
     const togglePassIcon = document.getElementById('toggle-password-icon');
-    const presetBtns = document.querySelectorAll('.preset-btn');
+
 
     // 1. Password Visibility Toggle
     if (togglePassBtn && passwordInput && togglePassIcon) {
@@ -22,40 +22,6 @@ function initLoginPage() {
         });
     }
 
-    // 1.1 Demo Mode Collapsible Toggle
-    const toggleDemoBtn = document.getElementById('toggle-demo-btn');
-    const demoPresetsContainer = document.getElementById('demo-presets-container');
-    const demoChevron = document.getElementById('demo-chevron');
-    if (toggleDemoBtn && demoPresetsContainer) {
-        toggleDemoBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            const isHidden = demoPresetsContainer.style.display === 'none' || !demoPresetsContainer.style.display;
-            demoPresetsContainer.style.display = isHidden ? 'grid' : 'none';
-            if (demoChevron) {
-                demoChevron.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
-            }
-        });
-    }
-
-    // 2. Preset Buttons Quick Fill & Auto-Login
-    presetBtns.forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            const user = btn.getAttribute('data-user');
-            const pass = btn.getAttribute('data-pass');
-            if (user && pass) {
-                if (usernameInput) usernameInput.value = user;
-                if (passwordInput) passwordInput.value = pass;
-                hideError();
-                // Highlight button briefly
-                btn.style.transform = 'scale(0.96)';
-                setTimeout(() => {
-                    btn.style.transform = '';
-                    handleLogin(user, pass);
-                }, 100);
-            }
-        });
-    });
 
     // 3. Form Submit Handler
     if (form) {

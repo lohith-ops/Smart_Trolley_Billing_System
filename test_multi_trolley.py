@@ -186,5 +186,47 @@ class MultiTrolleyTestCase(unittest.TestCase):
         self.assertEqual(res_act.get_json()['trolley_id'], 'TROLLEY-004')
         print("[OK] Test 6 Passed: Dynamic addition of future trolleys (TROLLEY-004, etc.) supported effortlessly.")
 
+    def test_07_hardware_health_reporting_and_isolation(self):
+        """Verify ESP32 connects to Wi-Fi but reports hardware faults (RFID/LCD disconnected) accurately."""
+        # 1. Simulate trolley connected to Wi-Fi but RFID reader disconnected/disabled
+        res_fault = self.app.post('/api/trolley/heartbeat', data=json.dumps({
+            "trolley_id": "TROLLEY-001",
+            "battery": 82,
+            "wifi_rssi": -58,
+            "ip_address": "192.168.1.101",
+            "rfid_ready": False,
+            "lcd_ready": True,
+            "hardware_health": "RFID_FAULT"
+        }), content_type='application/json')
+        self.assertEqual(res_fault.status_code, 200)
+        fault_data = res_fault.get_json()
+        self.assertEqual(fault_data['status'], 'online')
+        self.assertEqual(fault_data['rfid_ready'], False)
+        self.assertEqual(fault_data['hardware_health'], 'RFID_FAULT')
+        self.assertEqual(fault_data['hardware_status'], 'maintenance')
+
+        # 2. Verify /api/trolleys reflects the hardware fault without losing Wi-Fi connection
+        t_detail = self.app.get('/api/trolleys/TROLLEY-001').get_json()
+        self.assertEqual(t_detail['status'], 'online')
+        self.assertEqual(t_detail['rfid_ready'], False)
+        self.assertIn('RFID Fault', t_detail['display_status'])
+        self.assertEqual(t_detail['hardware_status'], 'maintenance')
+
+        # 3. Simulate hardware re-attached / healthy state
+        res_recovered = self.app.post('/api/trolley/heartbeat', data=json.dumps({
+            "trolley_id": "TROLLEY-001",
+            "battery": 85,
+            "wifi_rssi": -55,
+            "rfid_ready": True,
+            "lcd_ready": True,
+            "hardware_health": "HEALTHY"
+        }), content_type='application/json')
+        self.assertEqual(res_recovered.status_code, 200)
+        rec_detail = self.app.get('/api/trolleys/TROLLEY-001').get_json()
+        self.assertEqual(rec_detail['rfid_ready'], True)
+        self.assertEqual(rec_detail['hardware_health'], 'HEALTHY')
+        self.assertEqual(rec_detail['hardware_status'], 'healthy')
+        print("[OK] Test 7 Passed: Wi-Fi connectivity maintained with accurate peripheral fault detection.")
+
 if __name__ == '__main__':
     unittest.main()

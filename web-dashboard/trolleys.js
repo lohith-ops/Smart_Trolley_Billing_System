@@ -25,7 +25,6 @@ document.addEventListener('DOMContentLoaded', () => {
         trolleyId: document.getElementById('modal-trolley-id'),
         trolleyName: document.getElementById('modal-trolley-name'),
         trolleySection: document.getElementById('modal-trolley-section'),
-        trolleyFw: document.getElementById('modal-trolley-fw'),
         cancelBtn: document.getElementById('modal-trolley-cancel'),
         submitBtn: document.getElementById('modal-trolley-submit')
     };
@@ -46,15 +45,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Summary stat bar ────────────────────────────────────────────────────
     function updateSummaryStats() {
-        const online = allTrolleys.filter(t => t.status === 'online').length;
-        const active = allTrolleys.filter(t => t.item_count > 0).length;
-        const battAvg = allTrolleys.length
-            ? Math.round(allTrolleys.reduce((s, t) => s + (t.battery || 0), 0) / allTrolleys.length)
-            : 0;
+        const onlineTrolleys = allTrolleys.filter(t => t.status === 'online' || t.connection_status === 'connected');
+        const battAvg = onlineTrolleys.length
+            ? Math.round(onlineTrolleys.reduce((s, t) => s + (t.battery || 0), 0) / onlineTrolleys.length)
+            : '—';
 
         if (els.statOnline) els.statOnline.textContent = online;
         if (els.statTotal) els.statTotal.textContent = allTrolleys.length;
-        if (els.statBattery) els.statBattery.textContent = battAvg + '%';
+        if (els.statBattery) els.statBattery.textContent = (battAvg !== '—') ? (battAvg + '%') : '—';
         if (els.statActive) els.statActive.textContent = active;
     }
 
@@ -105,6 +103,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const statusLabel = isOnline ? 'Connected' : 'Offline';
         const statusClass = isOnline ? 'active' : 'offline';
 
+        const rfidOk = (t.rfid_ready !== false);
+        const lcdOk = (t.lcd_ready !== false);
+        const hasHwFault = isOnline && (!rfidOk || !lcdOk);
+
+        let hwBadge = '';
+        if (hasHwFault) {
+            const hwFaultLabel = (!rfidOk && !lcdOk) ? 'Hardware Offline' : (!rfidOk ? 'RFID Unplugged' : 'LCD Offline');
+            hwBadge = `<span class="trolley-status-badge" style="background:rgba(239,68,68,0.18);color:#f87171;border:1px solid rgba(239,68,68,0.4);font-size:0.72rem;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i>${hwFaultLabel}</span>`;
+        }
+
         const assignBadge = isAssigned ?
             `<span class="trolley-status-badge" style="background:rgba(168,85,247,0.2);color:#c084fc;border:1px solid rgba(168,85,247,0.4);font-size:0.72rem;"><i class="fa-solid fa-user-check" style="margin-right:4px;"></i>Assigned</span>` :
             `<span class="trolley-status-badge" style="background:rgba(59,130,246,0.15);color:#93c5fd;border:1px solid rgba(59,130,246,0.3);font-size:0.72rem;"><i class="fa-solid fa-user-clock" style="margin-right:4px;"></i>Available</span>`;
@@ -124,14 +132,22 @@ document.addEventListener('DOMContentLoaded', () => {
             batteryColor = '#eab308';
         }
 
-        // RSSI signal display
+        // RSSI signal display (shows dBm whether connected or not connected)
         const rssi = t.wifi_rssi || 0;
         let rssiLabel = 'N/A';
         let rssiColor = 'var(--text-secondary)';
         if (rssi !== 0) {
             rssiLabel = rssi + ' dBm';
             rssiColor = rssi >= -65 ? 'var(--accent-green)' : (rssi >= -80 ? '#f59e0b' : 'var(--accent-red)');
+        } else if (isOnline) {
+            rssiLabel = '0 dBm';
+            rssiColor = 'var(--accent-green)';
+        } else {
+            rssiLabel = 'No Signal';
         }
+        const rssiConnTag = isOnline
+            ? `<span style="font-size:0.74rem;margin-left:4px;font-weight:600;color:var(--accent-green);"><i class="fa-solid fa-link" style="margin-right:2px;"></i>Connected</span>`
+            : `<span style="font-size:0.74rem;margin-left:4px;font-weight:600;color:#ef4444;"><i class="fa-solid fa-link-slash" style="margin-right:2px;"></i>Not Connected</span>`;
 
         // Cart status badge
         const cartStatus = t.cart_status || 'ACTIVE';
@@ -177,6 +193,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <span class="pulse-dot" style="background:${isOnline ? 'var(--accent-green)' : 'var(--accent-red)'};width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;${isOnline ? 'box-shadow:0 0 5px var(--accent-green);animation:pulse 1.5s infinite;' : ''}"></span>
                         ${statusLabel}
                     </span>
+                    ${hwBadge}
                     ${assignBadge}
                     ${cartBadge}
                 </div>
@@ -199,14 +216,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 </span>
             </div>
             <div class="trolley-stat-row">
-                <span>Battery</span>
-                <span class="trolley-stat-value" style="color:${batteryColor}">
-                    <i class="fa-solid ${batteryIcon}" style="margin-right:6px;"></i>${batt}%
+                <span>Hardware Health</span>
+                <span class="trolley-stat-value" style="font-weight:600;color:${!isOnline ? 'var(--text-secondary)' : (hasHwFault ? '#f87171' : 'var(--accent-green)')};">
+                    ${!isOnline ? '—' : (hasHwFault ? `<i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i>${!rfidOk ? 'RFID Unreachable' : 'LCD Error'}` : '<i class="fa-solid fa-circle-check" style="margin-right:4px;"></i>Hardware OK')}
                 </span>
             </div>
             <div class="trolley-stat-row">
-                <span>Wi-Fi Signal</span>
-                <span class="trolley-stat-value" style="color:${rssiColor}">${rssiLabel}</span>
+                <span>Scanner Mode</span>
+                <span class="trolley-stat-value" style="font-weight:600;color:${!isOnline ? 'var(--text-secondary)' : (t.current_mode === 'ADD' ? 'var(--accent-green)' : '#f87171')};">
+                    ${!isOnline ? '<i class="fa-solid fa-power-off" style="margin-right:4px;"></i>Disconnected' : (t.current_mode || 'ADD')}
+                </span>
+            </div>
+            <div class="trolley-stat-row">
+                <span>Battery</span>
+                <span class="trolley-stat-value" style="color:${isOnline ? batteryColor : 'var(--text-secondary)'}">
+                    ${isOnline ? `<i class="fa-solid ${batteryIcon}" style="margin-right:6px;"></i>${batt}%` : `<span style="opacity:0.7;"><i class="fa-solid fa-battery-slash" style="margin-right:6px;"></i>—</span>`}
+                </span>
+            </div>
+            <div class="trolley-stat-row">
+                <span><i class="fa-solid fa-wifi" style="margin-right:5px;"></i>Wi-Fi Signal</span>
+                <span class="trolley-stat-value" style="color:${rssiColor}">${rssiLabel} ${rssiConnTag}</span>
             </div>
             <div class="trolley-stat-row">
                 <span>IP Address</span>
@@ -300,7 +329,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!els.modal) return;
         els.trolleyId.value = '';
         els.trolleyName.value = '';
-        if (els.trolleyFw) els.trolleyFw.value = '2.0';
         els.modal.classList.add('active');
         setTimeout(() => els.trolleyId.focus(), 100);
     }
@@ -341,7 +369,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const tid = els.trolleyId.value.trim().toUpperCase();
             const name = els.trolleyName.value.trim() || tid;
             const section = els.trolleySection ? els.trolleySection.value : 'General';
-            const fw = els.trolleyFw ? els.trolleyFw.value.trim() : '2.0';
 
             if (!tid) {
                 alert("Please specify a Trolley ID (e.g. TROLLEY-004).");
@@ -355,8 +382,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     body: JSON.stringify({
                         trolley_id: tid,
                         name: name,
-                        section: section,
-                        firmware_version: fw
+                        section: section
                     })
                 });
 

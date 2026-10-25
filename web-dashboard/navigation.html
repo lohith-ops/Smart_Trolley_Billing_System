@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Trolley - Store Navigation Map</title>
+    <title>Smart Trolley - Store Directory & Floor Map</title>
     <!-- Google Fonts: Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -14,17 +14,86 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Auth Guard -->
     <script src="auth.js"></script>
+    <style>
+        .supermarket-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin-top: 16px;
+        }
+
+        .store-aisle {
+            min-height: 140px;
+            padding: 18px 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid var(--panel-border);
+            border-radius: 12px;
+            transition: var(--transition);
+            text-align: center;
+        }
+
+        .store-aisle:hover {
+            transform: translateY(-4px);
+            border-color: var(--accent-cyan);
+            box-shadow: 0 8px 24px var(--accent-cyan-glow);
+        }
+
+        .store-aisle.active-highlight {
+            border-color: var(--accent-green) !important;
+            box-shadow: 0 0 24px rgba(16, 185, 129, 0.35) !important;
+            background: rgba(16, 185, 129, 0.08) !important;
+        }
+
+        .aisle-badge-tag {
+            font-size: 0.72rem;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 2px;
+        }
+
+        .aisle-label {
+            font-weight: 600;
+            font-size: 1rem;
+            color: var(--text-primary);
+        }
+
+        .aisle-stock {
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+        }
+
+        .spotlight-product-row {
+            background: rgba(6, 182, 212, 0.12) !important;
+            border-left: 4px solid var(--accent-cyan) !important;
+            animation: spotlightPulse 2s ease-in-out infinite;
+        }
+
+        @keyframes spotlightPulse {
+            0%, 100% { box-shadow: inset 0 0 12px rgba(6, 182, 212, 0.2); }
+            50% { box-shadow: inset 0 0 24px rgba(6, 182, 212, 0.45); }
+        }
+    </style>
 </head>
 <body class="dark-theme">
     <div class="app-container">
-        <!-- Sidebar Navigation -->
+        <!-- Sidebar Navigation (populated dynamically by shared.js) -->
         <aside class="sidebar glass-panel"></aside>
 
         <!-- Main Content Area -->
         <main class="main-content">
             <header class="top-header glass-panel">
-                <div style="font-weight: 600; font-size: 1.1rem; color: var(--text-primary);">
-                    Supermarket Interactive Layout
+                <div style="font-weight: 600; font-size: 1.15rem; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+                    <i class="fa-solid fa-map-location-dot" style="color: var(--accent-cyan);"></i> Store Directory & Navigation Map
                 </div>
                 <div class="header-actions">
                     <button class="icon-btn"><i class="fa-regular fa-bell"></i></button>
@@ -37,58 +106,102 @@
 
             <!-- Supermarket Layout Section -->
             <div class="glass-panel" style="padding: 24px;">
-                <h3 style="font-weight: 600; font-size: 1.1rem; margin-bottom: 12px;">Store Floor Map</h3>
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 8px;">
+                    <h3 style="font-weight: 600; font-size: 1.1rem; margin: 0;">
+                        Supermarket Interactive Floor Map
+                    </h3>
+                    <span class="trolley-status-badge active" style="font-size: 0.75rem; padding: 4px 10px;">
+                        <i class="fa-solid fa-satellite-dish" style="margin-right: 5px;"></i> Live Shelving Sensors
+                    </span>
+                </div>
                 <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 20px;">
-                    Click on an aisle or section to view the items currently stocked there and check their availability.
+                    Select an aisle location to view stocked products, unit pricing, real-time inventory counts, and shelf rows.
                 </p>
                 
                 <div class="supermarket-grid">
-                    <div class="store-aisle glass-panel" id="aisle-Dairy" data-category="Dairy">
-                        <i class="fa-solid fa-cow" style="font-size: 1.5rem; color: var(--accent-cyan);"></i>
-                        <span class="aisle-label">Dairy Aisle</span>
-                        <span class="aisle-stock" id="stock-count-Dairy">Calculating...</span>
-                    </div>
+                    <!-- Aisle A: Grains & Staples -->
                     <div class="store-aisle glass-panel" id="aisle-Grains" data-category="Grains">
-                        <i class="fa-solid fa-wheat-awn" style="font-size: 1.5rem; color: var(--accent-purple);"></i>
-                        <span class="aisle-label">Grains & Staples</span>
+                        <span class="aisle-badge-tag" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3);">Aisle A</span>
+                        <i class="fa-solid fa-wheat-awn" style="font-size: 1.8rem; color: #f59e0b;"></i>
+                        <span class="aisle-label">Grains & Rice</span>
                         <span class="aisle-stock" id="stock-count-Grains">Calculating...</span>
                     </div>
+
+                    <!-- Aisle B: Bakery -->
                     <div class="store-aisle glass-panel" id="aisle-Bakery" data-category="Bakery">
-                        <i class="fa-solid fa-bread-slice" style="font-size: 1.5rem; color: #f59e0b;"></i>
-                        <span class="aisle-label">Bakery Section</span>
+                        <span class="aisle-badge-tag" style="background: rgba(249, 115, 22, 0.15); color: #f97316; border: 1px solid rgba(249, 115, 22, 0.3);">Aisle B</span>
+                        <i class="fa-solid fa-bread-slice" style="font-size: 1.8rem; color: #f97316;"></i>
+                        <span class="aisle-label">Bakery & Breads</span>
                         <span class="aisle-stock" id="stock-count-Bakery">Calculating...</span>
                     </div>
+
+                    <!-- Aisle C: Dairy -->
+                    <div class="store-aisle glass-panel" id="aisle-Dairy" data-category="Dairy">
+                        <span class="aisle-badge-tag" style="background: rgba(6, 182, 212, 0.15); color: #06b6d4; border: 1px solid rgba(6, 182, 212, 0.3);">Aisle C</span>
+                        <i class="fa-solid fa-cow" style="font-size: 1.8rem; color: #06b6d4;"></i>
+                        <span class="aisle-label">Dairy & Eggs</span>
+                        <span class="aisle-stock" id="stock-count-Dairy">Calculating...</span>
+                    </div>
+
+                    <!-- Aisle D: Produce -->
                     <div class="store-aisle glass-panel" id="aisle-Produce" data-category="Produce">
-                        <i class="fa-solid fa-apple-whole" style="font-size: 1.5rem; color: var(--accent-green);"></i>
-                        <span class="aisle-label">Produce Aisle</span>
+                        <span class="aisle-badge-tag" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3);">Aisle D</span>
+                        <i class="fa-solid fa-apple-whole" style="font-size: 1.8rem; color: #10b981;"></i>
+                        <span class="aisle-label">Fresh Produce</span>
                         <span class="aisle-stock" id="stock-count-Produce">Calculating...</span>
                     </div>
+
+                    <!-- Aisle E: Beverages -->
+                    <div class="store-aisle glass-panel" id="aisle-Beverages" data-category="Beverages">
+                        <span class="aisle-badge-tag" style="background: rgba(139, 92, 246, 0.15); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.3);">Aisle E</span>
+                        <i class="fa-solid fa-bottle-water" style="font-size: 1.8rem; color: #a78bfa;"></i>
+                        <span class="aisle-label">Cold Beverages</span>
+                        <span class="aisle-stock" id="stock-count-Beverages">Calculating...</span>
+                    </div>
+
+                    <!-- Aisle F: Snacks -->
+                    <div class="store-aisle glass-panel" id="aisle-Snacks" data-category="Snacks">
+                        <span class="aisle-badge-tag" style="background: rgba(236, 72, 153, 0.15); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.3);">Aisle F</span>
+                        <i class="fa-solid fa-cookie" style="font-size: 1.8rem; color: #f472b6;"></i>
+                        <span class="aisle-label">Snacks & Treats</span>
+                        <span class="aisle-stock" id="stock-count-Snacks">Calculating...</span>
+                    </div>
+
+                    <!-- Aisle G: Grocery -->
                     <div class="store-aisle glass-panel" id="aisle-Grocery" data-category="Grocery">
-                        <i class="fa-solid fa-basket-shopping" style="font-size: 1.5rem; color: #ec4899;"></i>
-                        <span class="aisle-label">Grocery & Essentials</span>
+                        <span class="aisle-badge-tag" style="background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3);">Aisle G</span>
+                        <i class="fa-solid fa-basket-shopping" style="font-size: 1.8rem; color: #94a3b8;"></i>
+                        <span class="aisle-label">General Grocery</span>
                         <span class="aisle-stock" id="stock-count-Grocery">Calculating...</span>
                     </div>
                     
-                    <div class="store-entrance">
-                        <i class="fa-solid fa-door-open"></i> Entrance Area
-                    </div>
-                    <div class="store-checkout-area">
-                        <i class="fa-solid fa-cash-register"></i> Smart Checkouts & POS
+                    <div class="store-entrance" style="grid-column: 1/-1; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; height: auto; padding: 12px; border: none; background: transparent;">
+                        <div class="glass-panel" style="padding: 12px; text-align: center; border-radius: 8px;">
+                            <i class="fa-solid fa-door-open" style="color: var(--accent-cyan); margin-right: 6px;"></i> Store Entrance
+                        </div>
+                        <div class="glass-panel" style="padding: 12px; text-align: center; border-radius: 8px;">
+                            <i class="fa-solid fa-cart-shopping" style="color: var(--accent-purple); margin-right: 6px;"></i> Smart IoT Trolleys Depot
+                        </div>
+                        <div class="glass-panel" style="padding: 12px; text-align: center; border-radius: 8px;">
+                            <i class="fa-solid fa-cash-register" style="color: var(--accent-green); margin-right: 6px;"></i> POS Self-Checkout Gates
+                        </div>
                     </div>
                 </div>
             </div>
 
             <!-- Shelf Catalog Sidebar / Bottom details -->
-            <div class="glass-panel" style="padding: 24px; display: none;" id="aisle-products-card">
+            <div class="glass-panel" style="padding: 24px; display: none; margin-top: 20px;" id="aisle-products-card">
                 <h3 style="font-weight: 600; font-size: 1.1rem; margin-bottom: 16px;" id="aisle-products-title">Items in Aisle</h3>
                 <div class="table-responsive">
                     <table class="transactions-table">
                         <thead>
                             <tr>
                                 <th>Product Name</th>
+                                <th>Category</th>
                                 <th>Shelf Row</th>
                                 <th>Stock Availability</th>
                                 <th>Unit Price</th>
+                                <th style="text-align: right;">Action</th>
                             </tr>
                         </thead>
                         <tbody id="aisle-products-body">

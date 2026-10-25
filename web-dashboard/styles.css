@@ -2042,4 +2042,78 @@ body.dark-theme {
     to { transform: scale(1.05); box-shadow: 0 0 30px rgba(16, 185, 129, 0.45); }
 }
 
+/* ==========================================================================
+   Comfortable & Spacious Billing & Payment Modal
+   ========================================================================== */
+.billing-payment-modal {
+    max-width: 660px !important;
+    width: 95% !important;
+    border-radius: 20px !important;
+    padding: 34px 30px !important;
+    box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
+    backdrop-filter: blur(24px) !important;
+    -webkit-backdrop-filter: blur(24px) !important;
+}
+
+.payment-tabs .pay-tab {
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.payment-tabs .pay-tab:hover {
+    background: rgba(255, 255, 255, 0.06) !important;
+    color: var(--text-primary) !important;
+}
+
+.payment-tabs .pay-tab.active {
+    background: rgba(255, 255, 255, 0.12) !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+
+#btn-launch-razorpay:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 30px -4px rgba(37, 99, 235, 0.65) !important;
+    filter: brightness(1.08);
+}
+
+#btn-launch-razorpay:active {
+    transform: translateY(0);
+}
+
+/* Enlarge Razorpay Checkout Modal so QR Code and controls are significantly bigger */
+@media (min-width: 600px) and (min-height: 600px) {
+    iframe.razorpay-checkout-frame {
+        transform: scale(1.15) !important;
+        transform-origin: center center !important;
+    }
+}
+
+.btn-pay-success:hover {
+    transform: translateY(-2px);
+    filter: brightness(1.08);
+}
+
+.btn-pay-success:active {
+    transform: translateY(0);
+}
+
+@media (max-width: 640px) {
+    .billing-payment-modal {
+        padding: 24px 18px !important;
+        width: 96% !important;
+    }
+    .payment-tabs {
+        flex-wrap: wrap !important;
+    }
+    .payment-tabs .pay-tab {
+        flex: 1 1 45% !important;
+        padding: 10px 4px !important;
+        font-size: 0.88rem !important;
+    }
+    #payment-stage2-amount {
+        font-size: 1.6rem !important;
+    }
+}
+
+
 

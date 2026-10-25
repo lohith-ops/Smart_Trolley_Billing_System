@@ -16,6 +16,8 @@ document.addEventListener('DOMContentLoaded', () => {
         invoiceCustomer: document.getElementById('invoice-customer'),
         invoiceTrolley: document.getElementById('invoice-trolley'),
         paymentMode: document.getElementById('invoice-payment-mode'),
+        paymentRef: document.getElementById('invoice-payment-ref'),
+        gatewayStatus: document.getElementById('invoice-gateway-status'),
         itemsBody: document.getElementById('invoice-items-body'),
         qtyTotal: document.getElementById('invoice-qty-total'),
         subtotal: document.getElementById('invoice-subtotal'),
@@ -106,6 +108,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (els.paymentMode) {
             els.paymentMode.textContent = (transaction.paymentMethod || 'UPI').toUpperCase();
+        }
+        if (els.paymentRef) {
+            const ref = transaction.paymentReference || transaction.razorpayOrderId || transaction._id || 'N/A';
+            els.paymentRef.textContent = ref;
+        }
+        if (els.gatewayStatus) {
+            if (transaction.verified || (transaction.paymentReference && transaction.paymentReference.startsWith('pay_'))) {
+                els.gatewayStatus.innerHTML = '<i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Verified by Razorpay';
+                els.gatewayStatus.style.color = '#10b981';
+            } else {
+                els.gatewayStatus.textContent = transaction.paymentMethod ? `${transaction.paymentMethod} (Completed)` : 'Completed';
+            }
         }
         
         // Calculate mathematics

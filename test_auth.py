@@ -26,6 +26,11 @@ def run_tests():
     assert admin_token is not None
     print(f"[PASS] Admin Login Successful. Token received: {admin_token[:20]}...")
 
+    # Pre-clean any test users/employees from aborted previous runs
+    for u in ["supercashier1", "customer_jane", "hacker_bob", "e999"]:
+        client.delete(f"/api/auth/users/{u}", headers={"Authorization": f"Bearer {admin_token}"})
+    client.delete("/api/employees/E999", headers={"Authorization": f"Bearer {admin_token}"})
+
     # 2. Test Login with Cashier Credentials
     print("\n[TEST 2] Testing Cashier Login...")
     res = client.post("/api/auth/login", json={"username": "cashier", "password": "cashier123"})
@@ -301,6 +306,50 @@ def run_tests():
 
     # Reset customer password back to default 'customer123' for subsequent tests
     client.put("/api/auth/users/customer/password", json={"password": "customer123"}, headers={"Authorization": f"Bearer {admin_token}"})
+
+    # 29. Test Wi-Fi Settings RBAC (/api/settings/wifi)
+    print("\n[TEST 29] Testing Wi-Fi Settings RBAC (/api/settings/wifi)...")
+    res = client.post("/api/settings/wifi", json={"ssid": "TestNet"})
+    assert res.status_code == 401
+    res = client.post("/api/settings/wifi", json={"ssid": "TestNet"}, headers={"Authorization": f"Bearer {cashier_token}"})
+    assert res.status_code == 403
+    res = client.post("/api/settings/wifi", json={"ssid": "TestNet", "password": "pass"}, headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 200
+    print("[PASS] Wi-Fi settings update strictly restricted to Admin/Manager.")
+
+    # 30. Test Wi-Fi Connection Command Injection Prevention (/api/wifi/connect)
+    print("\n[TEST 30] Testing Wi-Fi Connection Input Validation (/api/wifi/connect)...")
+    res = client.post("/api/wifi/connect", json={"ssid": "MyNet; rm -rf /"}, headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 400
+    assert "Valid Wi-Fi SSID" in res.get_json().get("message", "")
+    print("[PASS] Command injection attempt in Wi-Fi SSID correctly rejected with 400.")
+
+    # 31. Test Static File Protection & Traversal Prevention
+    print("\n[TEST 31] Testing Static File Traversal & Sensitive File Blocking...")
+    res = client.get("/backup.json")
+    assert res.status_code in [403, 404]
+    res = client.get("/config.json")
+    assert res.status_code in [403, 404]
+    res = client.get("/../app.py")
+    assert res.status_code in [403, 404]
+    print("[PASS] Unauthorized access to sensitive .json / .py files blocked with 403/404.")
+
+    # 32. Test Feedback Stored XSS Sanitization
+    print("\n[TEST 32] Testing Feedback Stored XSS Sanitization...")
+    res = client.post("/api/feedback", json={"rating": 5, "comments": "<script>alert('xss')</script>Loved it!"})
+    assert res.status_code == 200
+    feedbacks_res = client.get("/api/feedback")
+    latest = feedbacks_res.get_json()["feedbacks"][-1]
+    assert "<script>" not in latest["comments"]
+    assert "&lt;script&gt;" in latest["comments"]
+    print("[PASS] XSS payload safely escaped in feedback submission.")
+
+    # 33. Test NoSQL Injection Prevention in Login
+    print("\n[TEST 33] Testing NoSQL Object Injection Prevention in Login...")
+    res = client.post("/api/auth/login", json={"username": {"$gt": ""}, "password": {"$gt": ""}})
+    assert res.status_code == 400
+    assert "valid text strings" in res.get_json().get("message", "")
+    print("[PASS] Non-string NoSQL injection dictionary in login rejected with 400.")
 
     # Clean up test users
     client.delete("/api/auth/users/supercashier1", headers={"Authorization": f"Bearer {admin_token}"})

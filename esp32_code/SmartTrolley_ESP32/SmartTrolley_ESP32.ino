@@ -53,10 +53,12 @@
 
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ► TROLLEY IDENTITY — Change ONLY this line when creating a new trolley file
+// ► TROLLEY IDENTITY — Universal Firmware (Configured via Web Portal & Flash)
 // ══════════════════════════════════════════════════════════════════════════════
-const String TROLLEY_ID = "TROLLEY-001";
-const String TROLLEY_NAME = "Smart Trolley 001";
+char trolleyId[32] = "TROLLEY-001";
+char trolleyName[40] = "Smart Trolley 001";
+String TROLLEY_ID = "TROLLEY-001";
+String TROLLEY_NAME = "Smart Trolley 001";
 const String FW_VERSION = "2.1";
 
 // ── Wi-Fi & Server Configuration (Stored in NVS / Flash) ────────────────────
@@ -117,6 +119,22 @@ const int BUZZER_PIN = 15;
 LiquidCrystal_I2C *pLcd =
     nullptr; // Dynamically created after I2C auto-detection
 MFRC522 mfrc522(SS_PIN, RST_PIN);
+
+// ── Hardware Health Tracking ───────────────────────────────────────────────
+byte lcdAddr = 0;
+bool rfidHardwareOk = false;
+bool lcdHardwareOk = false;
+
+bool isRfidConnected() {
+  byte v = mfrc522.PCD_ReadRegister(mfrc522.VersionReg);
+  return (v == 0x91 || v == 0x92);
+}
+
+bool isLcdConnected() {
+  if (!pLcd || !lcdHardwareOk || lcdAddr == 0) return false;
+  Wire.beginTransmission(lcdAddr);
+  return (Wire.endTransmission() == 0);
+}
 
 // ── State Variables ────────────────────────────────────────────────────────
 String currentMode = "ADD";
@@ -380,16 +398,25 @@ void registerWithServer() {
   http.addHeader("Connection", "close");
   http.setTimeout(5000);
 
-  StaticJsonDocument<200> doc;
+  bool rfidOk = isRfidConnected();
+  bool lcdOk = isLcdConnected();
+  rfidHardwareOk = rfidOk;
+  lcdHardwareOk = lcdOk;
+  String hwHealth = (rfidOk && lcdOk) ? "HEALTHY" : (!rfidOk && !lcdOk ? "ALL_HARDWARE_OFFLINE" : (!rfidOk ? "RFID_FAULT" : "LCD_FAULT"));
+
+  StaticJsonDocument<300> doc;
   doc["trolley_id"] = TROLLEY_ID;
   doc["name"] = TROLLEY_NAME;
   doc["firmware_version"] = FW_VERSION;
   doc["ip_address"] = WiFi.localIP().toString();
+  doc["rfid_ready"] = rfidOk;
+  doc["lcd_ready"] = lcdOk;
+  doc["hardware_health"] = hwHealth;
   String payload;
   serializeJson(doc, payload);
 
   int code = http.POST(payload);
-  Serial.println("[REGISTER] Server response code: " + String(code));
+  Serial.println("[REGISTER] Server response code: " + String(code) + " | HW: " + hwHealth);
   if (code == 200) {
     String resp = http.getString();
     StaticJsonDocument<1024> respDoc;
@@ -428,19 +455,29 @@ void sendHeartbeat() {
 
   int batteryPct = 85;
 
-  StaticJsonDocument<200> doc;
+  bool rfidOk = isRfidConnected();
+  bool lcdOk = isLcdConnected();
+  rfidHardwareOk = rfidOk;
+  lcdHardwareOk = lcdOk;
+  String hwHealth = (rfidOk && lcdOk) ? "HEALTHY" : (!rfidOk && !lcdOk ? "ALL_HARDWARE_OFFLINE" : (!rfidOk ? "RFID_FAULT" : "LCD_FAULT"));
+
+  StaticJsonDocument<300> doc;
   doc["trolley_id"] = TROLLEY_ID;
   doc["battery"] = batteryPct;
   doc["wifi_rssi"] = WiFi.RSSI();
   doc["ip_address"] = WiFi.localIP().toString();
   doc["firmware_version"] = FW_VERSION;
+  doc["rfid_ready"] = rfidOk;
+  doc["lcd_ready"] = lcdOk;
+  doc["hardware_health"] = hwHealth;
   String payload;
   serializeJson(doc, payload);
 
   int code = http.POST(payload);
   if (code == 200) {
     Serial.println("[HEARTBEAT] OK — Battery: " + String(batteryPct) +
-                   "%, RSSI: " + String(WiFi.RSSI()) + " dBm");
+                   "%, RSSI: " + String(WiFi.RSSI()) + " dBm | RFID: " +
+                   (rfidOk ? "OK" : "FAULT") + " | LCD: " + (lcdOk ? "OK" : "FAULT"));
   } else {
     Serial.println("[HEARTBEAT] Code: " + String(code));
   }
@@ -482,6 +519,40 @@ void setup() {
   removeIdleState = HIGH;
   resetIdleState = HIGH;
 
+  // 0. Load Saved Trolley Identity & Server Settings from Flash (Preferences)
+  preferences.begin("trolley-cfg", false);
+  String storedID = preferences.getString("trolley_id", "");
+  String storedName = preferences.getString("trolley_name", "");
+  if (storedID.length() > 0) {
+    strncpy(trolleyId, storedID.c_str(), sizeof(trolleyId) - 1);
+    trolleyId[sizeof(trolleyId) - 1] = '\0';
+  } else {
+    preferences.putString("trolley_id", trolleyId);
+  }
+  if (storedName.length() > 0) {
+    strncpy(trolleyName, storedName.c_str(), sizeof(trolleyName) - 1);
+    trolleyName[sizeof(trolleyName) - 1] = '\0';
+  } else {
+    preferences.putString("trolley_name", trolleyName);
+  }
+  TROLLEY_ID = String(trolleyId);
+  TROLLEY_NAME = String(trolleyName);
+
+  String storedIP = preferences.getString("server_ip", "");
+  String storedPort = preferences.getString("server_port", "");
+  if (storedIP.length() > 0 && storedIP != "10.175.93.241") {
+    strncpy(serverIP, storedIP.c_str(), sizeof(serverIP) - 1);
+  } else {
+    preferences.putString("server_ip", serverIP);
+  }
+  if (storedPort.length() > 0) {
+    strncpy(serverPort, storedPort.c_str(), sizeof(serverPort) - 1);
+  } else {
+    preferences.putString("server_port", serverPort);
+  }
+  preferences.end();
+  updateApiEndpoints();
+
   delay(400);
   Serial.println("\n==========================================");
   Serial.println("  Smart Trolley System — " + TROLLEY_ID + "  ");
@@ -492,7 +563,7 @@ void setup() {
   Wire.begin(I2C_SDA, I2C_SCL);
   delay(100);
 
-  byte lcdAddr = 0;
+  lcdAddr = 0;
   // Test 0x27
   Wire.beginTransmission(0x27);
   if (Wire.endTransmission() == 0) {
@@ -516,9 +587,11 @@ void setup() {
 
   if (lcdAddr == 0) {
     lcdAddr = 0x27; // Fallback default
+    lcdHardwareOk = false;
     Serial.println(F("[LCD WARNING] No I2C display responding at 0x27 or 0x3F! "
                      "Check SDA(21), SCL(22), and 5V."));
   } else {
+    lcdHardwareOk = true;
     Serial.print(F("[LCD] Auto-detected I2C display at address: 0x"));
     Serial.println(lcdAddr, HEX);
   }
@@ -526,8 +599,7 @@ void setup() {
   pLcd = new LiquidCrystal_I2C(lcdAddr, 16, 2);
   pLcd->init();
   delay(50);
-  pLcd->init(); // Dual-init ensures HD44780 controller reliably enters 4-bit
-                // mode
+  pLcd->init(); // Dual-init ensures HD44780 controller reliably enters 4-bit mode
   pLcd->backlight();
   pLcd->clear();
   lcdShow(TROLLEY_ID, "Ready to Scan");
@@ -542,34 +614,17 @@ void setup() {
   Serial.print("[RFID] MFRC522 Version: 0x");
   Serial.println(v, HEX);
   if (v == 0x91 || v == 0x92) {
+    rfidHardwareOk = true;
     Serial.println("[RFID] Reader initialized successfully!");
     lcdShow("RFID Status: OK", "Mode: ADD");
   } else {
+    rfidHardwareOk = false;
     Serial.println("[RFID WARNING] Check 3.3V power and wiring!");
     lcdShow("RFID Check Wire", "Power must be 3V3");
     delay(2000);
   }
 
-  // 3. Load Saved Server & Wi-Fi Settings from Flash (Preferences)
-  preferences.begin("trolley-cfg", false);
-  String storedIP = preferences.getString("server_ip", "");
-  String storedPort = preferences.getString("server_port", "");
-  // Check if stored IP has a valid non-empty string and not the obsolete
-  // default
-  if (storedIP.length() > 0 && storedIP != "10.175.93.241") {
-    strncpy(serverIP, storedIP.c_str(), sizeof(serverIP) - 1);
-  } else {
-    preferences.putString("server_ip", serverIP);
-  }
-  if (storedPort.length() > 0) {
-    strncpy(serverPort, storedPort.c_str(), sizeof(serverPort) - 1);
-  } else {
-    preferences.putString("server_port", serverPort);
-  }
-  preferences.end();
-  updateApiEndpoints();
-
-  // Check if RESET button is held down at startup (to force Config Portal)
+  // 3. Check if RESET button is held down at startup (to force Config Portal)
   bool buttonPressed = (digitalRead(RESET_BTN) == LOW);
 
   // If RESET button is held, clear cached Wi-Fi to force setup portal
@@ -598,9 +653,9 @@ void setup() {
   }
 
   // 4. Wi-Fi Setup using WiFiManager (On-Demand Captive Portal / Fallback)
-  String apName = "Trolley001-Setup";
-  Serial.println(F("[WiFi] Launching Setup Access Point: Trolley001-Setup..."));
-  lcdShow("Setup: Connect!", apName);
+  String apName = String(trolleyId) + "-Setup";
+  Serial.println("[WiFi] Launching Setup Access Point: " + apName + "...");
+  lcdShow("Setup: Connect!", apName.substring(0, 16));
   beepDouble();
 
   WiFi.disconnect(true);
@@ -617,11 +672,17 @@ void setup() {
   wm.setConfigPortalTimeout(
       300); // 5 minutes active portal (plenty of time to configure)
 
-  // Custom parameters for Flask server IP & Port
+  // Custom parameters for Trolley Identity & Flask server IP & Port
+  WiFiManagerParameter custom_trolley_id(
+      "trolley_id", "Trolley ID (e.g. TROLLEY-004)", trolleyId, 24);
+  WiFiManagerParameter custom_trolley_name(
+      "trolley_name", "Trolley Name (e.g. Smart Trolley 004)", trolleyName, 32);
   WiFiManagerParameter custom_server_ip(
       "server_ip", "Flask Server IP (e.g. 10.221.37.241)", serverIP, 40);
   WiFiManagerParameter custom_server_port("server_port", "Flask Server Port",
                                           serverPort, 6);
+  wm.addParameter(&custom_trolley_id);
+  wm.addParameter(&custom_trolley_name);
   wm.addParameter(&custom_server_ip);
   wm.addParameter(&custom_server_port);
 
@@ -638,15 +699,28 @@ void setup() {
 
   // If new credentials / parameters were saved via portal, write them to Flash
   if (shouldSaveConfig) {
+    if (strlen(custom_trolley_id.getValue()) > 0) {
+      strncpy(trolleyId, custom_trolley_id.getValue(), sizeof(trolleyId) - 1);
+      trolleyId[sizeof(trolleyId) - 1] = '\0';
+      TROLLEY_ID = String(trolleyId);
+    }
+    if (strlen(custom_trolley_name.getValue()) > 0) {
+      strncpy(trolleyName, custom_trolley_name.getValue(), sizeof(trolleyName) - 1);
+      trolleyName[sizeof(trolleyName) - 1] = '\0';
+      TROLLEY_NAME = String(trolleyName);
+    }
     strncpy(serverIP, custom_server_ip.getValue(), sizeof(serverIP) - 1);
     serverIP[sizeof(serverIP) - 1] = '\0';
     strncpy(serverPort, custom_server_port.getValue(), sizeof(serverPort) - 1);
     serverPort[sizeof(serverPort) - 1] = '\0';
 
     preferences.begin("trolley-cfg", false);
+    preferences.putString("trolley_id", trolleyId);
+    preferences.putString("trolley_name", trolleyName);
     preferences.putString("server_ip", serverIP);
     preferences.putString("server_port", serverPort);
     preferences.end();
+    Serial.println("[CONFIG] Saved Identity: " + TROLLEY_ID + " (" + TROLLEY_NAME + ")");
     Serial.println("[CONFIG] Saved new Server IP: " + String(serverIP) + ":" +
                    String(serverPort));
     updateApiEndpoints();

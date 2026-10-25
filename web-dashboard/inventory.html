@@ -138,10 +138,12 @@
                     <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
                         <select id="inventory-category-filter" class="form-input" style="width:auto; padding:6px 12px; font-size:0.85rem; margin:0;">
                             <option value="all">All Categories</option>
-                            <option value="Dairy">Dairy</option>
                             <option value="Grains">Grains</option>
+                            <option value="Dairy">Dairy</option>
                             <option value="Bakery">Bakery</option>
                             <option value="Produce">Produce</option>
+                            <option value="Beverages">Beverages</option>
+                            <option value="Snacks">Snacks</option>
                             <option value="Grocery">Grocery</option>
                         </select>
                         <button class="btn btn-outline" id="add-product-btn"><i class="fa-solid fa-plus"></i> Add Product</button>
@@ -172,7 +174,7 @@
                 </div>
                 <div class="form-group">
                     <label>Product Name</label>
-                    <input type="text" id="prod-name" required placeholder="e.g. Milk 1L" class="form-input">
+                    <input type="text" id="prod-name" required placeholder="e.g. Rice 1kg, Milk 1L" class="form-input">
                 </div>
                 <div class="form-group">
                     <label>Price (Rs.)</label>
@@ -183,12 +185,19 @@
                     <input type="number" id="prod-stock" required placeholder="20" class="form-input">
                 </div>
                 <div class="form-group">
-                    <label>Category</label>
-                    <select id="prod-category" required class="form-input">
-                        <option value="Dairy">Dairy</option>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <label style="margin:0;">Category</label>
+                        <small id="category-auto-hint" style="font-size:0.75rem; color:var(--accent-cyan); display:none;">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i> Auto-detected
+                        </small>
+                    </div>
+                    <select id="prod-category" required class="form-input" style="margin-top:6px;">
                         <option value="Grains">Grains</option>
+                        <option value="Dairy">Dairy</option>
                         <option value="Bakery">Bakery</option>
                         <option value="Produce">Produce</option>
+                        <option value="Beverages">Beverages</option>
+                        <option value="Snacks">Snacks</option>
                         <option value="Grocery">Grocery</option>
                     </select>
                 </div>
@@ -198,7 +207,7 @@
                 </div>
                 <div class="form-group">
                     <label>Ongoing Offer</label>
-                    <input type="text" id="prod-offer" placeholder="e.g. 10% Off (Optional)" class="form-input">
+                    <input type="text" id="prod-offer" placeholder="e.g. Buy 1 Get 1 Free (Optional)" class="form-input">
                 </div>
                 
                 <div class="form-actions">

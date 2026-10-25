@@ -25,7 +25,11 @@ document.addEventListener('DOMContentLoaded', () => {
         removeQrBtn: document.getElementById('remove-qr-btn'),
         qrPreviewContainer: document.getElementById('qr-preview-container'),
         qrPreviewImg: document.getElementById('qr-preview-img'),
-        qrPreviewFilename: document.getElementById('qr-preview-filename')
+        qrPreviewFilename: document.getElementById('qr-preview-filename'),
+        razorpayEnableToggle: document.getElementById('razorpay-enable-toggle'),
+        razorpayKeyIdInput: document.getElementById('razorpay-key-id-input'),
+        razorpayKeySecretInput: document.getElementById('razorpay-key-secret-input'),
+        razorpaySecretStatus: document.getElementById('razorpay-secret-status')
     };
 
     let currentQrBase64 = "";
@@ -175,7 +179,8 @@ document.addEventListener('DOMContentLoaded', () => {
         els.seedDbBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Seeding database...';
 
         try {
-            const res = await fetch('/api/settings/database', {
+            const fetchFn = window.authFetch || fetch;
+            const res = await fetchFn('/api/settings/database', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'seed' })
@@ -207,7 +212,8 @@ document.addEventListener('DOMContentLoaded', () => {
         els.clearTxBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Clearing logs...';
 
         try {
-            const res = await fetch('/api/settings/database', {
+            const fetchFn = window.authFetch || fetch;
+            const res = await fetchFn('/api/settings/database', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'clear_transactions' })
@@ -308,6 +314,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (els.removeQrBtn) els.removeQrBtn.style.display = 'inline-flex';
                     if (els.qrPreviewFilename) els.qrPreviewFilename.textContent = "Uploaded Standee QR Image";
                 }
+
+                if (els.razorpayEnableToggle) {
+                    els.razorpayEnableToggle.checked = Boolean(data.razorpayEnabled !== false);
+                }
+                if (els.razorpayKeyIdInput) {
+                    els.razorpayKeyIdInput.value = data.razorpayKeyId || 'rzp_test_1DP5mmOlF5G5ag';
+                }
+                if (els.razorpaySecretStatus) {
+                    if (data.hasRazorpaySecret) {
+                        els.razorpaySecretStatus.innerHTML = '<i class="fa-solid fa-circle-check"></i> Key Secret configured & verified';
+                        els.razorpaySecretStatus.style.color = 'var(--accent-green)';
+                    } else {
+                        els.razorpaySecretStatus.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> No Key Secret set (Running in Sandbox demo mode)';
+                        els.razorpaySecretStatus.style.color = '#f59e0b';
+                    }
+                }
             }
         } catch (e) {
             console.error("Failed to load payment settings:", e);
@@ -387,10 +409,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const payload = {
-            storeName: els.storeNameInput ? els.storeNameInput.value.trim() : 'Smart Supermarket',
-            upiId: els.upiIdInput ? els.upiIdInput.value.trim() : 'smartsupermarket@okaxis',
-            useCustomQr: useCustomQr,
-            customQrImage: currentQrBase64
+            storeName:         els.storeNameInput ? els.storeNameInput.value.trim() : 'Smart Supermarket',
+            upiId:             els.upiIdInput ? els.upiIdInput.value.trim() : 'smartsupermarket@okaxis',
+            useCustomQr:       useCustomQr,
+            customQrImage:     currentQrBase64,
+            razorpayEnabled:   els.razorpayEnableToggle ? els.razorpayEnableToggle.checked : true,
+            razorpayKeyId:     els.razorpayKeyIdInput ? els.razorpayKeyIdInput.value.trim() : '',
+            razorpayKeySecret: els.razorpayKeySecretInput ? els.razorpayKeySecretInput.value.trim() : ''
         };
 
         try {

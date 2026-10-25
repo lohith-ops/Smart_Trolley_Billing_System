@@ -326,10 +326,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
+            const isTrolleyOnline = Boolean(activeTrolley.is_connected && activeTrolley.current_mode !== 'OFFLINE');
             const isAddMode = (activeTrolley.current_mode || 'ADD') === 'ADD';
-            const modeBadgeHtml = isAddMode 
-                ? `<span style="background: rgba(16, 185, 129, 0.15); color: var(--accent-green); border: 1px solid rgba(16, 185, 129, 0.3); padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 0.8rem;"><i class="fa-solid fa-plus-circle"></i> ADD ITEM MODE</span>`
-                : `<span style="background: rgba(239, 68, 68, 0.15); color: var(--accent-red); border: 1px solid rgba(239, 68, 68, 0.3); padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 0.8rem;"><i class="fa-solid fa-minus-circle"></i> REMOVE ITEM MODE</span>`;
+            let modeBadgeHtml = '';
+            if (!activeTrolley.is_connected) {
+                modeBadgeHtml = `<span style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 0.8rem;"><i class="fa-solid fa-power-off"></i> TROLLEY DISCONNECTED</span>`;
+            } else if (isAddMode) {
+                modeBadgeHtml = `<span style="background: rgba(16, 185, 129, 0.15); color: var(--accent-green); border: 1px solid rgba(16, 185, 129, 0.3); padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 0.8rem;"><i class="fa-solid fa-plus-circle"></i> ADD ITEM MODE</span>`;
+            } else {
+                modeBadgeHtml = `<span style="background: rgba(239, 68, 68, 0.15); color: var(--accent-red); border: 1px solid rgba(239, 68, 68, 0.3); padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 0.8rem;"><i class="fa-solid fa-minus-circle"></i> REMOVE ITEM MODE</span>`;
+            }
 
             const disconnectWarningHtml = !activeTrolley.is_connected ? `
                 <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; font-size: 0.82rem; color: #fde68a; display: flex; align-items: center; gap: 10px;">
@@ -402,6 +408,35 @@ document.addEventListener('DOMContentLoaded', () => {
                             </div>
                         </div>
                     </div>
+
+                    <!-- Instant Razorpay Checkout Action -->
+                    <div style="margin-top: 16px; display: flex; justify-content: flex-end;">
+                        <button id="portal-pay-razorpay-btn" class="btn btn-checkout" style="background: linear-gradient(135deg, #2563eb, #1d4ed8); padding: 10px 22px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; font-size: 0.95rem; cursor: pointer;">
+                            <i class="fa-solid fa-lock"></i> Pay with Razorpay (₹${Number(activeTrolley.grand_total || 0).toFixed(2)})
+                        </button>
+                    </div>
+                `;
+            }
+
+            let batteryBadgeHtml = '';
+            if (activeTrolley.is_connected && activeTrolley.battery_level !== null && activeTrolley.battery_level !== undefined) {
+                const battVal = Math.round(Number(activeTrolley.battery_level));
+                let battIcon = 'fa-battery-full';
+                let battColor = 'var(--accent-green)';
+                if (battVal < 20) {
+                    battIcon = 'fa-battery-empty';
+                    battColor = '#ef4444';
+                } else if (battVal < 50) {
+                    battIcon = 'fa-battery-quarter';
+                    battColor = '#f59e0b';
+                } else if (battVal < 75) {
+                    battIcon = 'fa-battery-half';
+                    battColor = '#eab308';
+                }
+                batteryBadgeHtml = `
+                    <span style="font-size: 0.8rem; color: var(--text-secondary);">
+                        <i class="fa-solid ${battIcon}" style="color: ${battColor};"></i> ${battVal}% Battery
+                    </span>
                 `;
             }
 
@@ -414,9 +449,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <i class="fa-solid fa-microchip"></i> ${activeTrolley.trolley_name}
                             </span>
                             ${modeBadgeHtml}
-                            <span style="font-size: 0.8rem; color: var(--text-secondary);">
-                                <i class="fa-solid fa-battery-three-quarters" style="color: var(--accent-green);"></i> ${activeTrolley.battery_level}% Battery
-                            </span>
+                            ${batteryBadgeHtml}
                             <span style="font-size: 0.78rem; color: var(--text-secondary);">
                                 <i class="fa-regular fa-clock"></i> Last seen: ${activeTrolley.last_seen_str}
                             </span>
@@ -432,6 +465,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     ${itemsTableHtml}
                 </div>
             `;
+
+            // Bind Razorpay pay button
+            const portalPayBtn = document.getElementById('portal-pay-razorpay-btn');
+            if (portalPayBtn) {
+                portalPayBtn.addEventListener('click', async () => {
+                    await launchCustomerPortalRazorpay(activeTrolley.trolley_id, activeTrolley.grand_total);
+                });
+            }
 
             // Bind unassign button
             const unassignBtn = document.getElementById('portal-unassign-btn');
@@ -945,6 +986,142 @@ document.addEventListener('DOMContentLoaded', () => {
                     window.location.href = 'login.html';
                 }
             });
+        }
+    }
+
+    async function launchCustomerPortalRazorpay(trolleyId, totalAmount) {
+        const payBtn = document.getElementById('portal-pay-razorpay-btn');
+        if (payBtn) {
+            payBtn.disabled = true;
+            payBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Initializing Payment Gateway...`;
+        }
+
+        const phone = (els.phone && els.phone.textContent && !els.phone.textContent.includes('Not Provided')) 
+            ? els.phone.textContent.replace(/\D/g, '') 
+            : '';
+
+        try {
+            const orderRes = await fetch('/api/payment/razorpay/create-order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ trolley_id: trolleyId, phone: phone })
+            });
+            const orderData = await orderRes.json();
+            if (!orderRes.ok || !orderData.success) {
+                alert(orderData.message || 'Failed to initialize payment.');
+                if (payBtn) {
+                    payBtn.disabled = false;
+                    payBtn.innerHTML = `<i class="fa-solid fa-lock"></i> Pay with Razorpay (₹${Number(totalAmount).toFixed(2)})`;
+                }
+                return;
+            }
+
+            if (typeof window.Razorpay === 'function') {
+                const options = {
+                    key: orderData.key_id,
+                    amount: orderData.amount,
+                    currency: orderData.currency || "INR",
+                    name: orderData.store_name || "GECM Supermarket",
+                    description: `Smart Shopping Trolley Bill [${trolleyId}]`,
+                    image: "https://cdn.razorpay.com/static/assets/logo/rzp.png",
+                    order_id: orderData.order_id && !orderData.order_id.startsWith('order_demo_') ? orderData.order_id : undefined,
+                    prefill: {
+                        name: (els.name && els.name.textContent && !els.name.textContent.includes('Loading')) ? els.name.textContent.trim() : "Lohith Kumar",
+                        email: (els.email && els.email.textContent && !els.email.textContent.includes('Not Provided')) ? els.email.textContent.trim() : "customer@smartsupermarket.com",
+                        contact: phone ? (phone.startsWith('+91') ? phone : `+91${phone.replace(/\D/g, '').slice(-10)}`) : "+919353180038"
+                    },
+                    notes: {
+                        trolley_id: trolleyId
+                    },
+                    theme: {
+                        color: "#2563eb"
+                    },
+                    handler: async function (response) {
+                        if (payBtn) {
+                            payBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Verifying Payment Signature...`;
+                        }
+                        try {
+                            const verifyRes = await fetch('/api/payment/razorpay/verify', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    trolley_id: trolleyId,
+                                    razorpay_payment_id: response.razorpay_payment_id,
+                                    razorpay_order_id: response.razorpay_order_id || orderData.order_id,
+                                    razorpay_signature: response.razorpay_signature || '',
+                                    phone: phone
+                                })
+                            });
+                            const verifyData = await verifyRes.json();
+                            if (verifyData.success) {
+                                alert(`Payment Successful!\n\nTransaction ID: ${verifyData.transaction_id}\nPayment Ref: ${verifyData.payment_id}\n\nYour trolley has checked out. Opening your digital invoice receipt.`);
+                                window.location.href = verifyData.receipt_url || `receipt.html?id=${verifyData.transaction_id}`;
+                            } else {
+                                alert(verifyData.message || 'Payment verification failed.');
+                            }
+                        } catch (e) {
+                            alert('Network error verifying payment.');
+                        } finally {
+                            if (payBtn) {
+                                payBtn.disabled = false;
+                                payBtn.innerHTML = `<i class="fa-solid fa-lock"></i> Pay with Razorpay (₹${Number(totalAmount).toFixed(2)})`;
+                            }
+                        }
+                    },
+                    modal: {
+                        ondismiss: function () {
+                            if (payBtn) {
+                                payBtn.disabled = false;
+                                payBtn.innerHTML = `<i class="fa-solid fa-lock"></i> Pay with Razorpay (₹${Number(totalAmount).toFixed(2)})`;
+                            }
+                        }
+                    }
+                };
+                const rzp = new window.Razorpay(options);
+                rzp.on('payment.failed', function (resp) {
+                    alert(`Payment failed: ${resp.error ? resp.error.description : 'Transaction cancelled'}`);
+                    if (payBtn) {
+                        payBtn.disabled = false;
+                        payBtn.innerHTML = `<i class="fa-solid fa-lock"></i> Pay with Razorpay (₹${Number(totalAmount).toFixed(2)})`;
+                    }
+                });
+                rzp.open();
+            } else {
+                // Offline fallback simulation
+                const demoPaymentId = `pay_test_${Math.floor(Date.now() / 1000)}${Math.floor(Math.random() * 900 + 100)}`;
+                const confirmPay = confirm(`Razorpay test checkout initialized.\n\nOrder ID: ${orderData.order_id}\nAmount: Rs.${(orderData.amount / 100).toFixed(2)}\n\nConfirm simulated test payment (${demoPaymentId})?`);
+                if (confirmPay) {
+                    const verifyRes = await fetch('/api/payment/razorpay/verify', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            trolley_id: trolleyId,
+                            razorpay_payment_id: demoPaymentId,
+                            razorpay_order_id: orderData.order_id,
+                            razorpay_signature: 'demo_sig',
+                            phone: phone
+                        })
+                    });
+                    const verifyData = await verifyRes.json();
+                    if (verifyData.success) {
+                        alert(`Payment Successful!\n\nTransaction ID: ${verifyData.transaction_id}\nPayment Ref: ${verifyData.payment_id}\n\nYour trolley has checked out.`);
+                        window.location.href = verifyData.receipt_url || `receipt.html?id=${verifyData.transaction_id}`;
+                    } else {
+                        alert(verifyData.message || 'Verification failed');
+                    }
+                }
+                if (payBtn) {
+                    payBtn.disabled = false;
+                    payBtn.innerHTML = `<i class="fa-solid fa-lock"></i> Pay with Razorpay (₹${Number(totalAmount).toFixed(2)})`;
+                }
+            }
+        } catch (err) {
+            console.error("Payment error:", err);
+            alert("Network error connecting to payment gateway.");
+            if (payBtn) {
+                payBtn.disabled = false;
+                payBtn.innerHTML = `<i class="fa-solid fa-lock"></i> Pay with Razorpay (₹${Number(totalAmount).toFixed(2)})`;
+            }
         }
     }
 

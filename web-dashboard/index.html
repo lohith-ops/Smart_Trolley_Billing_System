@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Stylesheet -->
-    <link rel="stylesheet" href="styles.css?v=3.0.0">
+    <link rel="stylesheet" href="styles.css?v=3.1.2">
     <!-- Font Awesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Auth Guard -->
@@ -88,7 +88,7 @@
                 <!-- Scanner Mode & Controls Toolbar -->
                 <div class="glass-panel" style="grid-column: 1/-1; padding: 16px 24px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px;">
                     <div style="display: flex; align-items: center; gap: 12px;">
-                        <span style="font-weight: 600; font-size: 0.95rem; color: var(--text-primary);">
+                        <span id="active-scanner-mode-header" style="font-weight: 600; font-size: 0.95rem; color: var(--text-primary);">
                             <i class="fa-solid fa-sliders" style="margin-right: 6px; color: var(--accent-cyan);"></i> Active Scanner Mode:
                         </span>
                         <div class="sim-mode-toggle" style="display: flex; gap: 6px; background: rgba(0,0,0,0.3); padding: 4px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
@@ -147,105 +147,139 @@
 
     <!-- Billing & Payment Modal (Two-stage) -->
     <div class="modal-overlay" id="receipt-modal">
-        <div class="modal-box glass-panel billing-payment-modal" style="max-width: 500px; width: 90%; position: relative;">
+        <div class="modal-box glass-panel billing-payment-modal" style="max-width: 660px; width: 95%; position: relative; border-radius: 20px; padding: 32px 28px;">
             
             <!-- CLOSE/CANCEL BUTTON AT TOP RIGHT -->
-            <button class="modal-close-x" id="modal-close-x-btn" style="position: absolute; top: 15px; right: 20px; background: none; border: none; color: var(--text-secondary); font-size: 1.25rem; cursor: pointer;"><i class="fa-solid fa-xmark"></i></button>
+            <button class="modal-close-x" id="modal-close-x-btn" style="position: absolute; top: 18px; right: 22px; background: none; border: none; color: var(--text-secondary); font-size: 1.4rem; cursor: pointer; transition: color 0.2s;"><i class="fa-solid fa-xmark"></i></button>
 
             <!-- STAGE 1: BILL BREAKDOWN -->
             <div id="payment-stage-1" class="payment-stage" style="display: none;">
-                <div class="modal-icon" style="color: var(--accent-blue); margin-bottom: 10px;">
-                    <i class="fa-solid fa-file-invoice-dollar"></i>
+                <div class="modal-icon" style="color: var(--accent-blue); margin-bottom: 12px;">
+                    <i class="fa-solid fa-file-invoice-dollar" style="font-size: 2.8rem;"></i>
                 </div>
-                <h2>Invoice Review</h2>
-                <p class="modal-sub">Verify your items and taxes before payment</p>
+                <h2 style="font-size: 1.6rem; font-weight: 700; margin-bottom: 4px;">Invoice Review</h2>
+                <p class="modal-sub" style="font-size: 0.95rem; margin-bottom: 18px;">Verify your scanned items and taxes before payment</p>
                 
-                <div class="receipt-items-container" style="max-height: 180px; overflow-y: auto; margin: 15px 0; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+                <div class="receipt-items-container" style="max-height: 220px; overflow-y: auto; margin: 15px 0 18px 0; padding: 12px 14px; background: rgba(255,255,255,0.03); border-radius: 12px; border: 1px solid rgba(255,255,255,0.07);">
                     <div id="billing-items-list" class="billing-items-list" style="display: flex; flex-direction: column; gap: 8px;">
                         <!-- Dynamic items -->
                     </div>
                 </div>
 
-                <div class="billing-breakdown-card" style="background: rgba(255,255,255,0.02); border-radius: 8px; padding: 12px; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.05);">
-                    <div class="breakdown-row" style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.9rem; color: var(--text-secondary);">
+                <div class="billing-breakdown-card" style="background: rgba(255,255,255,0.025); border-radius: 12px; padding: 16px 20px; margin-bottom: 22px; border: 1px solid rgba(255,255,255,0.06);">
+                    <div class="breakdown-row" style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.95rem; color: var(--text-secondary);">
                         <span>Subtotal (Excl. Tax)</span>
-                        <span id="bill-subtotal">Rs.0.00</span>
+                        <span id="bill-subtotal" style="font-weight: 500;">Rs.0.00</span>
                     </div>
-                    <div class="breakdown-row" style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.9rem; color: var(--text-secondary);">
+                    <div class="breakdown-row" style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.95rem; color: var(--text-secondary);">
                         <span>CGST (9.0%)</span>
-                        <span id="bill-cgst">Rs.0.00</span>
+                        <span id="bill-cgst" style="font-weight: 500;">Rs.0.00</span>
                     </div>
-                    <div class="breakdown-row" style="display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 0.9rem; color: var(--text-secondary); border-bottom: 1px dashed rgba(255,255,255,0.1); padding-bottom: 6px;">
+                    <div class="breakdown-row" style="display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 0.95rem; color: var(--text-secondary); border-bottom: 1px dashed rgba(255,255,255,0.12); padding-bottom: 8px;">
                         <span>SGST (9.0%)</span>
-                        <span id="bill-sgst">Rs.0.00</span>
+                        <span id="bill-sgst" style="font-weight: 500;">Rs.0.00</span>
                     </div>
-                    <div class="breakdown-row" style="display: flex; justify-content: space-between; font-weight: bold; font-size: 1.15rem; color: var(--text-primary);">
+                    <div class="breakdown-row" style="display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 1.25rem; color: var(--text-primary);">
                         <span>Total Amount (Incl. Tax)</span>
-                        <span id="bill-total" style="color: var(--accent-green);">Rs.0.00</span>
+                        <span id="bill-total" style="color: var(--accent-green); font-size: 1.45rem; font-family: monospace;">Rs.0.00</span>
                     </div>
                 </div>
 
-
-
-                <div style="display: flex; gap: 10px; width: 100%;">
-                    <button class="btn btn-outline btn-cancel-bill" style="flex: 1;">Cancel Bill</button>
-                    <button class="btn btn-checkout" id="btn-proceed-to-payment" style="flex: 1; background: var(--grad-primary);">Proceed to Pay</button>
+                <div style="display: flex; gap: 12px; width: 100%;">
+                    <button class="btn btn-outline btn-cancel-bill" style="flex: 1; padding: 14px 20px; font-size: 1rem; border-radius: 10px;">Cancel Bill</button>
+                    <button class="btn btn-checkout" id="btn-proceed-to-payment" style="flex: 1.4; background: var(--grad-primary); padding: 14px 24px; font-size: 1.05rem; font-weight: 600; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;">Proceed to Pay <i class="fa-solid fa-arrow-right"></i></button>
                 </div>
             </div>
 
             <!-- STAGE 2: PAYMENT METHODS -->
             <div id="payment-stage-2" class="payment-stage" style="display: none;">
-                <div class="modal-icon" style="color: var(--accent-purple); margin-bottom: 10px;">
-                    <i class="fa-solid fa-credit-card"></i>
+                
+                <!-- Modern Payment Header -->
+                <div style="display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 12px;">
+                    <div style="width: 52px; height: 52px; border-radius: 14px; background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(168, 85, 247, 0.2)); border: 1px solid rgba(168, 85, 247, 0.35); display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 15px rgba(168, 85, 247, 0.25);">
+                        <i class="fa-solid fa-credit-card" style="font-size: 1.6rem; color: #c084fc;"></i>
+                    </div>
+                    <div style="text-align: left;">
+                        <h2 style="font-size: 1.55rem; font-weight: 700; margin: 0; letter-spacing: -0.3px;">Secure Checkout Payment</h2>
+                        <p class="modal-sub" style="margin: 2px 0 0 0; font-size: 0.9rem;">Select your preferred payment method</p>
+                    </div>
                 </div>
-                <h2>Secure Checkout Payment</h2>
-                <p class="modal-sub">Select your preferred payment method</p>
 
-                <!-- Payment Tabs Header -->
-                <div class="payment-tabs" style="display: flex; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 4px; margin: 15px 0;">
-                    <button class="pay-tab active" data-tab="upi" style="flex:1; border:none; padding:8px 0; background:none; border-radius:6px; color:var(--text-primary); cursor:pointer; font-weight:500; transition:0.3s;"><i class="fa-solid fa-qrcode"></i> UPI</button>
-                    <button class="pay-tab" data-tab="card" style="flex:1; border:none; padding:8px 0; background:none; border-radius:6px; color:var(--text-secondary); cursor:pointer; font-weight:500; transition:0.3s;"><i class="fa-solid fa-credit-card"></i> Card</button>
-                    <button class="pay-tab" data-tab="cash" style="flex:1; border:none; padding:8px 0; background:none; border-radius:6px; color:var(--text-secondary); cursor:pointer; font-weight:500; transition:0.3s;"><i class="fa-solid fa-coins"></i> Cash</button>
+                <!-- Comfortable Payable Amount Banner -->
+                <div class="checkout-amount-display" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(6, 95, 70, 0.08)); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 14px; padding: 12px 22px; margin: 16px 0 20px 0; display: flex; align-items: center; justify-content: space-between;">
+                    <div style="text-align: left;">
+                        <span style="font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.8px; color: #94a3b8; display: block; font-weight: 600;">Total Payable Amount</span>
+                        <span id="payment-stage2-trolley" style="font-size: 0.86rem; color: #38bdf8; font-weight: 500;"><i class="fa-solid fa-cart-shopping"></i> Trolley: <strong>TROLLEY-001</strong></span>
+                    </div>
+                    <div id="payment-stage2-amount" style="font-size: 2rem; font-weight: 800; color: #10b981; font-family: monospace; letter-spacing: -0.5px; text-shadow: 0 2px 10px rgba(16, 185, 129, 0.3);">Rs.0.00</div>
+                </div>
+
+                <!-- Payment Tabs Header (Touch-friendly & Comfortable) -->
+                <div class="payment-tabs" style="display: flex; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 6px; margin: 0 0 22px 0; gap: 6px;">
+                    <button class="pay-tab active" data-tab="razorpay" style="flex:1; border:none; padding:11px 0; background:rgba(255,255,255,0.1); border-radius:8px; color:var(--text-primary); cursor:pointer; font-weight:600; font-size:0.95rem; transition:0.25s; display:flex; align-items:center; justify-content:center; gap:8px;"><i class="fa-solid fa-bolt" style="color:#60a5fa; font-size:1.1rem;"></i> Razorpay</button>
+                    <button class="pay-tab" data-tab="upi" style="flex:1; border:none; padding:11px 0; background:none; border-radius:8px; color:var(--text-secondary); cursor:pointer; font-weight:500; font-size:0.95rem; transition:0.25s; display:flex; align-items:center; justify-content:center; gap:8px;"><i class="fa-solid fa-qrcode" style="font-size:1.1rem;"></i> UPI QR</button>
+                    <button class="pay-tab" data-tab="card" style="flex:1; border:none; padding:11px 0; background:none; border-radius:8px; color:var(--text-secondary); cursor:pointer; font-weight:500; font-size:0.95rem; transition:0.25s; display:flex; align-items:center; justify-content:center; gap:8px;"><i class="fa-solid fa-credit-card" style="font-size:1.1rem;"></i> Card</button>
+                    <button class="pay-tab" data-tab="cash" style="flex:1; border:none; padding:11px 0; background:none; border-radius:8px; color:var(--text-secondary); cursor:pointer; font-weight:500; font-size:0.95rem; transition:0.25s; display:flex; align-items:center; justify-content:center; gap:8px;"><i class="fa-solid fa-coins" style="font-size:1.1rem;"></i> Cash</button>
                 </div>
 
                 <!-- Payment Contents -->
-                <div class="payment-contents" style="margin-bottom: 20px; min-height: 220px; display: flex; align-items: center; justify-content: center;">
-                    
-                    <!-- UPI Panel -->
-                    <div id="pay-panel-upi" class="pay-panel active" style="text-align: center; width: 100%;">
-                        <div class="qr-container" style="position: relative; display: inline-block; background: #ffffff; padding: 14px; border-radius: 12px; margin-bottom: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.25);">
-                            <img id="payment-upi-qr" src="" alt="UPI Payment QR Code" style="width: 210px; height: 210px; display: block; object-fit: contain; image-rendering: pixelated;">
+                <div class="payment-contents" style="margin-bottom: 24px; min-height: 250px; display: flex; align-items: center; justify-content: center;">
+
+                    <!-- Razorpay Panel (Real Gateway) -->
+                    <div id="pay-panel-razorpay" class="pay-panel active" style="text-align: center; width: 100%;">
+                        <div style="background: linear-gradient(135deg, rgba(37, 99, 246, 0.12), rgba(30, 58, 138, 0.08)); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: 16px; padding: 26px 20px; margin-bottom: 20px; display: flex; flex-direction: column; align-items: center; box-shadow: 0 4px 20px rgba(37, 99, 246, 0.12);">
+                            <i class="fa-solid fa-shield-halved" style="font-size: 3.2rem; color: #60a5fa; margin-bottom: 12px; filter: drop-shadow(0 0 16px rgba(96, 165, 250, 0.6));"></i>
+                            <h4 style="margin: 0 0 6px 0; color: #93c5fd; font-size: 1.25rem; font-weight: 700;">Official Razorpay Payment Gateway</h4>
+                            <p style="font-size: 0.92rem; color: #cbd5e1; margin: 0 0 16px 0; max-width: 480px; line-height: 1.5;">
+                                Pay securely using live UPI (GPay, PhonePe, Paytm, BHIM), RuPay / Visa / MasterCard, or NetBanking.
+                            </p>
+                            <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                                <span style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); padding: 6px 14px; border-radius: 20px; font-size: 0.84rem; color: #f1f5f9; display:inline-flex; align-items:center; gap:6px;"><i class="fa-solid fa-qrcode" style="color:#38bdf8;"></i> UPI App / QR</span>
+                                <span style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); padding: 6px 14px; border-radius: 20px; font-size: 0.84rem; color: #f1f5f9; display:inline-flex; align-items:center; gap:6px;"><i class="fa-solid fa-credit-card" style="color:#a78bfa;"></i> Debit / Credit Card</span>
+                                <span style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); padding: 6px 14px; border-radius: 20px; font-size: 0.84rem; color: #f1f5f9; display:inline-flex; align-items:center; gap:6px;"><i class="fa-solid fa-building-columns" style="color:#34d399;"></i> NetBanking</span>
+                            </div>
                         </div>
-                        <div id="payment-upi-vpa-label" style="font-size: 0.82rem; color: var(--accent-cyan); font-weight: 600; margin-bottom: 6px;">smartsupermarket@okaxis</div>
-                        <p id="payment-upi-sub-label" style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 12px;">Scan using any UPI App (GPay, PhonePe, Paytm, BHIM)</p>
-                        <button class="btn btn-checkout btn-pay-success" data-method="UPI" style="background: linear-gradient(135deg, #10b981, #059669); border:none; padding:8px 16px; font-size:0.9rem; display:inline-flex; align-items:center; gap:6px;"><i class="fa-solid fa-circle-check"></i> Simulate QR Scan Success</button>
+                        <button class="btn btn-checkout" id="btn-launch-razorpay" style="background: linear-gradient(135deg, #2563eb, #1d4ed8); border:none; padding:16px 24px; font-size:1.15rem; font-weight:700; display:inline-flex; align-items:center; justify-content:center; gap:10px; width: 100%; border-radius: 12px; box-shadow: 0 8px 24px rgba(37, 99, 235, 0.45); cursor: pointer; transition: all 0.25s ease;">
+                            <i class="fa-solid fa-lock" style="font-size: 1.1rem;"></i> <span id="btn-razorpay-text">Pay Now with Razorpay</span>
+                        </button>
+                    </div>
+
+                    <!-- UPI Panel (Instant Standee QR) -->
+                    <div id="pay-panel-upi" class="pay-panel" style="display: none; text-align: center; width: 100%;">
+                        <div class="qr-container" style="position: relative; display: inline-block; background: #ffffff; padding: 20px; border-radius: 18px; margin-bottom: 14px; box-shadow: 0 10px 32px rgba(0,0,0,0.45); border: 2px solid rgba(255,255,255,0.15);">
+                            <img id="payment-upi-qr" src="" alt="UPI Payment QR Code" style="width: 270px; height: 270px; display: block; object-fit: contain; image-rendering: pixelated;">
+                        </div>
+                        <div id="payment-upi-vpa-label" style="font-size: 1rem; color: var(--accent-cyan); font-weight: 700; margin-bottom: 6px;">smartsupermarket@okaxis</div>
+                        <p id="payment-upi-sub-label" style="font-size: 0.88rem; color: var(--text-secondary); margin-bottom: 18px;">Scan using any UPI App (GPay, PhonePe, Paytm, BHIM)</p>
+                        <button class="btn btn-checkout btn-pay-success" data-method="UPI" style="background: linear-gradient(135deg, #10b981, #059669); border:none; padding:15px 24px; font-size:1.05rem; font-weight:600; border-radius:12px; display:inline-flex; align-items:center; justify-content:center; gap:8px; width:100%; box-shadow:0 8px 20px rgba(16, 185, 129, 0.35);"><i class="fa-solid fa-circle-check"></i> Settle via UPI (Simulate Scan Success)</button>
                     </div>
 
                     <!-- Card Panel -->
                     <div id="pay-panel-card" class="pay-panel" style="display: none; text-align: center; width: 100%;">
-                        <div class="card-terminal-mock" style="background: rgba(255,255,255,0.03); border: 1px dashed rgba(255,255,255,0.1); border-radius: 12px; padding: 20px; margin-bottom: 15px; display: flex; flex-direction: column; align-items: center;">
-                            <i class="fa-solid fa-nfc-symbol" style="font-size: 2.5rem; color: var(--accent-blue); margin-bottom: 8px;"></i>
-                            <p style="font-size: 0.9rem; font-weight: 500;">Tap, Insert or Swipe Card</p>
-                            <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px;">Supports Visa, MasterCard, RuPay</p>
+                        <div class="card-terminal-mock" style="background: rgba(255,255,255,0.03); border: 1px dashed rgba(255,255,255,0.14); border-radius: 16px; padding: 32px 20px; margin-bottom: 20px; display: flex; flex-direction: column; align-items: center;">
+                            <i class="fa-solid fa-nfc-symbol" style="font-size: 3.2rem; color: var(--accent-blue); margin-bottom: 12px; filter: drop-shadow(0 0 12px rgba(59, 130, 246, 0.5));"></i>
+                            <p style="font-size: 1.1rem; font-weight: 600; margin: 0;">Tap, Insert or Swipe Card</p>
+                            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 6px;">Supports Visa, MasterCard, RuPay, Maestro</p>
                         </div>
-                        <button class="btn btn-checkout btn-pay-success" data-method="CARD" style="background: linear-gradient(135deg, #3b82f6, #2563eb); border:none; padding:8px 16px; font-size:0.9rem; display:inline-flex; align-items:center; gap:6px;"><i class="fa-solid fa-credit-card"></i> Simulate Card Swipe/Tap</button>
+                        <button class="btn btn-checkout btn-pay-success" data-method="CARD" style="background: linear-gradient(135deg, #3b82f6, #2563eb); border:none; padding:15px 24px; font-size:1.05rem; font-weight:600; border-radius:12px; display:inline-flex; align-items:center; justify-content:center; gap:8px; width:100%; box-shadow:0 8px 20px rgba(59, 130, 246, 0.35);"><i class="fa-solid fa-credit-card"></i> Settle via POS Card Terminal</button>
                     </div>
 
                     <!-- Cash Panel -->
                     <div id="pay-panel-cash" class="pay-panel" style="display: none; text-align: center; width: 100%;">
-                        <div class="cash-instructions-mock" style="background: rgba(255,255,255,0.03); border: 1px dashed rgba(255,255,255,0.1); border-radius: 12px; padding: 20px; margin-bottom: 15px; display: flex; flex-direction: column; align-items: center;">
-                            <i class="fa-solid fa-cash-register" style="font-size: 2.5rem; color: #f59e0b; margin-bottom: 8px;"></i>
-                            <p style="font-size: 0.9rem; font-weight: 500;">Counter Billing Option Selected</p>
-                            <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px;">Please submit payment to the cashier counter to settle this bill.</p>
+                        <div class="cash-instructions-mock" style="background: rgba(255,255,255,0.03); border: 1px dashed rgba(255,255,255,0.14); border-radius: 16px; padding: 32px 20px; margin-bottom: 20px; display: flex; flex-direction: column; align-items: center;">
+                            <i class="fa-solid fa-cash-register" style="font-size: 3.2rem; color: #f59e0b; margin-bottom: 12px; filter: drop-shadow(0 0 12px rgba(245, 158, 11, 0.4));"></i>
+                            <p style="font-size: 1.1rem; font-weight: 600; margin: 0;">Counter Cash Payment</p>
+                            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 6px;">Customer pays in cash at the store billing counter.</p>
                         </div>
-                        <button class="btn btn-checkout btn-pay-success" data-method="CASH" style="background: linear-gradient(135deg, #f59e0b, #d97706); border:none; padding:8px 16px; font-size:0.9rem; display:inline-flex; align-items:center; gap:6px;"><i class="fa-solid fa-coins"></i> Settle Bill (Cash Paid)</button>
+                        <button class="btn btn-checkout btn-pay-success" data-method="CASH" style="background: linear-gradient(135deg, #f59e0b, #d97706); border:none; padding:15px 24px; font-size:1.05rem; font-weight:600; border-radius:12px; display:inline-flex; align-items:center; justify-content:center; gap:8px; width:100%; box-shadow:0 8px 20px rgba(245, 158, 11, 0.35);"><i class="fa-solid fa-coins"></i> Settle Bill (Cash Received at Counter)</button>
                     </div>
 
                 </div>
 
-                <div style="display: flex; gap: 10px; width: 100%;">
-                    <button class="btn btn-outline" id="btn-back-to-invoice" style="flex: 1;"><i class="fa-solid fa-arrow-left"></i> Back</button>
-                    <button class="btn btn-outline btn-cancel-bill" style="flex: 1;">Cancel Bill</button>
+                <!-- Comfortable Navigation Buttons -->
+                <div style="display: flex; gap: 14px; width: 100%;">
+                    <button class="btn btn-outline" id="btn-back-to-invoice" style="flex: 1; padding: 13px 20px; font-size: 0.98rem; font-weight: 600; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;"><i class="fa-solid fa-arrow-left"></i> Back to Review</button>
+                    <button class="btn btn-outline btn-cancel-bill" style="flex: 1; padding: 13px 20px; font-size: 0.98rem; font-weight: 600; border-radius: 10px; color: #f87171; border-color: rgba(248, 113, 113, 0.3);">Cancel Bill</button>
                 </div>
             </div>
 
@@ -300,6 +334,18 @@
                 <div class="form-group">
                     <label>Price (Rs.)</label>
                     <input type="number" step="0.01" id="reg-price" required placeholder="0.00" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label>Category</label>
+                    <select id="reg-category" class="form-input">
+                        <option value="Grains">Grains</option>
+                        <option value="Dairy">Dairy</option>
+                        <option value="Bakery">Bakery</option>
+                        <option value="Produce">Produce</option>
+                        <option value="Beverages">Beverages</option>
+                        <option value="Snacks">Snacks</option>
+                        <option value="Grocery">Grocery</option>
+                    </select>
                 </div>
                 
                 <div class="form-actions">
@@ -443,8 +489,11 @@
         </div>
     </aside>
 
+    <!-- Razorpay Official Checkout SDK -->
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
     <!-- Application Logic -->
-    <script src="shared.js?v=3.1.0"></script>
-    <script src="dashboard.js?v=3.1.0"></script>
+    <script src="shared.js?v=3.1.2"></script>
+    <script src="dashboard.js?v=3.1.2"></script>
 </body>
 </html>

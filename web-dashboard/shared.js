@@ -30,23 +30,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Update UI Indicators
                 if (pulseDot && statusText) {
-                    if (data.arduinoConnected) {
+                    const onlineTrolleyCount = data.onlineTrolleys || 0;
+                    const isSerialActive = Boolean(data.arduinoConnected);
+
+                    if (onlineTrolleyCount > 0 || isSerialActive) {
                         pulseDot.style.backgroundColor = 'var(--accent-green)';
                         pulseDot.style.boxShadow = '0 0 8px var(--accent-green)';
-                        statusText.textContent = `Hardware Online (${data.serialPort})`;
+                        if (onlineTrolleyCount > 0) {
+                            statusText.textContent = `${onlineTrolleyCount} Trolley${onlineTrolleyCount > 1 ? 's' : ''} Online`;
+                        } else {
+                            statusText.textContent = `Hardware Online (${data.serialPort})`;
+                        }
                     } else {
-                        pulseDot.style.backgroundColor = 'var(--accent-red)';
-                        pulseDot.style.boxShadow = '0 0 8px var(--accent-red)';
-                        statusText.textContent = 'Hardware Offline';
+                        pulseDot.style.backgroundColor = 'var(--accent-cyan)';
+                        pulseDot.style.boxShadow = 'none';
+                        statusText.textContent = 'System Ready (Wi-Fi)';
                     }
                 }
 
-                // Trigger Toast on Connectivity Changes
+                // Trigger Toast on Connectivity Changes only when a physical USB connection was actively dropped
                 if (lastArduinoState !== null && lastArduinoState !== data.arduinoConnected) {
                     if (data.arduinoConnected) {
                         window.showToast("Hardware Online", `Microcontroller connected on port ${data.serialPort}`, "success");
-                    } else {
-                        window.showToast("Hardware Connection Lost", `Device on ${data.serialPort} disconnected. Please check cables.`, "error");
+                    } else if (lastArduinoState === true) {
+                        window.showToast("Hardware Disconnected", `Device on ${data.serialPort} disconnected.`, "info");
                     }
                 }
                 lastArduinoState = data.arduinoConnected;

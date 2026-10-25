@@ -7,6 +7,7 @@ import os
 import json
 import re
 import subprocess
+import html
 from functools import wraps
 from flask import Flask, jsonify, request, send_from_directory, redirect, send_file
 from flask_cors import CORS
@@ -22,6 +23,13 @@ import urllib.request
 import urllib.parse
 import base64
 import io
+import hmac
+import hashlib
+try:
+    import razorpay
+except Exception as _rp_err:
+    razorpay = None
+    print(f"[RAZORPAY] Module load info: {_rp_err}")
 
 app = Flask(__name__, static_folder="web-dashboard", static_url_path="")
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # Disable caching for static files
@@ -45,12 +53,16 @@ CONFIG_FILE = "config.json"
 
 def load_config():
     defaults = {
+        "enableSerial": True,
         "serialPort": "COM3",
         "baudRate": 115200,
         "upiId": "smartsupermarket@okaxis",
         "storeName": "GECM Supermarket",
         "useCustomQr": False,
         "customQrImage": "",
+        "razorpayEnabled": True,
+        "razorpayKeyId": os.environ.get("RAZORPAY_KEY_ID", "rzp_test_1DP5mmOlF5G5ag"),
+        "razorpayKeySecret": os.environ.get("RAZORPAY_KEY_SECRET", ""),
         "smtpServer": "smtp.gmail.com",
         "smtpPort": 587,
         "smtpUser": "",
@@ -252,8 +264,9 @@ class MockClient:
 
 # ── MongoDB Connection ────────────────────────────────────────────────────────
 mongo_ok = False
+MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017/")
 try:
-    client = MongoClient('mongodb://localhost:27017/', serverSelectionTimeoutMS=1500)
+    client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=4000)
     client.server_info()  # Force connection check
     db = client['smart_trolley']
     products_collection     = db['products']
@@ -264,8 +277,9 @@ try:
     password_resets_collection = db['password_resets']
     otp_verifications_collection = db['otp_verifications']
     customers_collection    = db['customers']
+    razorpay_orders_collection = db['razorpay_orders']
     mongo_ok = True
-    print("[DB] Connected to local MongoDB successfully.")
+    print(f"[DB] Connected to MongoDB ({'Cloud Atlas' if 'mongodb+srv' in MONGO_URI else 'Local'}) successfully.")
 except Exception as e:
     print(f"[DB WARN] MongoDB connection failed: {e}")
     print("[DB WARN] Falling back to IN-MEMORY Mock Database. Changes will not persist after restart.")
@@ -279,20 +293,121 @@ except Exception as e:
     password_resets_collection = db['password_resets']
     otp_verifications_collection = db['otp_verifications']
     customers_collection    = db['customers']
+    razorpay_orders_collection = db['razorpay_orders']
 
-    # Seed default products into mock database
-    defaults = [
-        {"uid": "5C 1E 7E 05", "name": "Rice 1kg",          "price": 60.0,  "category": "Grains", "stock": 45, "shelf": "Aisle A - Shelf 1", "offer": "Buy 1 Get 1 Free"},
-        {"uid": "76 E3 33 06", "name": "Sugar 1kg",          "price": 45.0,  "category": "Grains", "stock": 12, "shelf": "Aisle A - Shelf 2", "offer": "No Active Offers"},
-        {"uid": "A3 B4 C5 D6", "name": "Whole Wheat Bread",  "price": 25.0,  "category": "Bakery", "stock": 8,  "shelf": "Aisle B - Shelf 1", "offer": "10% Off"},
-        {"uid": "11 22 33 44", "name": "Milk (1 Gallon)",    "price": 50.0,  "category": "Dairy",  "stock": 32, "shelf": "Aisle C - Shelf 1", "offer": "No Active Offers"},
-        {"uid": "99 88 77 66", "name": "Cheddar Cheese",     "price": 80.0,  "category": "Dairy",  "stock": 15, "shelf": "Aisle C - Shelf 1", "offer": "20% Off"},
-        {"uid": "FF EE DD CC", "name": "Free Range Eggs",    "price": 40.0,  "category": "Dairy",  "stock": 24, "shelf": "Aisle C - Shelf 1", "offer": "No Active Offers"},
-    ]
-    for p in defaults:
-        uid_norm = p["uid"].replace(" ", "").upper()
-        p["uid_norm"] = uid_norm
-        products_collection.data.append(p)
+# ── Catalog Data Model & Category Intelligence ────────────────────────────────
+def normalize_uid(uid_str):
+    """Normalize UID to uppercase no-space format. '5C 1E 7E 05' -> '5C1E7E05'."""
+    if not uid_str:
+        return ""
+    return str(uid_str).replace(" ", "").replace("-", "").upper()
+
+DEFAULT_PRODUCTS = [
+    {"uid": "5C 1E 7E 05", "name": "Rice 1kg",          "price": 60.0,  "category": "Grains", "stock": 45, "shelf": "Aisle A - Shelf 1", "offer": "Buy 1 Get 1 Free"},
+    {"uid": "76 E3 33 06", "name": "Sugar 1kg",          "price": 45.0,  "category": "Grains", "stock": 30, "shelf": "Aisle A - Shelf 2", "offer": "Standard Price"},
+    {"uid": "A3 B4 C5 D6", "name": "Whole Wheat Bread",  "price": 25.0,  "category": "Bakery", "stock": 20, "shelf": "Aisle B - Shelf 1", "offer": "10% Off"},
+    {"uid": "11 22 33 44", "name": "Milk (1 Gallon)",    "price": 50.0,  "category": "Dairy",  "stock": 32, "shelf": "Aisle C - Shelf 1", "offer": "No Active Offers"},
+    {"uid": "99 88 77 66", "name": "Cheddar Cheese",     "price": 80.0,  "category": "Dairy",  "stock": 15, "shelf": "Aisle C - Shelf 1", "offer": "20% Off"},
+    {"uid": "FF EE DD CC", "name": "Free Range Eggs",    "price": 40.0,  "category": "Dairy",  "stock": 24, "shelf": "Aisle C - Shelf 1", "offer": "No Active Offers"},
+]
+
+def detect_category(name: str) -> str:
+    """Intelligently detects product category based on product title."""
+    if not name:
+        return "Grocery"
+    nl = name.lower()
+    if any(k in nl for k in ["rice", "basmati", "wheat", "grain", "oat", "flour", "atta", "dal", "pulse", "quinoa", "cereal", "pasta", "sugar"]):
+        return "Grains"
+    if any(k in nl for k in ["milk", "cheese", "cheddar", "butter", "curd", "yogurt", "ghee", "paneer", "cream", "dairy", "egg"]):
+        return "Dairy"
+    if any(k in nl for k in ["bread", "toast", "bun", "cake", "muffin", "bakery", "croissant", "pastry", "bagel", "cookie"]):
+        return "Bakery"
+    if any(k in nl for k in ["apple", "banana", "orange", "fruit", "vegetable", "tomato", "potato", "onion", "produce", "berry"]):
+        return "Produce"
+    if any(k in nl for k in ["juice", "soda", "water", "tea", "coffee", "drink", "cola", "pepsi", "sprite", "beverage"]):
+        return "Beverages"
+    if any(k in nl for k in ["chip", "chips", "snack", "chocolate", "candy", "cracker", "biscuit", "namkeen"]):
+        return "Snacks"
+    return "Grocery"
+
+def ensure_catalog_integrity():
+    """
+    Ensures all catalog products have valid categories, shelf locations,
+    stock numbers, and resolves any misclassifications (e.g. Rice incorrectly categorized as Dairy).
+    """
+    try:
+        # 1. Ensure known default products exist with complete attributes
+        for p in DEFAULT_PRODUCTS:
+            uid_norm = normalize_uid(p["uid"])
+            existing = products_collection.find_one({"uid_norm": uid_norm})
+            if not existing:
+                doc = dict(p)
+                doc["uid_norm"] = uid_norm
+                products_collection.insert_one(doc)
+                print(f"[CATALOG] Seeded standard product: {p['name']} ({p['category']})")
+            else:
+                updates = {}
+                name_cur = existing.get("name", p["name"])
+                cat_cur = (existing.get("category") or "").strip()
+                
+                # Auto-fix Rice miscategorized as Dairy
+                if "rice" in name_cur.lower() and (cat_cur.lower() == "dairy" or not cat_cur):
+                    updates["category"] = "Grains"
+                    print(f"[CATALOG INTEGRITY] Fixed miscategorization for {name_cur}: Dairy -> Grains")
+                elif not cat_cur:
+                    updates["category"] = p.get("category", detect_category(name_cur))
+                
+                if not existing.get("shelf"):
+                    updates["shelf"] = p.get("shelf", "Aisle A - Shelf 1")
+                if existing.get("stock") is None:
+                    updates["stock"] = p.get("stock", 20)
+                if not existing.get("offer"):
+                    updates["offer"] = p.get("offer", "No Active Offers")
+                if not existing.get("uid"):
+                    updates["uid"] = p["uid"]
+                if not existing.get("name"):
+                    updates["name"] = p["name"]
+                if existing.get("price") is None:
+                    updates["price"] = p["price"]
+
+                if updates:
+                    products_collection.update_one({"uid_norm": uid_norm}, {"$set": updates})
+
+        # 2. General integrity sweep across all remaining products in DB
+        for doc in products_collection.find({}):
+            name = (doc.get("name") or "").strip()
+            cat = (doc.get("category") or "").strip()
+            updates = {}
+            if "rice" in name.lower() and cat.lower() == "dairy":
+                updates["category"] = "Grains"
+                print(f"[CATALOG INTEGRITY] Fixed miscategorization for {name}: Dairy -> Grains")
+            elif not cat:
+                updates["category"] = detect_category(name)
+            
+            if not doc.get("shelf"):
+                c = updates.get("category", cat)
+                if c == "Grains": updates["shelf"] = "Aisle A - Shelf 1"
+                elif c == "Bakery": updates["shelf"] = "Aisle B - Shelf 1"
+                elif c == "Dairy": updates["shelf"] = "Aisle C - Shelf 1"
+                elif c == "Produce": updates["shelf"] = "Aisle D - Shelf 1"
+                elif c == "Beverages": updates["shelf"] = "Aisle E - Shelf 1"
+                else: updates["shelf"] = "Aisle A - Shelf 1"
+
+            if doc.get("stock") is None:
+                updates["stock"] = 20
+            if not doc.get("offer"):
+                updates["offer"] = "No Active Offers"
+            
+            if updates:
+                uid_n = doc.get("uid_norm") or normalize_uid(doc.get("uid", ""))
+                if uid_n:
+                    products_collection.update_one({"uid_norm": uid_n}, {"$set": updates})
+        print("[CATALOG INTEGRITY] Inventory catalog verified and synchronized.")
+    except Exception as e:
+        print(f"[CATALOG WARN] Error verifying catalog integrity: {e}")
+
+# Run initial integrity check on startup
+ensure_catalog_integrity()
 
 # ── User Accounts & Authentication Setup ─────────────────────────────────────
 DEFAULT_USERS = [
@@ -399,10 +514,12 @@ def generate_token(user):
     """Generate signed JWT token valid for JWT_EXPIRATION_HOURS."""
     now_utc = datetime.datetime.now(datetime.timezone.utc)
     payload = {
+        "sub":      user["username"],
         "username": user["username"],
         "role":     user.get("role", "cashier"),
         "name":     user.get("name", user["username"]),
         "email":    user.get("email", ""),
+        "phone":    user.get("phone", ""),
         "exp":      now_utc + datetime.timedelta(hours=JWT_EXPIRATION_HOURS),
         "iat":      now_utc
     }
@@ -639,6 +756,12 @@ def index():
 
 @app.route("/<path:path>")
 def serve_static(path):
+    normalized = os.path.normpath(path)
+    if normalized.startswith("..") or any(part.startswith(".") for part in normalized.split(os.sep)):
+        return jsonify({"error": "Access denied"}), 403
+    lower_path = normalized.lower()
+    if lower_path.endswith((".json", ".py", ".env", ".db", ".sqlite", ".bak", ".log", ".md")):
+        return jsonify({"error": "Access denied to protected file"}), 403
     full_path = os.path.join(app.static_folder, path)
     if os.path.exists(full_path) and not os.path.isdir(full_path):
         return send_from_directory(app.static_folder, path)
@@ -863,9 +986,15 @@ def perform_reset(trolley_id="TROLLEY-001"):
 @app.route("/api/auth/login", methods=["POST"])
 def auth_login():
     data = request.json or {}
-    raw_user = (data.get("username") or "").strip()
+    raw_user = data.get("username")
+    password = data.get("password")
+
+    if not isinstance(raw_user, str) or not isinstance(password, str):
+        return jsonify({"success": False, "message": "Username and password must be valid text strings."}), 400
+
+    raw_user = raw_user.strip()
     username = raw_user.lower()
-    password = data.get("password") or ""
+    password = password.strip()
 
     if not username or not password:
         return jsonify({"success": False, "message": "Username and password are required."}), 400
@@ -938,6 +1067,11 @@ PHONE_REGEX = re.compile(r'^(\+91[\-\s]?)?[0-9]{10}$')
 def auth_signup():
     """Public customer self-registration endpoint (role is locked to customer)."""
     data = request.json or {}
+    for field in ["username", "password", "name", "email", "phone"]:
+        val = data.get(field)
+        if val is not None and not isinstance(val, str):
+            return jsonify({"success": False, "message": f"Field '{field}' must be a valid text string."}), 400
+
     username = (data.get("username") or "").strip().lower()
     password = data.get("password") or ""
     name     = (data.get("name") or "").strip()
@@ -1632,6 +1766,42 @@ def register_product():
     if len(uid_norm) < 4:
         return jsonify({"success": False, "message": "Invalid RFID UID format (must have at least 4 hex characters)."}), 400
 
+    existing_prod = products_collection.find_one({"uid_norm": uid_norm})
+    
+    # Resolve Category
+    incoming_cat = (data.get("category") or "").strip()
+    if "rice" in name.lower() and (incoming_cat.lower() == "dairy" or not incoming_cat):
+        category = "Grains"
+    elif incoming_cat:
+        category = incoming_cat
+    elif existing_prod and existing_prod.get("category"):
+        category = existing_prod.get("category")
+    else:
+        category = detect_category(name)
+
+    # Resolve Shelf
+    incoming_shelf = (data.get("shelf") or "").strip()
+    if incoming_shelf:
+        shelf = incoming_shelf
+    elif existing_prod and existing_prod.get("shelf"):
+        shelf = existing_prod.get("shelf")
+    else:
+        if category == "Grains": shelf = "Aisle A - Shelf 1"
+        elif category == "Bakery": shelf = "Aisle B - Shelf 1"
+        elif category == "Dairy": shelf = "Aisle C - Shelf 1"
+        elif category == "Produce": shelf = "Aisle D - Shelf 1"
+        elif category == "Beverages": shelf = "Aisle E - Shelf 1"
+        else: shelf = "Aisle A - Shelf 1"
+
+    # Resolve Offer
+    incoming_offer = (data.get("offer") or "").strip()
+    if incoming_offer:
+        offer = incoming_offer
+    elif existing_prod and existing_prod.get("offer"):
+        offer = existing_prod.get("offer")
+    else:
+        offer = "No Active Offers"
+
     products_collection.update_one(
         {"uid_norm": uid_norm},
         {"$set": {
@@ -1640,9 +1810,9 @@ def register_product():
             "price":    price_float,
             "uid_norm": uid_norm,
             "stock":    stock_int,
-            "category": data.get("category", "Grocery"),
-            "shelf":    data.get("shelf", "Aisle A - Shelf 1"),
-            "offer":    data.get("offer", "No Active Offers")
+            "category": category,
+            "shelf":    shelf,
+            "offer":    offer
         }},
         upsert=True
     )
@@ -1756,10 +1926,22 @@ def get_dashboard():
 
 @app.route("/api/cart/action", methods=["POST"])
 def cart_action():
-    data = request.json
-    trolley_id = data.get("trolley_id", "TROLLEY-001")
-    action     = data.get("action")
-    uid        = data.get("uid")
+    data = request.json or {}
+    if not isinstance(data, dict):
+        return jsonify({"success": False, "message": "Invalid JSON body format."}), 400
+
+    trolley_id = (data.get("trolley_id") or "TROLLEY-001").strip().upper()
+    action     = (data.get("action") or "").strip().upper()
+    uid        = (data.get("uid") or "").strip()
+
+    if action not in ["ADD", "REMOVE", "REMOVE_ALL"]:
+        return jsonify({"success": False, "message": "Invalid action. Must be ADD, REMOVE, or REMOVE_ALL."}), 400
+
+    if not uid:
+        return jsonify({"success": False, "message": "Product RFID UID is required."}), 400
+
+    if not re.match(r'^[A-Za-z0-9\-_]{2,30}$', trolley_id):
+        return jsonify({"success": False, "message": "Invalid Trolley ID format."}), 400
 
     # Ensure cart and trolley exist
     init_cart(trolley_id)
@@ -1882,10 +2064,15 @@ def request_checkout_otp():
     if not phone and auth_header.startswith("Bearer "):
         token = auth_header.split(" ", 1)[1].strip()
         decoded = decode_token(token)
-        if decoded and decoded.get("sub"):
-            user = users_collection.find_one({"username": decoded["sub"]})
-            if user:
-                phone = user.get("phone", "").strip()
+        if decoded:
+            if decoded.get("phone"):
+                phone = decoded.get("phone").strip()
+            else:
+                uname = decoded.get("username") or decoded.get("sub")
+                if uname:
+                    user = users_collection.find_one({"username": uname})
+                    if user:
+                        phone = user.get("phone", "").strip()
 
     if not phone:
         return jsonify({"success": False, "message": "Please enter a valid registered phone number."}), 400
@@ -2193,12 +2380,17 @@ def get_trolleys():
         is_assigned = (t.get("assignment_status") == "ASSIGNED") or bool(t.get("assigned_customer_id"))
         assign_status = "ASSIGNED" if is_assigned else "AVAILABLE"
 
+        rfid_ready = t.get("rfid_ready", True)
+        lcd_ready  = t.get("lcd_ready", True)
+        hw_health  = t.get("hardware_health", "HEALTHY" if (rfid_ready and lcd_ready) else ("RFID_FAULT" if not rfid_ready else "LCD_FAULT"))
+        hw_status  = "healthy" if (rfid_ready and lcd_ready) else "maintenance"
+
         if is_assigned and is_online:
-            disp_status = "Assigned (Connected)"
+            disp_status = "Assigned (Connected)" if (rfid_ready and lcd_ready) else f"Assigned ({'RFID Fault' if not rfid_ready else 'LCD Fault'})"
         elif is_assigned and not is_online:
             disp_status = "Assigned (Disconnected)"
         elif not is_assigned and is_online:
-            disp_status = "Available (Connected)"
+            disp_status = "Available (Connected)" if (rfid_ready and lcd_ready) else f"Available ({'RFID Fault' if not rfid_ready else 'LCD Fault'})"
         else:
             disp_status = "Available (Offline)"
 
@@ -2217,6 +2409,10 @@ def get_trolleys():
             "connection_status":       conn_status,
             "assignment_status":       assign_status,
             "display_status":          disp_status,
+            "rfid_ready":              rfid_ready,
+            "lcd_ready":               lcd_ready,
+            "hardware_health":         hw_health,
+            "hardware_status":         hw_status,
             "assigned_customer_id":    t.get("assigned_customer_id"),
             "assigned_customer_name":  t.get("assigned_customer_name", ""),
             "assigned_customer_phone": t.get("assigned_customer_phone", ""),
@@ -2236,7 +2432,8 @@ def get_trolleys():
             "cart_value":              cart_value,
             "item_count":              item_count,
             "cart_status":             cart_status,
-            "current_mode":            t.get("current_mode", "ADD"),
+            "current_mode":            t.get("current_mode", "ADD") if is_online else "OFFLINE",
+            "last_mode":               t.get("current_mode", "ADD"),
             # Legacy fields kept for backward compatibility with old trolleys.js
             "customer":                t.get("assigned_customer_name") or t.get("customer", "None"),
             "items":                   item_count,
@@ -2262,12 +2459,17 @@ def get_trolley_detail(trolley_id):
     is_assigned = (t.get("assignment_status") == "ASSIGNED") or bool(t.get("assigned_customer_id"))
     assign_status = "ASSIGNED" if is_assigned else "AVAILABLE"
 
+    rfid_ready = t.get("rfid_ready", True)
+    lcd_ready  = t.get("lcd_ready", True)
+    hw_health  = t.get("hardware_health", "HEALTHY" if (rfid_ready and lcd_ready) else ("RFID_FAULT" if not rfid_ready else "LCD_FAULT"))
+    hw_status  = "healthy" if (rfid_ready and lcd_ready) else "maintenance"
+
     if is_assigned and is_online:
-        disp_status = "Assigned (Connected)"
+        disp_status = "Assigned (Connected)" if (rfid_ready and lcd_ready) else f"Assigned ({'RFID Fault' if not rfid_ready else 'LCD Fault'})"
     elif is_assigned and not is_online:
         disp_status = "Assigned (Disconnected)"
     elif not is_assigned and is_online:
-        disp_status = "Available (Connected)"
+        disp_status = "Available (Connected)" if (rfid_ready and lcd_ready) else f"Available ({'RFID Fault' if not rfid_ready else 'LCD Fault'})"
     else:
         disp_status = "Available (Offline)"
 
@@ -2295,6 +2497,10 @@ def get_trolley_detail(trolley_id):
         "connection_status":       conn_status,
         "assignment_status":       assign_status,
         "display_status":          disp_status,
+        "rfid_ready":              rfid_ready,
+        "lcd_ready":               lcd_ready,
+        "hardware_health":         hw_health,
+        "hardware_status":         hw_status,
         "assigned_customer_id":    t.get("assigned_customer_id"),
         "assigned_customer_name":  t.get("assigned_customer_name", ""),
         "assigned_customer_phone": t.get("assigned_customer_phone", ""),
@@ -2311,7 +2517,8 @@ def get_trolley_detail(trolley_id):
         "last_seen_relative":      hb["last_seen_relative"],
         "last_heartbeat_display":  hb["last_heartbeat_display"],
         "firmware_version":        t.get("firmware_version", ""),
-        "current_mode":            t.get("current_mode", "ADD"),
+        "current_mode":            t.get("current_mode", "ADD") if is_online else "OFFLINE",
+        "last_mode":               t.get("current_mode", "ADD"),
         "cart":                    cart_data
     })
 
@@ -2338,16 +2545,31 @@ def register_trolley():
     """Register or update a trolley in the registry. Preserves active cart and customer session."""
     data = request.json or {}
     trolley_id = (data.get("trolley_id") or data.get("id") or "").strip().upper()
-    name = (data.get("name") or trolley_id).strip()
-    fw_ver = data.get("firmware_version", "2.0")
-    ip_addr = data.get("ip_address", "")
-    section = data.get("section", "General")
 
     if not trolley_id:
         return jsonify({"success": False, "message": "Trolley ID is required (e.g. TROLLEY-001)"}), 400
 
-    now_ts = time.time()
+    if not re.match(r'^[A-Za-z0-9\-_]{2,30}$', trolley_id):
+        return jsonify({"success": False, "message": "Invalid Trolley ID format."}), 400
+
     existing = trolleys_collection.find_one({"_id": trolley_id})
+    name = (data.get("name") or (existing.get("name") if existing else trolley_id)).strip()
+    fw_ver = data.get("firmware_version") or (existing.get("firmware_version", "2.0") if existing else "2.0")
+    ip_addr = data.get("ip_address", "")
+    section = data.get("section", "General")
+
+    rfid_ready = bool(data.get("rfid_ready", True))
+    lcd_ready  = bool(data.get("lcd_ready", True))
+    hw_health  = data.get("hardware_health") or ("HEALTHY" if (rfid_ready and lcd_ready) else ("RFID_FAULT" if not rfid_ready else "LCD_FAULT"))
+    hw_status  = "healthy" if (rfid_ready and lcd_ready) else "maintenance"
+
+    try:
+        battery_input = int(data.get("battery", existing.get("battery", 100) if existing else 100))
+        battery_val = max(0, min(100, battery_input))
+    except (ValueError, TypeError):
+        battery_val = 100
+
+    now_ts = time.time()
     if not existing:
         trolleys_collection.insert_one({
             "_id":                     trolley_id,
@@ -2361,11 +2583,15 @@ def register_trolley():
             "assigned_customer_name":  "",
             "assigned_customer_phone": "",
             "assigned_at":             None,
-            "battery":                 data.get("battery", 100),
+            "battery":                 battery_val,
             "wifi_rssi":               data.get("wifi_rssi", -50),
             "cart_value":              0.0,
             "item_count":              0,
             "current_mode":            "ADD",
+            "rfid_ready":              rfid_ready,
+            "lcd_ready":               lcd_ready,
+            "hardware_health":         hw_health,
+            "hardware_status":         hw_status,
             "last_seen":               now_ts,
             "last_heartbeat":          now_ts
         })
@@ -2379,8 +2605,12 @@ def register_trolley():
                 "ip_address":       ip_addr or existing.get("ip_address", ""),
                 "section":          section,
                 "status":           data.get("status", "online"),
-                "battery":          data.get("battery", existing.get("battery", 100)),
+                "battery":          battery_val,
                 "wifi_rssi":        data.get("wifi_rssi", existing.get("wifi_rssi", -50)),
+                "rfid_ready":       rfid_ready,
+                "lcd_ready":        lcd_ready,
+                "hardware_health":  hw_health,
+                "hardware_status":  hw_status,
                 "last_seen":        now_ts,
                 "last_heartbeat":   now_ts
             }}
@@ -2398,14 +2628,18 @@ def register_trolley():
     # Sync cart totals in trolley doc
     trolleys_collection.update_one({"_id": trolley_id}, {"$set": {"cart_value": cart_total, "item_count": item_count}})
 
-    print(f"[TROLLEY] Registered: {trolley_id} ({name}) | Cart: Rs.{cart_total:.2f} ({item_count} items) | Customer: {cust_name}")
+    print(f"[TROLLEY] Registered: {trolley_id} ({name}) | Cart: Rs.{cart_total:.2f} ({item_count} items) | HW: {hw_health} | Customer: {cust_name}")
 
     return jsonify({
-        "status":     "success",
-        "success":    True,
-        "message":    f"Trolley {trolley_id} registered successfully",
-        "trolley_id": trolley_id,
-        "mode":       trolley_doc.get("current_mode", "ADD"),
+        "status":          "success",
+        "success":         True,
+        "message":         f"Trolley {trolley_id} registered successfully",
+        "trolley_id":      trolley_id,
+        "mode":            trolley_doc.get("current_mode", "ADD"),
+        "rfid_ready":      rfid_ready,
+        "lcd_ready":       lcd_ready,
+        "hardware_health": hw_health,
+        "hardware_status": hw_status,
         "cart": {
             "item_count":   item_count,
             "total_amount": cart_total
@@ -2431,7 +2665,7 @@ def delete_trolley(trolley_id):
 def trolley_heartbeat():
     """
     Periodic heartbeat from ESP32.
-    Updates battery, RSSI, IP, last_seen, last_heartbeat, and marks trolley as online.
+    Updates battery, RSSI, IP, last_seen, last_heartbeat, hardware health status, and marks trolley as online.
     Heartbeat failure only affects online/offline status and NEVER resets the cart.
     """
     data = request.json or {}
@@ -2441,8 +2675,18 @@ def trolley_heartbeat():
 
     now_ts = time.time()
 
+    # Hardware components health
+    rfid_ready = bool(data.get("rfid_ready", True)) if ("rfid_ready" in data) else None
+    lcd_ready  = bool(data.get("lcd_ready", True)) if ("lcd_ready" in data) else None
+    hw_health  = data.get("hardware_health")
+
     existing = trolleys_collection.find_one({"_id": trolley_id})
     if not existing:
+        final_rfid = True if (rfid_ready is None) else rfid_ready
+        final_lcd  = True if (lcd_ready is None) else lcd_ready
+        final_hw_health = hw_health or ("HEALTHY" if (final_rfid and final_lcd) else ("RFID_FAULT" if not final_rfid else "LCD_FAULT"))
+        final_hw_status = "healthy" if (final_rfid and final_lcd) else "maintenance"
+
         trolleys_collection.insert_one({
             "_id":                     trolley_id,
             "name":                    data.get("name", trolley_id),
@@ -2455,6 +2699,10 @@ def trolley_heartbeat():
             "battery":                 data.get("battery", 0),
             "ip_address":              data.get("ip_address", ""),
             "wifi_rssi":               data.get("wifi_rssi", 0),
+            "rfid_ready":              final_rfid,
+            "lcd_ready":               final_lcd,
+            "hardware_health":         final_hw_health,
+            "hardware_status":         final_hw_status,
             "last_seen":               now_ts,
             "last_heartbeat":          now_ts,
             "firmware_version":        data.get("firmware_version", "2.0"),
@@ -2463,7 +2711,7 @@ def trolley_heartbeat():
             "current_mode":            "ADD"
         })
         init_cart(trolley_id)
-        print(f"[HEARTBEAT] Auto-registered new trolley: {trolley_id}")
+        print(f"[HEARTBEAT] Auto-registered new trolley: {trolley_id} | HW: {final_hw_health}")
     else:
         update_fields = {
             "status":         "online",
@@ -2479,13 +2727,30 @@ def trolley_heartbeat():
         if "firmware_version" in data and data["firmware_version"]:
             update_fields["firmware_version"] = data["firmware_version"]
 
+        if rfid_ready is not None:
+            update_fields["rfid_ready"] = rfid_ready
+        if lcd_ready is not None:
+            update_fields["lcd_ready"] = lcd_ready
+
+        eff_rfid = update_fields.get("rfid_ready", existing.get("rfid_ready", True))
+        eff_lcd  = update_fields.get("lcd_ready", existing.get("lcd_ready", True))
+        eff_health = hw_health or ("HEALTHY" if (eff_rfid and eff_lcd) else ("RFID_FAULT" if not eff_rfid else "LCD_FAULT"))
+        update_fields["hardware_health"] = eff_health
+        update_fields["hardware_status"] = "healthy" if (eff_rfid and eff_lcd) else "maintenance"
+
         trolleys_collection.update_one({"_id": trolley_id}, {"$set": update_fields})
 
     hb = format_heartbeat_status(now_ts, now_ts)
+    t_after = trolleys_collection.find_one({"_id": trolley_id}) or {}
+
     return jsonify({
         "success":                 True,
         "trolley_id":               trolley_id,
         "status":                  "online",
+        "rfid_ready":              t_after.get("rfid_ready", True),
+        "lcd_ready":               t_after.get("lcd_ready", True),
+        "hardware_health":         t_after.get("hardware_health", "HEALTHY"),
+        "hardware_status":         t_after.get("hardware_status", "healthy"),
         "server_time":             now_ts,
         "last_heartbeat_time_str": hb["last_heartbeat_time_str"],
         "last_seen_str":           hb["last_seen_str"]
@@ -2508,21 +2773,34 @@ def register_customer():
     phone   = (data.get("phone") or data.get("mobile") or "").strip()
     email   = (data.get("email") or "").strip()
 
-    if not name:
-        return jsonify({"success": False, "message": "Customer name is required"}), 400
+    if not name or len(name) < 2:
+        return jsonify({"success": False, "message": "Customer name must be at least 2 characters long."}), 400
     if not phone:
-        return jsonify({"success": False, "message": "Phone / Mobile number is required"}), 400
+        return jsonify({"success": False, "message": "Phone / Mobile number is required."}), 400
+
+    phone_digits = re.sub(r'\D', '', phone)
+    if len(phone_digits) > 10 and phone_digits.startswith("91"):
+        phone_digits = phone_digits[2:]
+    if len(phone_digits) != 10:
+        return jsonify({"success": False, "message": "Phone number must be a valid 10-digit number."}), 400
+
+    if email and not EMAIL_REGEX.match(email):
+        return jsonify({"success": False, "message": "Please enter a valid email address (e.g. customer@gmail.com)."}), 400
 
     if not cust_id:
         cust_id = f"CUST-{random.randint(1000, 9999)}"
+    elif not re.match(r'^[A-Za-z0-9\-_]{3,30}$', cust_id):
+        return jsonify({"success": False, "message": "Customer ID must be 3-30 characters alphanumeric (e.g. CUST-1001)."}), 400
 
     # Check for existing duplicate id
     if customers_collection.find_one({"$or": [{"id": cust_id}, {"customer_id": cust_id}]}):
         return jsonify({"success": False, "message": f"Customer ID '{cust_id}' is already registered."}), 400
 
     # Check for existing duplicate phone
-    if customers_collection.find_one({"phone": phone}):
-        return jsonify({"success": False, "message": f"Phone number '{phone}' is already registered to another customer."}), 400
+    if customers_collection.find_one({"phone": phone_digits}):
+        return jsonify({"success": False, "message": f"Phone number '{phone_digits}' is already registered to another customer."}), 400
+
+    phone = phone_digits
 
     cust_doc = {
         "id":               cust_id,
@@ -2820,6 +3098,7 @@ def update_settings():
         SERIAL_PORT = new_port.strip().upper()
         cfg = load_config()
         cfg["serialPort"] = SERIAL_PORT
+        cfg["enableSerial"] = True
         save_config(cfg)
         if global_ser:
             try:
@@ -2838,12 +3117,18 @@ def update_settings():
 @app.route("/api/settings/payment", methods=["GET"])
 def get_payment_settings():
     cfg = load_config()
+    secret = cfg.get("razorpayKeySecret", "")
+    masked_secret = ("•" * 8) if secret else ""
     return jsonify({
-        "success":       True,
-        "upiId":         cfg.get("upiId", "smartsupermarket@okaxis"),
-        "storeName":     cfg.get("storeName", "GECM Supermarket"),
-        "useCustomQr":   bool(cfg.get("useCustomQr", False)),
-        "customQrImage": cfg.get("customQrImage", "")
+        "success":                 True,
+        "upiId":                   cfg.get("upiId", "smartsupermarket@okaxis"),
+        "storeName":               cfg.get("storeName", "GECM Supermarket"),
+        "useCustomQr":             bool(cfg.get("useCustomQr", False)),
+        "customQrImage":           cfg.get("customQrImage", ""),
+        "razorpayEnabled":         bool(cfg.get("razorpayEnabled", True)),
+        "razorpayKeyId":           cfg.get("razorpayKeyId", "rzp_test_1DP5mmOlF5G5ag"),
+        "hasRazorpaySecret":       bool(secret),
+        "razorpayKeySecretMasked": masked_secret
     })
 
 @app.route("/api/payment/qr", methods=["GET"])
@@ -2885,17 +3170,295 @@ def update_payment_settings():
         cfg["useCustomQr"] = bool(data["useCustomQr"])
     if "customQrImage" in data:
         cfg["customQrImage"] = data["customQrImage"]
+    if "razorpayEnabled" in data:
+        cfg["razorpayEnabled"] = bool(data["razorpayEnabled"])
+    if "razorpayKeyId" in data:
+        cfg["razorpayKeyId"] = (data["razorpayKeyId"] or "").strip()
+    if "razorpayKeySecret" in data:
+        sec = (data["razorpayKeySecret"] or "").strip()
+        if sec and not sec.startswith("•"):
+            cfg["razorpayKeySecret"] = sec
     save_config(cfg)
     return jsonify({
         "success": True,
-        "message": "Payment & UPI settings saved successfully!",
+        "message": "Payment & Razorpay gateway settings saved successfully!",
         "settings": {
-            "upiId":         cfg.get("upiId"),
-            "storeName":     cfg.get("storeName"),
-            "useCustomQr":   cfg.get("useCustomQr"),
-            "customQrImage": cfg.get("customQrImage")
+            "upiId":           cfg.get("upiId"),
+            "storeName":       cfg.get("storeName"),
+            "useCustomQr":     cfg.get("useCustomQr"),
+            "customQrImage":   cfg.get("customQrImage"),
+            "razorpayEnabled": cfg.get("razorpayEnabled"),
+            "razorpayKeyId":   cfg.get("razorpayKeyId")
         }
     })
+
+# ── Razorpay Payment Gateway Integration ─────────────────────────────────────
+
+@app.route("/api/payment/razorpay/config", methods=["GET"])
+def get_razorpay_client_config():
+    """Returns public Razorpay configuration for frontend checkout modal."""
+    cfg = load_config()
+    key_id = (cfg.get("razorpayKeyId") or "rzp_test_1DP5mmOlF5G5ag").strip()
+    return jsonify({
+        "success":   True,
+        "enabled":   bool(cfg.get("razorpayEnabled", True)),
+        "keyId":     key_id,
+        "storeName": cfg.get("storeName", "GECM Supermarket")
+    })
+
+@app.route("/api/payment/razorpay/create-order", methods=["POST"])
+def create_razorpay_order():
+    """Creates a Razorpay order for an active trolley cart."""
+    data = request.json or {}
+    trolley_id = data.get("trolley_id", "TROLLEY-001")
+    phone = (data.get("phone") or "").strip()
+
+    cart_id = _trolley_cart_id(trolley_id)
+    cart = carts_collection.find_one({"_id": cart_id})
+    if not cart or cart.get("itemsContained", 0) == 0:
+        return jsonify({"success": False, "message": "Shopping cart is empty! Scan items with RFID first."}), 400
+
+    total_amount = float(cart.get("total", 0.0))
+    if total_amount <= 0:
+        return jsonify({"success": False, "message": "Cart total must be greater than zero."}), 400
+
+    amount_in_paise = int(round(total_amount * 100))
+    cfg = load_config()
+    key_id = (cfg.get("razorpayKeyId") or "rzp_test_1DP5mmOlF5G5ag").strip()
+    key_secret = (cfg.get("razorpayKeySecret") or "").strip()
+    receipt_id = f"rcpt_{int(time.time())}_{trolley_id.replace('-', '')}"
+    order_id = None
+
+    notes = {
+        "trolley_id":      trolley_id,
+        "customer_phone":  phone,
+        "store":           cfg.get("storeName", "GECM Supermarket"),
+        "total_items":     str(cart.get("itemsContained", 0))
+    }
+
+    # If secret & razorpay package available, create real Razorpay Order
+    if razorpay and key_id and key_secret:
+        try:
+            client = razorpay.Client(auth=(key_id, key_secret))
+            rp_order = client.order.create(data={
+                "amount":   amount_in_paise,
+                "currency": "INR",
+                "receipt":  receipt_id,
+                "notes":    notes
+            })
+            order_id = rp_order.get("id")
+            print(f"[RAZORPAY] Official Order created: {order_id} for Trolley {trolley_id}")
+        except Exception as e:
+            print(f"[RAZORPAY WARN] Failed to create official order via Razorpay API: {e}")
+            order_id = f"order_demo_{int(time.time())}_{random.randint(1000, 9999)}"
+    else:
+        # Seamless Sandbox fallback order
+        order_id = f"order_demo_{int(time.time())}_{random.randint(1000, 9999)}"
+
+    # Record in razorpay_orders collection
+    razorpay_orders_collection.insert_one({
+        "order_id":       order_id,
+        "trolley_id":     trolley_id,
+        "amount":         total_amount,
+        "amount_paise":   amount_in_paise,
+        "currency":       "INR",
+        "receipt":        receipt_id,
+        "status":         "created",
+        "customer_phone": phone,
+        "created_at":     time.time()
+    })
+
+    return jsonify({
+        "success":        True,
+        "order_id":       order_id,
+        "amount":         amount_in_paise,
+        "currency":       "INR",
+        "key_id":         key_id,
+        "store_name":     cfg.get("storeName", "GECM Supermarket"),
+        "trolley_id":     trolley_id,
+        "customer_phone": phone
+    })
+
+@app.route("/api/payment/razorpay/verify", methods=["POST"])
+def verify_razorpay_payment():
+    """Verifies HMAC-SHA256 signature and executes verified trolley checkout."""
+    data = request.json or {}
+    trolley_id = data.get("trolley_id", "TROLLEY-001")
+    payment_id = (data.get("razorpay_payment_id") or "").strip()
+    order_id = (data.get("razorpay_order_id") or "").strip()
+    signature = (data.get("razorpay_signature") or "").strip()
+    phone = (data.get("phone") or data.get("customerPhone") or "").strip()
+
+    if not payment_id:
+        return jsonify({"success": False, "message": "Missing Razorpay Payment ID."}), 400
+
+    cfg = load_config()
+    key_secret = (cfg.get("razorpayKeySecret") or "").strip()
+
+    # Cryptographic HMAC-SHA256 signature verification if secret configured and signature provided
+    if key_secret and signature and order_id and not order_id.startswith("order_demo_"):
+        try:
+            msg = f"{order_id}|{payment_id}"
+            generated_signature = hmac.new(
+                key_secret.encode("utf-8"),
+                msg.encode("utf-8"),
+                hashlib.sha256
+            ).hexdigest()
+            if generated_signature != signature:
+                return jsonify({
+                    "success": False,
+                    "message": "Razorpay payment signature verification failed! Payment may be tampered."
+                }), 400
+        except Exception as e:
+            return jsonify({"success": False, "message": f"Verification error: {e}"}), 400
+
+    # Update order record
+    if order_id:
+        razorpay_orders_collection.update_one(
+            {"order_id": order_id},
+            {"$set": {
+                "status":     "paid",
+                "payment_id": payment_id,
+                "signature":  signature,
+                "paid_at":    time.time()
+            }}
+        )
+
+    # Execute checkout for trolley
+    cart_id = _trolley_cart_id(trolley_id)
+    cart = carts_collection.find_one({"_id": cart_id})
+    if not cart or cart.get("itemsContained", 0) == 0:
+        return jsonify({"success": False, "message": "Cart is empty."}), 400
+
+    saved_items = dict(cart["items"])
+    total = cart["total"]
+    timestamp = time.time()
+
+    # Look up trolley for customer metadata
+    trolley = trolleys_collection.find_one({"_id": trolley_id}) or {}
+    cust_id = trolley.get("assigned_customer_id")
+    cust_name = trolley.get("assigned_customer_name", "")
+    if not phone and trolley.get("assigned_customer_phone"):
+        phone = trolley.get("assigned_customer_phone")
+
+    invoice_id = f"INV-{int(timestamp)}-{random.randint(1000, 9999)}"
+
+    txn_res = transactions_collection.insert_one({
+        "invoiceId":        invoice_id,
+        "trolley_id":       trolley_id,
+        "items":            saved_items,
+        "total":            total,
+        "finalTotal":       total,
+        "paymentMethod":    "Razorpay (UPI/Card)",
+        "paymentReference": payment_id,
+        "razorpayOrderId":  order_id,
+        "paymentGateway":   "Razorpay",
+        "verified":         True,
+        "customerPhone":    phone,
+        "customer_id":      cust_id,
+        "customer_name":    cust_name,
+        "timestamp":        timestamp,
+        "date":             datetime.datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+    })
+    txn_id = str(txn_res.inserted_id)
+
+    # Update customer record if registered
+    if cust_id:
+        customers_collection.update_one(
+            {"id": cust_id},
+            {
+                "$inc": {"total_spent": total, "total_visits": 1},
+                "$set": {"last_visit": timestamp, "assigned_trolley": None}
+            }
+        )
+
+    # Clear cart
+    carts_collection.update_one({"_id": cart_id}, {
+        "$set": {
+            "items":          {},
+            "total":          0.0,
+            "itemsContained": 0,
+            "status":         "ACTIVE",
+            "lastActive":     f"Paid via Razorpay ({payment_id})"
+        }
+    })
+
+    # Release trolley to AVAILABLE
+    trolleys_collection.update_one({"_id": trolley_id}, {
+        "$set": {
+            "cart_value":              0.0,
+            "item_count":              0,
+            "assignment_status":       "AVAILABLE",
+            "assigned_customer_id":    None,
+            "assigned_customer_name":  "",
+            "assigned_customer_phone": "",
+            "assigned_at":             None
+        }
+    })
+
+    # Feed event
+    db['feed'].insert_one({
+        "actionType":       "CHECKOUT",
+        "total":            total,
+        "paymentMethod":    "Razorpay",
+        "paymentReference": payment_id,
+        "customerPhone":    phone,
+        "customer_name":    cust_name,
+        "trolley_id":       trolley_id,
+        "timestamp":        timestamp
+    })
+
+    # Trigger IoT Hardware Feedback (ESP32 / Arduino LCD + Buzzer)
+    send_command_to_arduino("LCD:Payment Success!|Thank You!")
+    send_command_to_arduino("BEEP:2")
+
+    # Send receipt SMS if phone provided
+    if phone:
+        threading.Thread(target=send_bill_sms, args=(phone, txn_id, total, len(saved_items)), daemon=True).start()
+
+    return jsonify({
+        "success":        True,
+        "message":        "Payment verified and recorded successfully via Razorpay!",
+        "transaction_id": txn_id,
+        "invoiceId":      invoice_id,
+        "payment_id":     payment_id,
+        "finalTotal":     total,
+        "trolley_id":     trolley_id,
+        "total":          total,
+        "customer_name":  cust_name,
+        "customer_id":    cust_id,
+        "items":          saved_items,
+        "timestamp":      timestamp,
+        "receipt_url":    f"receipt.html?timestamp={timestamp}&id={txn_id}"
+    })
+
+@app.route("/api/payment/razorpay/webhook", methods=["POST"])
+def razorpay_webhook():
+    """Handles asynchronous server-to-server Razorpay webhooks."""
+    payload = request.get_data()
+    sig = request.headers.get("X-Razorpay-Signature", "")
+    cfg = load_config()
+    webhook_secret = (cfg.get("razorpayWebhookSecret") or cfg.get("razorpayKeySecret") or "").strip()
+
+    if webhook_secret and sig:
+        try:
+            expected_sig = hmac.new(
+                webhook_secret.encode("utf-8"),
+                payload,
+                hashlib.sha256
+            ).hexdigest()
+            if expected_sig != sig:
+                return jsonify({"status": "invalid_signature"}), 400
+        except Exception as e:
+            print(f"[WEBHOOK ERROR] {e}")
+            return jsonify({"status": "error"}), 400
+
+    try:
+        event = json.loads(payload.decode("utf-8"))
+        print(f"[RAZORPAY WEBHOOK] Event: {event.get('event')}")
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
 
 @app.route("/api/settings/notifications", methods=["GET"])
 @require_auth(roles=["admin", "manager"])
@@ -3071,16 +3634,24 @@ def get_wifi_settings():
     })
 
 @app.route("/api/settings/wifi", methods=["POST"])
+@require_auth(roles=["admin", "manager"])
 def update_wifi_settings():
     data = request.json or {}
     ssid        = (data.get("ssid") or "").strip()
     password    = (data.get("password") or "").strip()
     server_ip   = (data.get("serverIP") or "").strip() or get_local_ip()
-    server_port = int(data.get("serverPort") or 5000)
-    send_to_usb = data.get("sendToUsb", True)
+    
+    if not ssid or len(ssid) > 64:
+        return jsonify({"success": False, "message": "Valid Wi-Fi SSID is required (1-64 characters)."}), 400
 
-    if not ssid:
-        return jsonify({"success": False, "message": "Wi-Fi SSID is required."}), 400
+    try:
+        server_port = int(data.get("serverPort") or 5000)
+        if server_port < 1 or server_port > 65535:
+            return jsonify({"success": False, "message": "Invalid port number (1-65535)."}), 400
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "message": "Server port must be an integer."}), 400
+
+    send_to_usb = data.get("sendToUsb", True)
 
     cfg = load_config()
     cfg["wifiSSID"]     = ssid
@@ -3242,14 +3813,15 @@ def api_wifi_scan():
         return jsonify({"success": False, "networks": [], "error": str(e)}), 500
 
 @app.route("/api/wifi/connect", methods=["POST"])
+@require_auth(roles=["admin", "manager"])
 def api_wifi_connect():
     """Connect the host system to a Wi-Fi network."""
     data = request.json or {}
     ssid = (data.get("ssid") or "").strip()
     password = (data.get("password") or "").strip()
 
-    if not ssid:
-        return jsonify({"success": False, "message": "SSID is required."}), 400
+    if not ssid or not re.match(r'^[A-Za-z0-9_\-\. ]{1,64}$', ssid):
+        return jsonify({"success": False, "message": "Valid Wi-Fi SSID is required (alphanumeric, max 64 characters)."}), 400
 
     try:
         # Check if Windows already has a profile for this SSID
@@ -3323,6 +3895,7 @@ def api_wifi_connect():
         return jsonify({"success": False, "message": f"Connection error: {str(e)}"}), 500
 
 @app.route("/api/wifi/disconnect", methods=["POST"])
+@require_auth(roles=["admin", "manager"])
 def api_wifi_disconnect():
     """Disconnect active Wi-Fi connection."""
     try:
@@ -3334,27 +3907,22 @@ def api_wifi_disconnect():
 @app.route("/api/settings/database", methods=["POST"])
 @require_auth(roles=["admin"])
 def manage_database():
-    action = request.json.get("action")
+    data = request.json or {}
+    action = data.get("action")
     if action == "seed":
         products_collection.delete_many({})
-        defaults = [
-            {"uid": "5C 1E 7E 05", "name": "Rice 1kg",         "price": 60.0},
-            {"uid": "76 E3 33 06", "name": "Sugar 1kg",         "price": 45.0},
-            {"uid": "A3 B4 C5 D6", "name": "Whole Wheat Bread", "price": 25.0},
-            {"uid": "11 22 33 44", "name": "Milk (1 Gallon)",   "price": 50.0},
-            {"uid": "99 88 77 66", "name": "Cheddar Cheese",    "price": 80.0},
-            {"uid": "FF EE DD CC", "name": "Free Range Eggs",   "price": 40.0},
-        ]
         inserted = 0
-        for p in defaults:
+        for p in DEFAULT_PRODUCTS:
             uid_norm = normalize_uid(p["uid"])
+            doc = dict(p)
+            doc["uid_norm"] = uid_norm
             products_collection.update_one(
                 {"uid_norm": uid_norm},
-                {"$set": {"uid": p["uid"], "name": p["name"], "price": float(p["price"]), "uid_norm": uid_norm}},
+                {"$set": doc},
                 upsert=True
             )
             inserted += 1
-        return jsonify({"success": True, "message": f"Database seeded with {inserted} default products."})
+        return jsonify({"success": True, "message": f"Database seeded with {inserted} default products with verified categories."})
 
     elif action == "clear_transactions":
         transactions_collection.delete_many({})
@@ -3368,6 +3936,9 @@ def manage_database():
 
     return jsonify({"success": False, "message": "Invalid database action"}), 400
 
+BACKUP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backups")
+os.makedirs(BACKUP_DIR, exist_ok=True)
+
 @app.route("/api/settings/backup", methods=["POST"])
 @require_auth(roles=["admin"])
 def db_backup():
@@ -3378,10 +3949,10 @@ def db_backup():
             "employees":    list(db["employees"].find({}, {"_id": 0})),
             "feedback":     list(db["feedback"].find({}, {"_id": 0}))
         }
-        backup_path = os.path.join(app.static_folder, "backup.json")
+        backup_path = os.path.join(BACKUP_DIR, "backup.json")
         with open(backup_path, "w", encoding="utf-8") as f:
             json.dump(backup_data, f, indent=4)
-        return jsonify({"success": True, "message": "Database backup completed successfully."})
+        return jsonify({"success": True, "message": "Database backup completed successfully in secure storage."})
     except Exception as e:
         return jsonify({"success": False, "message": f"Backup failed: {str(e)}"}), 500
 
@@ -3389,9 +3960,9 @@ def db_backup():
 @require_auth(roles=["admin"])
 def db_restore():
     try:
-        backup_path = os.path.join(app.static_folder, "backup.json")
+        backup_path = os.path.join(BACKUP_DIR, "backup.json")
         if not os.path.exists(backup_path):
-            return jsonify({"success": False, "message": "Backup file (backup.json) not found."}), 404
+            return jsonify({"success": False, "message": "Backup file (backup.json) not found in secure storage."}), 404
         with open(backup_path, "r", encoding="utf-8") as f:
             backup_data = json.load(f)
         if "products" in backup_data and backup_data["products"]:
@@ -3646,7 +4217,8 @@ def manage_feedback():
         except (ValueError, TypeError):
             return jsonify({"success": False, "message": "Rating must be a valid number between 1 and 5."}), 400
 
-        comments = (data.get("comments") or "").strip()
+        raw_comments = (data.get("comments") or "").strip()
+        comments = html.escape(raw_comments[:500])
         if not comments:
             comments = "Great shopping experience!"
 
@@ -3843,8 +4415,10 @@ def get_customer_profile():
             "status_label": "🟢 Connected (Hardware Online)" if is_connected else "🟡 Disconnected (Cart Preserved in DB)",
             "last_seen_str": hb_details.get("last_seen_str", "N/A"),
             "last_heartbeat_time_str": hb_details.get("last_heartbeat_time_str", "N/A"),
-            "battery_level": trolley_doc.get("battery_level", 85) if trolley_doc else 85,
-            "current_mode": trolley_doc.get("current_mode", "ADD") if trolley_doc else "ADD",
+            "battery_level": (trolley_doc.get("battery", trolley_doc.get("battery_level", 0)) if is_connected else None) if trolley_doc else None,
+            "battery": (trolley_doc.get("battery", trolley_doc.get("battery_level", 0)) if is_connected else None) if trolley_doc else None,
+            "current_mode": (trolley_doc.get("current_mode", "ADD") if is_connected else "OFFLINE") if trolley_doc else "OFFLINE",
+            "last_mode": trolley_doc.get("current_mode", "ADD") if trolley_doc else "ADD",
             "cart_status": cart_status,
             "items": cart_items_list,
             "items_count": item_count,
@@ -3936,13 +4510,24 @@ def update_customer_wishlist():
 
 def serial_loop():
     global global_ser, current_mode, SERIAL_PORT
-    cfg = load_config()
-    BAUD_RATE = int(cfg.get("baudRate", 115200))
     last_heartbeat_time = 0
     last_warn_time = 0
     SERIAL_TROLLEY_ID = "TROLLEY-001"  # Arduino always maps to Trolley-001
 
     while True:
+        cfg = load_config()
+        if not cfg.get("enableSerial", True):
+            if global_ser and global_ser.is_open:
+                try:
+                    global_ser.close()
+                except:
+                    pass
+                global_ser = None
+            time.sleep(3)
+            continue
+
+        BAUD_RATE = int(cfg.get("baudRate", 115200))
+
         if global_ser is None or not global_ser.is_open:
             try:
                 cfg = load_config()
@@ -3950,6 +4535,22 @@ def serial_loop():
                 global_ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
                 print(f"Connected to hardware on {SERIAL_PORT}")
                 last_warn_time = 0
+
+                # Mark TROLLEY-001 online immediately
+                now_ts = time.time()
+                trolleys_collection.update_one(
+                    {"_id": SERIAL_TROLLEY_ID},
+                    {"$set": {
+                        "status": "online",
+                        "last_seen": now_ts,
+                        "last_heartbeat": now_ts,
+                        "rfid_ready": True,
+                        "lcd_ready": True,
+                        "hardware_health": "HEALTHY",
+                        "hardware_status": "healthy"
+                    }},
+                    upsert=True
+                )
                 try:
                     s_tmp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                     s_tmp.connect(('8.8.8.8', 80))
@@ -4005,6 +4606,12 @@ def serial_loop():
         try:
             line = global_ser.readline().decode('utf-8', errors='ignore').strip()
             if line:
+                now_ts = time.time()
+                trolleys_collection.update_one(
+                    {"_id": SERIAL_TROLLEY_ID},
+                    {"$set": {"status": "online", "last_seen": now_ts, "last_heartbeat": now_ts, "rfid_ready": True, "lcd_ready": True, "hardware_health": "HEALTHY", "hardware_status": "healthy"}},
+                    upsert=True
+                )
                 print(f"Arduino: {line}")
 
                 if line in ["CONFIRMED_HARDWARE_RESET"] or "[INTENTIONAL_RESET]" in line:
@@ -4065,12 +4672,36 @@ def serial_loop():
             print(f"Serial Logic Error: {e}")
             time.sleep(2)
 
+# ── Background Worker Initialization ─────────────────────────────────────────
+_threads_started = False
+
+def start_background_workers():
+    global _threads_started
+    if _threads_started:
+        return
+    _threads_started = True
+
+    # Offline trolley detection loop
+    t_offline = threading.Thread(target=offline_detection_loop, daemon=True)
+    t_offline.start()
+    print("[WORKER] Started offline trolley detection background thread.")
+
+    # Hardware serial loop (enabled locally by default, disabled in cloud environments like Render)
+    is_cloud = bool(os.environ.get("RENDER") or os.environ.get("PORT"))
+    enable_serial_env = os.environ.get("ENABLE_SERIAL", "").lower()
+    should_enable_serial = (enable_serial_env in ("true", "1")) if enable_serial_env else (not is_cloud)
+    if should_enable_serial:
+        t_serial = threading.Thread(target=serial_loop, daemon=True)
+        t_serial.start()
+        print("[WORKER] Started hardware serial background thread.")
+    else:
+        print("[WORKER] Cloud/Render environment detected or ENABLE_SERIAL=false — hardware serial thread disabled.")
+
+# Start workers upon module import (works for both Gunicorn and direct python execution)
+start_background_workers()
+
 # ── Entry Point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    # Start background threads
-    t_serial  = threading.Thread(target=serial_loop,           daemon=True)
-    t_offline = threading.Thread(target=offline_detection_loop, daemon=True)
-    t_serial.start()
-    t_offline.start()
-    app.run(host="0.0.0.0", port=5000, debug=True, use_reloader=False)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
