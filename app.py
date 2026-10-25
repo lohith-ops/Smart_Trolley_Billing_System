@@ -31,7 +31,9 @@ except Exception as _rp_err:
     razorpay = None
     print(f"[RAZORPAY] Module load info: {_rp_err}")
 
-app = Flask(__name__, static_folder="web-dashboard", static_url_path="")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_FOLDER = os.path.join(BASE_DIR, "web-dashboard")
+app = Flask(__name__, static_folder=STATIC_FOLDER, static_url_path="")
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # Disable caching for static files
 CORS(app)
 
@@ -49,7 +51,7 @@ def add_header(response):
     return response
 
 # ── Configuration File Persistence ───────────────────────────────────────────
-CONFIG_FILE = "config.json"
+CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
 
 def load_config():
     defaults = {
