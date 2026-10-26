@@ -561,6 +561,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
 
+                const emailPattern = /^[a-zA-Z0-9_.+-]+@gmail\.com$/i;
+                if (email && !emailPattern.test(email)) {
+                    if (alertBox && alertText) {
+                        alertText.textContent = "Please enter a valid email address in the form of example@gmail.com.";
+                        alertBox.style.display = 'block';
+                    }
+                    return;
+                }
+
                 try {
                     const regRes = await fetch('/api/customers', {
                         method: 'POST',

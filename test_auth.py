@@ -80,7 +80,7 @@ def run_tests():
         "password": "pass123456",
         "name": "Alex Smith",
         "role": "cashier",
-        "email": "alex@smarttrolley.local"
+        "email": "alex@gmail.com"
     }, headers={"Authorization": f"Bearer {admin_token}"})
     assert res.status_code == 200, f"Expected 200, got {res.status_code}: {res.data}"
     print("[PASS] New user registered successfully by Admin.")
@@ -93,13 +93,25 @@ def run_tests():
     assert new_user_data["user"]["name"] == "Alex Smith"
     print("[PASS] Newly registered user authenticated successfully.")
 
-    # 10. Test Public Customer Self-Registration (/api/auth/signup)
+    # 10. Test Public Customer Self-Registration (/api/auth/signup) with @gmail.com
     print("\n[TEST 10] Testing Public Customer Self-Registration (/api/auth/signup)...")
+    # Verify non-gmail email is rejected
+    res_bad = client.post("/api/auth/signup", json={
+        "username": "customer_bad_email",
+        "password": "custpassword123",
+        "name": "Bad Email User",
+        "email": "user@yahoo.com",
+        "phone": "9876543210"
+    })
+    assert res_bad.status_code == 400
+    assert "example@gmail.com" in res_bad.get_json().get("message", "")
+    print("[PASS] Non-gmail address successfully rejected.")
+
     res = client.post("/api/auth/signup", json={
         "username": "customer_jane",
         "password": "custpassword123",
         "name": "Jane Doe",
-        "email": "jane@example.com",
+        "email": "jane@gmail.com",
         "phone": "9876543210"
     })
     assert res.status_code == 200, f"Expected 200, got {res.status_code}: {res.data}"
@@ -247,7 +259,7 @@ def run_tests():
     res = client.post("/api/employees", json={
         "id": "E999",
         "name": "Test Employee",
-        "email": "test.employee@smarttrolley.com",
+        "email": "test.employee@gmail.com",
         "role": "Cashier",
         "shift": "Morning (08:00 AM - 04:00 PM)",
         "status": "Active"
@@ -258,19 +270,19 @@ def run_tests():
     assert res_list.status_code == 200
     emp_record = next((e for e in res_list.get_json() if e["id"] == "E999"), None)
     assert emp_record is not None
-    assert emp_record.get("email") == "test.employee@smarttrolley.com"
+    assert emp_record.get("email") == "test.employee@gmail.com"
     print("[PASS] Employee created with registered email successfully.")
 
     # 26. Test Changing Employee Email (/api/employees/<emp_id>/email)
     print("\n[TEST 26] Testing Changing Employee Email via Dedicated Endpoint...")
-    res = client.put("/api/employees/E999/email", json={"email": "new.test.email@smarttrolley.com"}, headers={"Authorization": f"Bearer {admin_token}"})
+    res = client.put("/api/employees/E999/email", json={"email": "new.test.email@gmail.com"}, headers={"Authorization": f"Bearer {admin_token}"})
     assert res.status_code == 200
     assert res.get_json().get("success") is True
     # Verify employee record has updated email
     res_list = client.get("/api/employees")
     emp_record = next((e for e in res_list.get_json() if e["id"] == "E999"), None)
     assert emp_record is not None
-    assert emp_record.get("email") == "new.test.email@smarttrolley.com"
+    assert emp_record.get("email") == "new.test.email@gmail.com"
     print("[PASS] Employee email changed and verified successfully.")
 
     # 27. Test Updating Employee Email via /api/employees Edit POST
@@ -278,7 +290,7 @@ def run_tests():
     res = client.post("/api/employees", json={
         "id": "E999",
         "name": "Test Employee Renamed",
-        "email": "updated.employee@smarttrolley.com",
+        "email": "updated.employee@gmail.com",
         "role": "Cashier",
         "shift": "Evening (04:00 PM - 12:00 AM)",
         "status": "Active"
@@ -287,7 +299,7 @@ def run_tests():
     res_list = client.get("/api/employees")
     emp_record = next((e for e in res_list.get_json() if e["id"] == "E999"), None)
     assert emp_record is not None
-    assert emp_record.get("email") == "updated.employee@smarttrolley.com"
+    assert emp_record.get("email") == "updated.employee@gmail.com"
     print("[PASS] Employee email updated via roster edit successfully.")
 
     # 28. Test Guest Session Generation (/api/auth/guest)
@@ -358,7 +370,7 @@ def run_tests():
         "id": "CUST-DEL-TEST",
         "name": "Delete Target Customer",
         "phone": "9876500001",
-        "email": "deltarget@example.com"
+        "email": "deltarget@gmail.com"
     })
     assert res.status_code == 201
     # Verify in list
@@ -378,7 +390,7 @@ def run_tests():
     res = client.post("/api/auth/signup", json={
         "name": "Self Delete Customer",
         "username": "selfdelcust",
-        "email": "selfdel@example.com",
+        "email": "selfdel@gmail.com",
         "phone": "9876500002",
         "password": "password123"
     })
@@ -397,13 +409,13 @@ def run_tests():
     res = client.post("/api/auth/signup", json={
         "name": "Email OTP Customer",
         "username": "emailotpcust",
-        "email": "emailotp@example.com",
+        "email": "emailotp@gmail.com",
         "phone": "9876500003",
         "password": "password123"
     })
     assert res.status_code == 200
     # Request forgot password by registered email
-    res = client.post("/api/auth/forgot-password/request", json={"identifier": "emailotp@example.com"})
+    res = client.post("/api/auth/forgot-password/request", json={"identifier": "emailotp@gmail.com"})
     assert res.status_code == 200
     fp_res = res.get_json()
     assert fp_res.get("success") is True

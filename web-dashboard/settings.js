@@ -301,7 +301,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (els.storeNameInput) els.storeNameInput.value = data.storeName || 'Smart Supermarket';
                 if (els.upiIdInput) els.upiIdInput.value = data.upiId || 'smartsupermarket@okaxis';
                 
-                if (data.useCustomQr) {
+                if (data.useCustomQr && data.customQrImage) {
                     if (els.qrModeCustom) els.qrModeCustom.checked = true;
                 } else {
                     if (els.qrModeDynamic) els.qrModeDynamic.checked = true;
@@ -313,6 +313,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (els.qrPreviewContainer) els.qrPreviewContainer.style.display = 'flex';
                     if (els.removeQrBtn) els.removeQrBtn.style.display = 'inline-flex';
                     if (els.qrPreviewFilename) els.qrPreviewFilename.textContent = "Uploaded Standee QR Image";
+                } else {
+                    currentQrBase64 = "";
+                    if (els.qrFileInput) els.qrFileInput.value = "";
+                    if (els.qrPreviewImg) els.qrPreviewImg.src = "";
+                    if (els.qrPreviewContainer) els.qrPreviewContainer.style.display = 'none';
+                    if (els.removeQrBtn) els.removeQrBtn.style.display = 'none';
                 }
 
                 if (els.razorpayEnableToggle) {
@@ -376,14 +382,37 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (els.removeQrBtn) {
-            els.removeQrBtn.addEventListener('click', () => {
+            els.removeQrBtn.addEventListener('click', async () => {
                 currentQrBase64 = "";
                 if (els.qrFileInput) els.qrFileInput.value = "";
                 if (els.qrPreviewImg) els.qrPreviewImg.src = "";
                 if (els.qrPreviewContainer) els.qrPreviewContainer.style.display = 'none';
                 els.removeQrBtn.style.display = 'none';
                 if (els.qrModeDynamic) els.qrModeDynamic.checked = true;
-                if (window.showToast) window.showToast('QR Removed', 'Custom QR image cleared. Switched to Dynamic Amount QR.', 'info');
+
+                // Auto-save the removal immediately to the backend
+                try {
+                    const token = (typeof getAuthToken === 'function') ? getAuthToken() : localStorage.getItem('smart_trolley_jwt_token');
+                    const headers = { 'Content-Type': 'application/json' };
+                    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+                    const res = await fetch('/api/settings/payment', {
+                        method: 'POST',
+                        headers: headers,
+                        body: JSON.stringify({
+                            useCustomQr: false,
+                            customQrImage: ""
+                        })
+                    });
+                    if (res.ok) {
+                        if (window.showToast) window.showToast('QR Removed', 'Custom QR image permanently removed and switched to Dynamic Amount QR.', 'success');
+                    } else {
+                        if (window.showToast) window.showToast('QR Removed Locally', 'Custom QR image cleared. Click Save Payment Configuration to persist.', 'info');
+                    }
+                } catch (e) {
+                    console.error('Failed to auto-save QR removal:', e);
+                    if (window.showToast) window.showToast('QR Removed Locally', 'Custom QR image cleared. Click Save Payment Configuration to persist.', 'info');
+                }
             });
         }
     }
@@ -412,7 +441,7 @@ document.addEventListener('DOMContentLoaded', () => {
             storeName:         els.storeNameInput ? els.storeNameInput.value.trim() : 'Smart Supermarket',
             upiId:             els.upiIdInput ? els.upiIdInput.value.trim() : 'smartsupermarket@okaxis',
             useCustomQr:       useCustomQr,
-            customQrImage:     currentQrBase64,
+            customQrImage:     useCustomQr ? currentQrBase64 : "",
             razorpayEnabled:   els.razorpayEnableToggle ? els.razorpayEnableToggle.checked : true,
             razorpayKeyId:     els.razorpayKeyIdInput ? els.razorpayKeyIdInput.value.trim() : '',
             razorpayKeySecret: els.razorpayKeySecretInput ? els.razorpayKeySecretInput.value.trim() : ''

@@ -1003,6 +1003,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 const email = document.getElementById('reg-cust-email').value.trim();
                 const custId = document.getElementById('reg-cust-id').value.trim();
 
+                const emailPattern = /^[a-zA-Z0-9_.+-]+@gmail\.com$/i;
+                if (email && !emailPattern.test(email)) {
+                    alert("Please enter a valid email address in the form of example@gmail.com.");
+                    const emailInput = document.getElementById('reg-cust-email');
+                    if (emailInput) emailInput.focus();
+                    return;
+                }
+
                 try {
                     const res = await fetch('/api/customers', {
                         method: 'POST',

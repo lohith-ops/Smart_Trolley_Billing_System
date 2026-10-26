@@ -606,8 +606,15 @@ void setup() {
   preferences.end();
   updateApiEndpoints();
 
-  // Check if RESET button is held down at startup (to force Config Portal)
-  bool buttonPressed = (digitalRead(RESET_BTN) == LOW);
+  // Check if RESET button is intentionally held down at startup (to force Config Portal)
+  // Verify with a 200ms debounce to reject floating/disconnected pin noise
+  bool buttonPressed = false;
+  if (digitalRead(RESET_BTN) == LOW) {
+    delay(200);
+    if (digitalRead(RESET_BTN) == LOW) {
+      buttonPressed = true;
+    }
+  }
 
   // If RESET button is held, clear cached Wi-Fi to force setup portal
   if (buttonPressed) {
@@ -825,8 +832,17 @@ void loop() {
   // RESET Button: Require intentional 2.5s continuous press to prevent brownouts/glitches from wiping cart
   static unsigned long resetPressStartTime = 0;
   static bool resetHeldTriggered = false;
+  static bool initialResetReleaseDone = false;
 
-  if (now > 4000 && resetActive) {
+  // Make sure the button is detected unpressed (idle HIGH) at least once after boot.
+  // This completely prevents a floating/disconnected pin from wiping the cart!
+  if (!initialResetReleaseDone) {
+    if (!resetActive) {
+      initialResetReleaseDone = true;
+    }
+  }
+
+  if (initialResetReleaseDone && now > 4000 && resetActive) {
     if (resetPressStartTime == 0) {
       resetPressStartTime = now;
       resetHeldTriggered = false;

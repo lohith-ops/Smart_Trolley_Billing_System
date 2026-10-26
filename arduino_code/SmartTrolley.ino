@@ -179,8 +179,17 @@ void loop() {
   // RESET Button Pressed (Requires intentional 2.5s continuous hold to prevent disconnect/reboot cart wiping)
   static unsigned long resetPressStartTime = 0;
   static bool resetHeldTriggered = false;
+  static bool initialReleaseDone = false;
 
-  if (now > 4000 && resetActive) {
+  // Make sure the button is detected unpressed (idle) at least once after boot.
+  // This completely prevents a floating/disconnected wire from wiping the cart!
+  if (!initialReleaseDone) {
+    if (!resetActive) {
+      initialReleaseDone = true;
+    }
+  }
+
+  if (initialReleaseDone && now > 4000 && resetActive) {
     if (resetPressStartTime == 0) {
       resetPressStartTime = now;
       resetHeldTriggered = false;

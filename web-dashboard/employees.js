@@ -280,6 +280,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const empId = els.changeEmailEmpId.value;
             const newEmail = els.changeEmailNewEmail.value.trim();
 
+            const emailPattern = /^[a-zA-Z0-9_.+-]+@gmail\.com$/i;
+            if (newEmail && !emailPattern.test(newEmail)) {
+                alert("Please enter a valid email address in the form of example@gmail.com.");
+                if (els.changeEmailNewEmail) els.changeEmailNewEmail.focus();
+                return;
+            }
+
             try {
                 const res = await fetch(`/api/employees/${encodeURIComponent(empId)}/email`, {
                     method: 'PUT',
@@ -350,6 +357,13 @@ document.addEventListener('DOMContentLoaded', () => {
             status: els.empStatus.value,
             password: els.empPassword ? els.empPassword.value.trim() : ''
         };
+
+        const emailPattern = /^[a-zA-Z0-9_.+-]+@gmail\.com$/i;
+        if (payload.email && !emailPattern.test(payload.email)) {
+            alert("Please enter a valid email address in the form of example@gmail.com.");
+            if (els.empEmail) els.empEmail.focus();
+            return;
+        }
 
         try {
             const res = await fetch('/api/employees', {
@@ -531,7 +545,7 @@ document.addEventListener('DOMContentLoaded', () => {
             card.style.alignItems = 'stretch';
             card.style.gap = '14px';
 
-            const cId = cust.id || cust.customer_id || 'CUST';
+            const cId = cust.id || cust.customer_id || cust.username || (cust._id ? String(cust._id) : '') || 'CUST';
             const initials = (cust.name || 'Customer').split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
             const trolleyLabel = cust.assigned_trolley ? 
                 `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 0.75rem; padding: 2px 8px; border-radius: 6px;"><i class="fa-solid fa-cart-shopping"></i> ${cust.assigned_trolley}</span>` : 
@@ -578,8 +592,10 @@ document.addEventListener('DOMContentLoaded', () => {
             // Bind Delete button
             const deleteBtn = card.querySelector('.btn-cust-delete');
             if (deleteBtn) {
-                deleteBtn.addEventListener('click', () => {
-                    openDeleteCustomerModal(cId, cust.name);
+                deleteBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openDeleteCustomerModal(cId, cust.name || cId);
                 });
             }
 
@@ -593,13 +609,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (els.deleteCustNameLabel) els.deleteCustNameLabel.textContent = name;
         if (els.deleteCustIdLabel) els.deleteCustIdLabel.textContent = id;
-        if (els.deleteCustModal) els.deleteCustModal.style.display = 'flex';
+        if (els.deleteCustModal) {
+            els.deleteCustModal.classList.add('active');
+            els.deleteCustModal.style.display = 'flex';
+        }
     }
 
     function closeDeleteCustomerModal() {
         pendingDeleteCustomerId = null;
         pendingDeleteCustomerName = null;
-        if (els.deleteCustModal) els.deleteCustModal.style.display = 'none';
+        if (els.deleteCustModal) {
+            els.deleteCustModal.classList.remove('active');
+            els.deleteCustModal.style.display = 'none';
+        }
     }
 
     async function confirmDeleteCustomer() {
@@ -614,9 +636,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const fetchFn = window.authFetch || fetch;
-            const res = await fetchFn(`/api/customers/${encodeURIComponent(idToDelete)}`, {
+            const res = await fetchFn(`/api/customers/${encodeURIComponent(idToDelete)}?id=${encodeURIComponent(idToDelete)}`, {
                 method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: idToDelete, customer_id: idToDelete })
             });
             
             let data = null;
@@ -652,12 +675,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function openAddCustomerModal() {
         if (els.addCustForm) els.addCustForm.reset();
-        if (els.addCustModal) els.addCustModal.style.display = 'flex';
+        if (els.addCustModal) {
+            els.addCustModal.classList.add('active');
+            els.addCustModal.style.display = 'flex';
+        }
         if (els.addCustName) els.addCustName.focus();
     }
 
     function closeAddCustomerModal() {
-        if (els.addCustModal) els.addCustModal.style.display = 'none';
+        if (els.addCustModal) {
+            els.addCustModal.classList.remove('active');
+            els.addCustModal.style.display = 'none';
+        }
     }
 
     async function handleAddCustomerSubmit(e) {
@@ -669,6 +698,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!name || !phone) {
             alert("Name and 10-digit mobile number are required.");
+            return;
+        }
+
+        const emailPattern = /^[a-zA-Z0-9_.+-]+@gmail\.com$/i;
+        if (email && !emailPattern.test(email)) {
+            alert("Please enter a valid email address in the form of example@gmail.com.");
+            if (els.addCustEmail) els.addCustEmail.focus();
             return;
         }
 

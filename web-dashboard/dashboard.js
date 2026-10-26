@@ -730,7 +730,7 @@ async function setSimulatorMode(mode) {
 }
 
 // Reset cart API call — clears all active cart items
-async function resetCart(trolleyId) {
+async function resetCart(trolleyId, isSim = false) {
     const targetTrolley = (typeof trolleyId === 'string' && trolleyId) ? trolleyId : (els.simTrolleySelect ? els.simTrolleySelect.value : 'TROLLEY-001');
     if (!confirm(`Reset the cart for ${targetTrolley}? All scanned items will be removed.`)) return;
 
@@ -742,7 +742,7 @@ async function resetCart(trolleyId) {
         const res = await fetch('/api/reset', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ trolley_id: targetTrolley })
+            body: JSON.stringify({ trolley_id: targetTrolley, simulator: isSim })
         });
         const data = await res.json();
         if (data.success) {
@@ -751,7 +751,8 @@ async function resetCart(trolleyId) {
             triggerBuzzerFeedback(2);
             if (window.showToast) window.showToast("Cart Reset", `All items cleared from ${targetTrolley}.`, "info");
         } else {
-            if (window.showToast) window.showToast("Reset Failed", data.message || "Could not reset cart.", "error");
+            if (window.showToast) window.showToast("Reset Blocked", data.message || "Trolley must be connected to reset cart.", "warning");
+            else alert(data.message || "Trolley must be connected to reset cart.");
         }
     } catch (e) {
         console.error('Reset error:', e);
@@ -830,10 +831,13 @@ function showBillingModal(billData) {
     if (itemsListContainer) {
         const entries = Object.values(billData.items);
         if (entries.length > 0) {
-            itemsListContainer.innerHTML = entries.map(item => `
-                <div style="display:flex; justify-content:space-between; font-size:0.9rem; border-bottom:1px solid rgba(255,255,255,0.03); padding-bottom:4px; width:100%;">
-                    <span>${item.name} × ${item.quantity}</span>
-                    <span style="font-weight:600;">Rs.${item.subtotal.toFixed(2)}</span>
+            itemsListContainer.innerHTML = entries.map((item, idx) => `
+                <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.9rem; border-bottom:1px solid rgba(255,255,255,0.04); padding:6px 0; width:100%;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="color:#64748b; font-size:0.8rem; font-weight:600; min-width:22px;">#${idx + 1}</span>
+                        <span>${item.name} <small style="color:var(--text-secondary);">× ${item.quantity}</small></span>
+                    </div>
+                    <span style="font-weight:600; font-family:monospace;">Rs.${item.subtotal.toFixed(2)}</span>
                 </div>
             `).join('');
         } else {
@@ -859,7 +863,8 @@ function showBillingModal(billData) {
     const rzpTextEl = document.getElementById('btn-razorpay-text');
     if (rzpTextEl) rzpTextEl.textContent = `Pay Rs.${billData.total.toFixed(2)} with Razorpay`;
 
-    // Reset OTP section state
+    // Customer name and phone inputs
+    const nameInput = document.getElementById('checkout-customer-name');
     const phoneInput = document.getElementById('checkout-customer-phone');
     const otpVerifyRow = document.getElementById('checkout-otp-verify-row');
     const otpInput = document.getElementById('checkout-otp-input');
@@ -875,15 +880,33 @@ function showBillingModal(billData) {
     if (demoBanner) demoBanner.style.display = 'none';
     if (smsNotice) smsNotice.style.display = 'none';
 
-    // Auto-populate phone from logged-in customer if available
+    // Auto-populate customer name and phone from trolley assignment or auth user
+    let targetCustName = billData.customer_name || '';
+    let targetCustPhone = billData.customer_phone || billData.customerPhone || '';
+
+    const targetTrolleyId = billData.trolley_id || (els.simTrolleySelect ? els.simTrolleySelect.value : 'TROLLEY-001');
+    if (window.cachedTrolleys && Array.isArray(window.cachedTrolleys)) {
+        const foundT = window.cachedTrolleys.find(t => t._id === targetTrolleyId);
+        if (foundT) {
+            if (!targetCustName && foundT.assigned_customer_name) targetCustName = foundT.assigned_customer_name;
+            if (!targetCustPhone && foundT.assigned_customer_phone) targetCustPhone = foundT.assigned_customer_phone;
+        }
+    }
+
     try {
         const authUser = window.getAuthUser ? window.getAuthUser() : null;
-        if (phoneInput && authUser && authUser.phone) {
-            phoneInput.value = authUser.phone.replace(/\D/g, '').slice(-10);
+        if (!targetCustName && authUser && (authUser.name || authUser.username)) {
+            targetCustName = authUser.name || authUser.username;
+        }
+        if (!targetCustPhone && authUser && authUser.phone) {
+            targetCustPhone = authUser.phone.replace(/\D/g, '').slice(-10);
         }
     } catch (e) {
         console.warn('Could not auto-populate customer phone:', e);
     }
+
+    if (nameInput) nameInput.value = targetCustName;
+    if (phoneInput) phoneInput.value = targetCustPhone;
 
     // Show Modal
     if (els.receiptModal) els.receiptModal.classList.add('active');
@@ -932,6 +955,11 @@ function setupPaymentModalListeners() {
             document.querySelectorAll('.payment-stage').forEach(el => el.style.display = 'none');
             const stage2 = document.getElementById('payment-stage-2');
             if (stage2) stage2.style.display = 'block';
+
+            const nameInput = document.getElementById('checkout-customer-name');
+            const custName = (nameInput && nameInput.value.trim()) ? nameInput.value.trim() : 'Walk-in Customer';
+            const stage2CustEl = document.getElementById('payment-stage2-customer');
+            if (stage2CustEl) stage2CustEl.innerHTML = `<i class="fa-solid fa-user" style="color: var(--accent-cyan); margin-right: 4px;"></i> Customer: <strong>${custName}</strong>`;
 
             if (currentBill) {
                 const totalAmount = currentBill.total.toFixed(2);
@@ -1105,6 +1133,9 @@ function setupPaymentModalListeners() {
         btn.addEventListener('click', async () => {
             const method = btn.dataset.method;
             const targetTrolley = (currentBill && currentBill.trolley_id) ? currentBill.trolley_id : (els.simTrolleySelect ? els.simTrolleySelect.value : 'TROLLEY-001');
+            const nameInput = document.getElementById('checkout-customer-name');
+            const phoneInput = document.getElementById('checkout-customer-phone');
+            const custName = (nameInput && nameInput.value.trim()) ? nameInput.value.trim() : '';
             const phone = phoneInput ? phoneInput.value.trim() : '';
             const enteredOtp = otpInput ? otpInput.value.trim() : (verifiedOtpCode || '');
 
@@ -1115,7 +1146,13 @@ function setupPaymentModalListeners() {
             try {
                 // If OTP was requested and entered, call verify-and-pay endpoint
                 let url = '/api/cart/pay';
-                let payload = { paymentMethod: method, trolley_id: targetTrolley, phone: phone };
+                let payload = { 
+                    paymentMethod: method, 
+                    trolley_id: targetTrolley, 
+                    phone: phone,
+                    customer_name: custName,
+                    customerPhone: phone
+                };
 
                 if (enteredOtp && enteredOtp.length === 6) {
                     url = '/api/cart/verify-and-pay';
@@ -1224,6 +1261,10 @@ function setupPaymentModalListeners() {
                         },
                         handler: async function (response) {
                             rzpBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Verifying Payment Signature...`;
+                            const nameInput = document.getElementById('checkout-customer-name');
+                            const phoneInput = document.getElementById('checkout-customer-phone');
+                            const custName = (nameInput && nameInput.value.trim()) ? nameInput.value.trim() : '';
+                            const custPhone = phoneInput ? phoneInput.value.trim() : (phone || '');
                             try {
                                 const verifyRes = await fetch('/api/payment/razorpay/verify', {
                                     method: 'POST',
@@ -1233,7 +1274,9 @@ function setupPaymentModalListeners() {
                                         razorpay_payment_id: response.razorpay_payment_id,
                                         razorpay_order_id: response.razorpay_order_id || orderData.order_id,
                                         razorpay_signature: response.razorpay_signature || '',
-                                        phone: phone
+                                        phone: custPhone,
+                                        customer_name: custName,
+                                        customerPhone: custPhone
                                     })
                                 });
                                 const verifyData = await verifyRes.json();
@@ -1268,6 +1311,10 @@ function setupPaymentModalListeners() {
                     const demoPaymentId = `pay_test_${Math.floor(Date.now() / 1000)}${Math.floor(Math.random() * 900 + 100)}`;
                     const confirmPay = confirm(`Razorpay test checkout initialized.\n\nOrder ID: ${orderData.order_id}\nAmount: Rs.${(orderData.amount / 100).toFixed(2)}\n\nConfirm simulated test payment (${demoPaymentId})?`);
                     if (confirmPay) {
+                        const nameInput = document.getElementById('checkout-customer-name');
+                        const phoneInput = document.getElementById('checkout-customer-phone');
+                        const custName = (nameInput && nameInput.value.trim()) ? nameInput.value.trim() : '';
+                        const custPhone = phoneInput ? phoneInput.value.trim() : (phone || '');
                         const verifyRes = await fetch('/api/payment/razorpay/verify', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -1276,7 +1323,9 @@ function setupPaymentModalListeners() {
                                 razorpay_payment_id: demoPaymentId,
                                 razorpay_order_id: orderData.order_id,
                                 razorpay_signature: 'demo_sig',
-                                phone: phone
+                                phone: custPhone,
+                                customer_name: custName,
+                                customerPhone: custPhone
                             })
                         });
                         const verifyData = await verifyRes.json();
@@ -1582,6 +1631,15 @@ async function handleCustomerAssignSubmit(e) {
         if (!name || !phone) {
             if (alertBox && alertText) {
                 alertText.textContent = "Customer Name and Mobile Number are required.";
+                alertBox.style.display = 'block';
+            }
+            return;
+        }
+
+        const emailPattern = /^[a-zA-Z0-9_.+-]+@gmail\.com$/i;
+        if (email && !emailPattern.test(email)) {
+            if (alertBox && alertText) {
+                alertText.textContent = "Please enter a valid email address in the form of example@gmail.com.";
                 alertBox.style.display = 'block';
             }
             return;

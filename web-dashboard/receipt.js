@@ -59,7 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const txs = await res.json();
                 if (txs && txs.length > 0) {
                     if (txId) {
-                        transaction = txs.find(t => t.transaction_id === txId || t._id === txId);
+                        transaction = txs.find(t => t.invoiceId === txId || t.transaction_id === txId || t._id === txId);
                     }
                     if (!transaction && !isNaN(timestamp)) {
                         transaction = txs.find(t => Math.abs(t.timestamp - timestamp) < 3.0);
@@ -77,9 +77,11 @@ document.addEventListener('DOMContentLoaded', () => {
         // Fallback to mock invoice if not found and no transactions exist in DB
         if (!transaction) {
             transaction = {
+                invoiceId: `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-0001`,
                 timestamp: Date.now() / 1000,
                 total: 60.00,
                 paymentMethod: "UPI",
+                customer_name: "Walk-in Customer",
                 trolley_id: "TROLLEY-001",
                 items: {
                     "5C1E7E05": { name: "Rice 1kg", price: 60.00, quantity: 1, subtotal: 60.00 }
@@ -94,14 +96,27 @@ document.addEventListener('DOMContentLoaded', () => {
         const date = new Date(transaction.timestamp * 1000);
         const dateString = date.toLocaleString();
         
-        // Construct transaction/invoice hash ID based on timestamp
-        const txHash = `TXN-${Math.floor(transaction.timestamp)}`;
+        // Proper serial number e.g. INV-20261027-0001
+        const txHash = transaction.invoiceId || transaction.invoice_id || `INV-${Math.floor(transaction.timestamp)}`;
         
         if (els.storeName) els.storeName.textContent = currentStoreName;
         if (els.invoiceNo) els.invoiceNo.textContent = txHash;
         if (els.invoiceDate) els.invoiceDate.textContent = dateString;
+        
+        // Proper Customer Name & Contact display
+        const custName = (transaction.customer_name || transaction.customerName || '').trim();
+        const custPhone = (transaction.customerPhone || transaction.phone || '').trim();
+        
         if (els.invoiceCustomer) {
-            els.invoiceCustomer.textContent = transaction.customerPhone ? `+91 ${transaction.customerPhone}` : 'Walk-in Customer';
+            if (custName && custPhone) {
+                els.invoiceCustomer.textContent = `${custName} (+91 ${custPhone})`;
+            } else if (custName) {
+                els.invoiceCustomer.textContent = custName;
+            } else if (custPhone) {
+                els.invoiceCustomer.textContent = `Customer (+91 ${custPhone})`;
+            } else {
+                els.invoiceCustomer.textContent = 'Walk-in Customer';
+            }
         }
         if (els.invoiceTrolley) {
             els.invoiceTrolley.textContent = transaction.trolley_id ? transaction.trolley_id.replace('TROLLEY-00', 'Trolley #').replace('TROLLEY-', 'Trolley #') : 'Trolley #001';
@@ -144,16 +159,17 @@ document.addEventListener('DOMContentLoaded', () => {
             els.qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${txHash}`;
         }
 
-        // Render rows
+        // Render rows with proper SL. NO.
         if (els.itemsBody) {
             els.itemsBody.innerHTML = '';
-            itemsList.forEach(item => {
+            itemsList.forEach((item, index) => {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td>${item.name}</td>
-                    <td style="text-align: right;">Rs.${item.price.toFixed(2)}</td>
-                    <td style="text-align: center;">${item.quantity}</td>
-                    <td style="text-align: right; font-weight: bold;">Rs.${item.subtotal.toFixed(2)}</td>
+                    <td style="text-align: center; color: #555; font-size: 0.85rem; font-weight: 600;">${index + 1}</td>
+                    <td><strong>${item.name}</strong></td>
+                    <td style="text-align: right;">Rs.${Number(item.price).toFixed(2)}</td>
+                    <td style="text-align: center; font-weight: 500;">${item.quantity}</td>
+                    <td style="text-align: right; font-weight: bold;">Rs.${Number(item.subtotal).toFixed(2)}</td>
                 `;
                 els.itemsBody.appendChild(tr);
             });
@@ -177,7 +193,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 format: [80, 220] // thermal receipt paper aspect
             });
 
-            const txHash = `TXN-${Math.floor(transaction.timestamp)}`;
+            const txHash = transaction.invoiceId || transaction.invoice_id || `INV-${Math.floor(transaction.timestamp)}`;
 
             doc.setFont("courier", "bold");
             doc.setFontSize(13);
@@ -189,26 +205,32 @@ document.addEventListener('DOMContentLoaded', () => {
             doc.text("SMART TROLLEY BILLING SYSTEM", 40, 23, { align: 'center' });
             
             doc.text("-------------------------------------", 40, 27, { align: 'center' });
-            doc.text(`INVOICE: ${txHash}`, 10, 32);
-            doc.text(`DATE   : ${new Date(transaction.timestamp * 1000).toLocaleString()}`, 10, 36);
-            const custInfo = transaction.customerPhone ? `+91 ${transaction.customerPhone}` : "Walk-in Customer";
-            doc.text(`CUSTOMER: ${custInfo}`, 10, 40);
+            doc.text(`INVOICE : ${txHash}`, 10, 32);
+            doc.text(`DATE    : ${new Date(transaction.timestamp * 1000).toLocaleString()}`, 10, 36);
+            const custName = (transaction.customer_name || transaction.customerName || '').trim();
+            const custPhone = (transaction.customerPhone || transaction.phone || '').trim();
+            let custInfo = 'Walk-in Customer';
+            if (custName && custPhone) custInfo = `${custName} (+91 ${custPhone})`;
+            else if (custName) custInfo = custName;
+            else if (custPhone) custInfo = `+91 ${custPhone}`;
+            doc.text(`CUSTOMER: ${custInfo.substring(0, 24)}`, 10, 40);
             const trolleyInfo = transaction.trolley_id ? transaction.trolley_id.replace('TROLLEY-00', 'Trolley #').replace('TROLLEY-', 'Trolley #') : 'Trolley #001';
             doc.text(`TROLLEY : ${trolleyInfo}`, 10, 44);
             doc.text(`PAYMENT : ${(transaction.paymentMethod || 'UPI').toUpperCase()}`, 10, 48);
             doc.text("-------------------------------------", 40, 52, { align: 'center' });
 
-            // Table headers
-            doc.text("ITEM         PRICE   QTY   TOTAL", 10, 57);
+            // Table headers with SL NO
+            doc.text("SL ITEM        PRICE   QTY   TOTAL", 10, 57);
             let y = 62;
 
             const itemsList = Object.values(transaction.items);
-            itemsList.forEach(item => {
-                const name = item.name.substring(0, 10).padEnd(12, ' ');
-                const price = item.price.toFixed(0).padStart(5, ' ');
+            itemsList.forEach((item, index) => {
+                const sl = (index + 1).toString().padEnd(3, ' ');
+                const name = item.name.substring(0, 11).padEnd(12, ' ');
+                const price = Number(item.price).toFixed(0).padStart(5, ' ');
                 const qty = item.quantity.toString().padStart(3, ' ');
-                const sub = item.subtotal.toFixed(0).padStart(7, ' ');
-                doc.text(`${name}${price}${qty}${sub}`, 10, y);
+                const sub = Number(item.subtotal).toFixed(0).padStart(7, ' ');
+                doc.text(`${sl}${name}${price}${qty}${sub}`, 10, y);
                 y += 6;
             });
 

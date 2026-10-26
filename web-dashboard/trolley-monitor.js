@@ -507,7 +507,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     loadData();
                 } else {
                     const err = await res.json();
-                    alert(err.message || 'Failed to reset cart');
+                    if (window.showToast) window.showToast('Reset Blocked', err.message || 'Failed to reset cart', 'warning');
+                    else alert(err.message || 'Failed to reset cart');
                 }
             } catch (e) {
                 console.error('Reset failed:', e);

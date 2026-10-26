@@ -28,15 +28,15 @@
             <!-- Meta details -->
             <div class="receipt-line">
                 <strong>INVOICE NO:</strong>
-                <span id="invoice-no">TXN-000000</span>
+                <span id="invoice-no" style="font-weight: 700; font-family: monospace; letter-spacing: 0.5px;">INV-000000</span>
             </div>
             <div class="receipt-line">
                 <strong>DATE / TIME:</strong>
                 <span id="invoice-date">--/--/---- --:--:--</span>
             </div>
             <div class="receipt-line">
-                <strong>CUSTOMER:</strong>
-                <span id="invoice-customer">Walk-in Customer</span>
+                <strong>CUSTOMER NAME:</strong>
+                <span id="invoice-customer" style="font-weight: 600;">Walk-in Customer</span>
             </div>
             <div class="receipt-line">
                 <strong>TROLLEY ID:</strong>
@@ -45,18 +45,19 @@
 
             <div class="receipt-divider"></div>
 
-            <!-- Items Table -->
+            <!-- Items Table with Serial Number -->
             <table class="receipt-items-table">
                 <thead>
                     <tr>
-                        <th style="width: 50%;">ITEM</th>
-                        <th style="text-align: right;">PRICE</th>
-                        <th style="text-align: center;">QTY</th>
-                        <th style="text-align: right;">SUBTOTAL</th>
+                        <th style="width: 12%; text-align: center;">SL. NO.</th>
+                        <th style="width: 44%;">ITEM</th>
+                        <th style="width: 16%; text-align: right;">PRICE</th>
+                        <th style="width: 12%; text-align: center;">QTY</th>
+                        <th style="width: 16%; text-align: right;">SUBTOTAL</th>
                     </tr>
                 </thead>
                 <tbody id="invoice-items-body">
-                    <!-- Dynamic invoice rows -->
+                    <!-- Dynamic invoice rows with serial numbers -->
                 </tbody>
             </table>
 

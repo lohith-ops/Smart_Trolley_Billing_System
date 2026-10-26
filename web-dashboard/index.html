@@ -160,9 +160,21 @@
                 <h2 style="font-size: 1.6rem; font-weight: 700; margin-bottom: 4px;">Invoice Review</h2>
                 <p class="modal-sub" style="font-size: 0.95rem; margin-bottom: 18px;">Verify your scanned items and taxes before payment</p>
                 
-                <div class="receipt-items-container" style="max-height: 220px; overflow-y: auto; margin: 15px 0 18px 0; padding: 12px 14px; background: rgba(255,255,255,0.03); border-radius: 12px; border: 1px solid rgba(255,255,255,0.07);">
+                <div class="receipt-items-container" style="max-height: 220px; overflow-y: auto; margin: 15px 0 16px 0; padding: 12px 14px; background: rgba(255,255,255,0.03); border-radius: 12px; border: 1px solid rgba(255,255,255,0.07);">
                     <div id="billing-items-list" class="billing-items-list" style="display: flex; flex-direction: column; gap: 8px;">
                         <!-- Dynamic items -->
+                    </div>
+                </div>
+
+                <!-- Customer Details for Bill Generation -->
+                <div style="background: rgba(255,255,255,0.025); border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; display: flex; gap: 12px; flex-wrap: wrap;">
+                    <div style="flex: 1.2; min-width: 170px;">
+                        <label style="font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.6px; color: #94a3b8; display: block; margin-bottom: 5px; font-weight: 600;"><i class="fa-solid fa-user" style="color: var(--accent-cyan); margin-right: 4px;"></i> Customer Name</label>
+                        <input type="text" id="checkout-customer-name" placeholder="Walk-in Customer (or enter name)" class="form-input" style="width: 100%; box-sizing: border-box; padding: 8px 12px; font-size: 0.88rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; color: #fff;">
+                    </div>
+                    <div style="flex: 1; min-width: 150px;">
+                        <label style="font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.6px; color: #94a3b8; display: block; margin-bottom: 5px; font-weight: 600;"><i class="fa-solid fa-phone" style="color: #38bdf8; margin-right: 4px;"></i> Mobile Number</label>
+                        <input type="tel" id="checkout-customer-phone" placeholder="10-digit mobile" maxlength="10" class="form-input" style="width: 100%; box-sizing: border-box; padding: 8px 12px; font-size: 0.88rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; color: #fff;">
                     </div>
                 </div>
 
@@ -210,6 +222,7 @@
                     <div style="text-align: left;">
                         <span style="font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.8px; color: #94a3b8; display: block; font-weight: 600;">Total Payable Amount</span>
                         <span id="payment-stage2-trolley" style="font-size: 0.86rem; color: #38bdf8; font-weight: 500;"><i class="fa-solid fa-cart-shopping"></i> Trolley: <strong>TROLLEY-001</strong></span>
+                        <span id="payment-stage2-customer" style="font-size: 0.82rem; color: #cbd5e1; display: block; margin-top: 3px;"><i class="fa-solid fa-user" style="color: var(--accent-cyan); margin-right: 4px;"></i> Customer: <strong>Walk-in Customer</strong></span>
                     </div>
                     <div id="payment-stage2-amount" style="font-size: 2rem; font-weight: 800; color: #10b981; font-family: monospace; letter-spacing: -0.5px; text-shadow: 0 2px 10px rgba(16, 185, 129, 0.3);">Rs.0.00</div>
                 </div>
@@ -408,7 +421,7 @@
                     </div>
                     <div class="form-group">
                         <label>Email Address (Optional)</label>
-                        <input type="email" id="modal-new-cust-email" placeholder="e.g. ramesh@example.com" class="form-input">
+                        <input type="email" id="modal-new-cust-email" placeholder="e.g. customer@gmail.com" class="form-input" pattern="^[a-zA-Z0-9_.+-]+@gmail\.com$" title="Must be a valid Gmail address in the form of example@gmail.com">
                     </div>
                     <div class="form-group">
                         <label>Customer ID (Optional - Auto-generated if blank)</label>

@@ -624,8 +624,15 @@ void setup() {
     delay(2000);
   }
 
-  // 3. Check if RESET button is held down at startup (to force Config Portal)
-  bool buttonPressed = (digitalRead(RESET_BTN) == LOW);
+  // 3. Check if RESET button is intentionally held down at startup (to force Config Portal)
+  // Verify with a 200ms debounce to reject floating/disconnected pin noise
+  bool buttonPressed = false;
+  if (digitalRead(RESET_BTN) == LOW) {
+    delay(200);
+    if (digitalRead(RESET_BTN) == LOW) {
+      buttonPressed = true;
+    }
+  }
 
   // If RESET button is held, clear cached Wi-Fi to force setup portal
   if (buttonPressed) {
@@ -873,17 +880,26 @@ void loop() {
     syncModeWithServer("REMOVE");
   }
 
-  // RESET Button: Require intentional 1.5s continuous press to prevent brownouts/glitches from wiping cart
+  // RESET Button: Require intentional 2.5s continuous press to prevent brownouts/glitches from wiping cart
   static unsigned long resetPressStartTime = 0;
   static bool resetHeldTriggered = false;
+  static bool initialResetReleaseDone = false;
 
-  if (resetActive) {
+  // Make sure the button is detected unpressed (idle HIGH) at least once after boot.
+  // This completely prevents a floating/disconnected pin from wiping the cart!
+  if (!initialResetReleaseDone) {
+    if (!resetActive) {
+      initialResetReleaseDone = true;
+    }
+  }
+
+  if (initialResetReleaseDone && now > 4000 && resetActive) {
     if (resetPressStartTime == 0) {
       resetPressStartTime = now;
       resetHeldTriggered = false;
-    } else if (!resetHeldTriggered && (now - resetPressStartTime >= 1500)) {
+    } else if (!resetHeldTriggered && (now - resetPressStartTime >= 2500)) {
       resetHeldTriggered = true;
-      Serial.println("[BTN] Intentional 1.5s RESET button hold confirmed!");
+      Serial.println("[BTN] Intentional 2.5s RESET button hold confirmed!");
       beepDouble();
       lcdShow("Resetting Cart", "Please wait...");
 

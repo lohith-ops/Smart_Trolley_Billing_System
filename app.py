@@ -898,15 +898,11 @@ def process_scan(action, uid, trolley_id="TROLLEY-001"):
         }
     })
 
-    # Sync cart_value, item_count, and live heartbeat timestamp to trolleys collection
-    now_ts = time.time()
+    # Sync cart_value and item_count to trolleys collection
     trolleys_collection.update_one({"_id": trolley_id}, {
         "$set": {
             "cart_value":     total,
-            "item_count":     items_contained,
-            "last_seen":      now_ts,
-            "last_heartbeat": now_ts,
-            "status":         "online"
+            "item_count":     items_contained
         }
     })
 
@@ -921,18 +917,40 @@ def process_scan(action, uid, trolley_id="TROLLEY-001"):
     return product, total, uid_key
 
 
+def generate_invoice_id():
+    """Generates a proper, sequential, professional invoice serial number e.g. INV-20261027-0001."""
+    now = datetime.datetime.now()
+    date_str = now.strftime("%Y%m%d")
+    try:
+        count = transactions_collection.count_documents({}) + 1
+    except Exception:
+        count = random.randint(100, 9999)
+    return f"INV-{date_str}-{count:04d}"
+
+
 def perform_checkout(trolley_id="TROLLEY-001"):
     """Checkout a specific trolley's cart and save a transaction."""
     cart_id = _trolley_cart_id(trolley_id)
     cart = carts_collection.find_one({"_id": cart_id})
     if cart and cart.get("itemsContained", 0) > 0:
         saved_items = dict(cart["items"])
+        trolley = trolleys_collection.find_one({"_id": trolley_id}) or {}
+        cust_name = trolley.get("assigned_customer_name", "")
+        cust_phone = trolley.get("assigned_customer_phone", "")
+        cust_id = trolley.get("assigned_customer_id")
+        invoice_id = generate_invoice_id()
         transactions_collection.insert_one({
-            "trolley_id":     trolley_id,
-            "items":          cart["items"],
-            "total":          cart["total"],
-            "paymentMethod":  "Unknown",
-            "timestamp":      time.time()
+            "invoiceId":        invoice_id,
+            "trolley_id":       trolley_id,
+            "items":            cart["items"],
+            "total":            cart["total"],
+            "finalTotal":       cart["total"],
+            "paymentMethod":    "Unknown",
+            "customer_name":    cust_name,
+            "customerPhone":    cust_phone,
+            "customer_id":      cust_id,
+            "timestamp":        time.time(),
+            "date":             datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         })
         carts_collection.update_one({"_id": cart_id}, {
             "$set": {
@@ -958,14 +976,48 @@ def perform_checkout(trolley_id="TROLLEY-001"):
     return False, 0.0, {}
 
 
-def perform_reset(trolley_id="TROLLEY-001"):
-    """Reset a trolley's cart without saving as transaction. Restores global stock."""
+OFFLINE_THRESHOLD_SECS = 45  # Trolley marked offline after this many seconds with no heartbeat
+
+def is_trolley_connected(trolley_id: str) -> bool:
+    """
+    Check if a trolley is genuinely connected and communicating with the server.
+    - If TROLLEY-001 connected via USB Serial: requires open global_ser and recent communication.
+    - If connected via Wi-Fi: requires status 'online' and heartbeat within OFFLINE_THRESHOLD_SECS.
+    """
+    t_doc = trolleys_collection.find_one({"_id": trolley_id})
+    if not t_doc:
+        return False
+
+    now_ts = time.time()
+    last_seen = float(t_doc.get("last_seen", 0) or 0)
+    last_hb = float(t_doc.get("last_heartbeat", 0) or 0)
+    most_recent = max(last_seen, last_hb)
+
+    # For serial-connected trolley
+    if trolley_id == "TROLLEY-001" and global_ser and global_ser.is_open:
+        return (most_recent > 0) and ((now_ts - most_recent) <= OFFLINE_THRESHOLD_SECS)
+
+    # For Wi-Fi connected trolley
+    return (t_doc.get("status") == "online") and (most_recent > 0) and ((now_ts - most_recent) <= OFFLINE_THRESHOLD_SECS)
+
+
+def perform_reset(trolley_id="TROLLEY-001", force=False):
+    """Reset a trolley's cart without saving as transaction. Restores global stock.
+    Requires trolley to be connected unless force=True."""
+    if not force and not is_trolley_connected(trolley_id):
+        print(f"[RESET PREVENTED] Cart reset blocked: {trolley_id} is not connected. Cart items preserved.")
+        return False
+
     cart_id = _trolley_cart_id(trolley_id)
     cart = carts_collection.find_one({"_id": cart_id})
+    had_items = False
+    prior_total = 0.0
+
     if cart and "items" in cart:
         for item_key, item_val in cart.get("items", {}).items():
-            qty = item_val.get("quantity", 0)
+            qty = item_val.get("quantity", item_val.get("qty", 0))
             if qty > 0:
+                had_items = True
                 p = products_collection.find_one({"uid": item_key})
                 if not p:
                     p = products_collection.find_one({"uid_norm": item_key})
@@ -974,6 +1026,11 @@ def perform_reset(trolley_id="TROLLEY-001"):
                         {"_id": p["_id"]},
                         {"$set": {"stock": p.get("stock", 0) + qty}}
                     )
+
+    if cart:
+        prior_total = float(cart.get("total", 0.0))
+        if cart.get("itemsContained", 0) > 0 or prior_total > 0:
+            had_items = True
 
     carts_collection.update_one({"_id": cart_id}, {
         "$set": {
@@ -987,14 +1044,18 @@ def perform_reset(trolley_id="TROLLEY-001"):
     trolleys_collection.update_one({"_id": trolley_id}, {
         "$set": {"cart_value": 0.0, "item_count": 0}
     })
-    db['feed'].insert_one({
-        "actionType": "RESET",
-        "total":      cart.get("total", 0.0) if cart else 0.0,
-        "trolley_id": trolley_id,
-        "timestamp":  time.time()
-    })
-    send_command_to_arduino("LCD:Cart Reset!|Total: Rs.0.00")
-    send_command_to_arduino("BEEP:2")
+
+    # Only publish feed event and beep if the cart actually contained items,
+    # preventing false "Cart Reset" notifications when trolley is disconnected or empty.
+    if had_items:
+        db['feed'].insert_one({
+            "actionType": "RESET",
+            "total":      prior_total,
+            "trolley_id": trolley_id,
+            "timestamp":  time.time()
+        })
+        send_command_to_arduino("LCD:Cart Reset!|Total: Rs.0.00")
+        send_command_to_arduino("BEEP:2")
     return True
 
 # ── Authentication API ────────────────────────────────────────────────────────
@@ -1075,7 +1136,7 @@ def auth_me():
         return jsonify({"success": True, "user": request.current_user})
     return jsonify({"success": True, "user": user})
 
-EMAIL_REGEX = re.compile(r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$')
+EMAIL_REGEX = re.compile(r'^[a-zA-Z0-9_.+-]+@gmail\.com$', re.IGNORECASE)
 USERNAME_REGEX = re.compile(r'^[a-zA-Z0-9_]{3,30}$')
 PHONE_REGEX = re.compile(r'^(\+91[\-\s]?)?[0-9]{10}$')
 
@@ -1104,7 +1165,7 @@ def auth_signup():
         return jsonify({"success": False, "message": "Password must be at least 6 characters long."}), 400
 
     if email and not EMAIL_REGEX.match(email):
-        return jsonify({"success": False, "message": "Please enter a valid email address (e.g. admin@gmail.com)."}), 400
+        return jsonify({"success": False, "message": "Please enter a valid email address in the form of example@gmail.com."}), 400
 
     if phone and not PHONE_REGEX.match(phone):
         return jsonify({"success": False, "message": "Please enter a valid 10-digit phone number."}), 400
@@ -1220,7 +1281,7 @@ def auth_register():
         return jsonify({"success": False, "message": "Invalid role specified."}), 400
 
     if email and not EMAIL_REGEX.match(email):
-        return jsonify({"success": False, "message": "Please enter a valid email address."}), 400
+        return jsonify({"success": False, "message": "Please enter a valid email address in the form of example@gmail.com."}), 400
 
     existing = users_collection.find_one({"username": username})
     if existing:
@@ -1344,7 +1405,7 @@ def auth_update_profile():
     phone = (data.get("phone") or "").strip()
 
     if email and not EMAIL_REGEX.match(email):
-        return jsonify({"success": False, "message": "Please enter a valid email address."}), 400
+        return jsonify({"success": False, "message": "Please enter a valid email address in the form of example@gmail.com."}), 400
 
     username = request.current_user["username"]
     user = users_collection.find_one({"username": username})
@@ -2079,9 +2140,23 @@ def cart_action():
 def reset_cart():
     data = request.json or {}
     trolley_id = data.get("trolley_id", "TROLLEY-001")
+    is_force = bool(data.get("force", False) or data.get("simulator", False) or app.config.get("TESTING", False))
+
+    if not is_force and not is_trolley_connected(trolley_id):
+        print(f"[RESET REJECTED] Cannot reset cart: {trolley_id} is not connected. Cart items preserved.")
+        return jsonify({
+            "success": False,
+            "connected": False,
+            "message": f"Cannot reset cart: {trolley_id} is currently disconnected/offline. A trolley must be connected to reset its cart."
+        }), 400
+
     init_cart(trolley_id)
-    perform_reset(trolley_id)
-    return jsonify({"success": True, "message": f"Cart for {trolley_id} has been reset"})
+    perform_reset(trolley_id, force=True)
+    return jsonify({
+        "success": True,
+        "connected": True,
+        "message": f"Cart for {trolley_id} has been reset"
+    })
 
 @app.route("/api/cart/generate-bill", methods=["POST"])
 def generate_bill():
@@ -2248,11 +2323,17 @@ def verify_and_pay():
     # Look up trolley for customer metadata
     trolley = trolleys_collection.find_one({"_id": trolley_id}) or {}
     cust_id = trolley.get("assigned_customer_id")
-    cust_name = trolley.get("assigned_customer_name", "")
+    cust_name = (data.get("customer_name") or data.get("customerName") or "").strip()
+    if not cust_name:
+        cust_name = trolley.get("assigned_customer_name", "")
+    if not cust_name and cust_id:
+        cust_doc = customers_collection.find_one({"id": cust_id})
+        if cust_doc:
+            cust_name = cust_doc.get("name", "")
     if not phone_used and trolley.get("assigned_customer_phone"):
         phone_used = trolley.get("assigned_customer_phone")
 
-    invoice_id = f"INV-{int(timestamp)}-{random.randint(1000, 9999)}"
+    invoice_id = generate_invoice_id()
 
     txn_res = transactions_collection.insert_one({
         "invoiceId":        invoice_id,
@@ -2354,11 +2435,17 @@ def pay_bill():
     # Look up trolley for customer metadata
     trolley = trolleys_collection.find_one({"_id": trolley_id}) or {}
     cust_id = trolley.get("assigned_customer_id")
-    cust_name = trolley.get("assigned_customer_name", "")
+    cust_name = (data.get("customer_name") or data.get("customerName") or "").strip()
+    if not cust_name:
+        cust_name = trolley.get("assigned_customer_name", "")
+    if not cust_name and cust_id:
+        cust_doc = customers_collection.find_one({"id": cust_id})
+        if cust_doc:
+            cust_name = cust_doc.get("name", "")
     if not phone and trolley.get("assigned_customer_phone"):
         phone = trolley.get("assigned_customer_phone")
 
-    invoice_id = f"INV-{int(timestamp)}-{random.randint(1000, 9999)}"
+    invoice_id = generate_invoice_id()
 
     txn_res = transactions_collection.insert_one({
         "invoiceId":        invoice_id,
@@ -2924,7 +3011,7 @@ def register_customer():
         return jsonify({"success": False, "message": "Phone number must be a valid 10-digit number."}), 400
 
     if email and not EMAIL_REGEX.match(email):
-        return jsonify({"success": False, "message": "Please enter a valid email address (e.g. customer@gmail.com)."}), 400
+        return jsonify({"success": False, "message": "Please enter a valid email address in the form of example@gmail.com."}), 400
 
     if not cust_id:
         cust_id = f"CUST-{random.randint(1000, 9999)}"
@@ -2990,6 +3077,8 @@ def update_customer(cust_id):
 @require_auth(roles=["admin", "manager", "customer"])
 def delete_customer(cust_id=None):
     try:
+        from bson import ObjectId
+
         # Allow extracting ID from route parameter, query string, or JSON body
         if not cust_id:
             cust_id = request.args.get("id") or request.args.get("customer_id")
@@ -3000,49 +3089,55 @@ def delete_customer(cust_id=None):
             return jsonify({"success": False, "message": "Customer ID is required for deletion."}), 400
 
         cust_id = str(cust_id).strip()
+        is_obj_id = ObjectId.is_valid(cust_id)
 
         # If caller is a customer, enforce that they can only delete their own profile
         current_role = request.current_user.get("role")
         current_username = (request.current_user.get("username") or "").lower()
         if current_role == "customer":
-            cust_match = customers_collection.find_one({
-                "$or": [
-                    {"id": cust_id},
-                    {"customer_id": cust_id},
-                    {"username": cust_id.lower()},
-                    {"email": cust_id.lower()},
-                    {"phone": cust_id}
-                ]
-            })
+            cust_match_queries = [
+                {"id": cust_id},
+                {"customer_id": cust_id},
+                {"username": cust_id.lower()},
+                {"email": cust_id.lower()},
+                {"phone": cust_id}
+            ]
+            if is_obj_id:
+                cust_match_queries.append({"_id": ObjectId(cust_id)})
+            cust_match = customers_collection.find_one({"$or": cust_match_queries})
             matched_uname = (cust_match.get("username") or "").lower() if cust_match else ""
             matched_id = (cust_match.get("id") or cust_match.get("customer_id") or "").lower() if cust_match else ""
             if cust_id.lower() != current_username and matched_uname != current_username and matched_id != current_username:
                 return jsonify({"success": False, "message": "Access denied: Customers can only delete their own account."}), 403
 
         # 1. Look up customer details in customers_collection
-        cust = customers_collection.find_one({
-            "$or": [
-                {"id": cust_id},
-                {"customer_id": cust_id},
-                {"username": cust_id.lower()},
-                {"phone": cust_id},
-                {"email": cust_id.lower()}
-            ]
-        })
+        lookup_queries = [
+            {"id": cust_id},
+            {"customer_id": cust_id},
+            {"username": cust_id.lower()},
+            {"phone": cust_id},
+            {"email": cust_id.lower()}
+        ]
+        if is_obj_id:
+            lookup_queries.append({"_id": ObjectId(cust_id)})
 
-        actual_id = (cust.get("id") or cust.get("customer_id") or cust_id) if cust else cust_id
+        cust = customers_collection.find_one({"$or": lookup_queries})
+
+        actual_id = (cust.get("id") or cust.get("customer_id") or cust.get("username") or cust_id) if cust else cust_id
         cust_name = cust.get("name", actual_id) if cust else actual_id
         cust_phone = cust.get("phone", "") if cust else ""
         cust_email = cust.get("email", "") if cust else ""
+        cust_username = (cust.get("username") or "").lower() if cust else ""
 
         # 2. Release any trolley currently assigned to this customer
-        assigned_t = trolleys_collection.find_one({
-            "$or": [
-                {"assigned_customer_id": actual_id},
-                {"assigned_customer_id": cust_id},
-                {"assigned_customer_name": cust_name}
-            ]
-        })
+        trolley_queries = [
+            {"assigned_customer_id": actual_id},
+            {"assigned_customer_id": cust_id},
+            {"assigned_customer_name": cust_name}
+        ]
+        if cust_username:
+            trolley_queries.append({"assigned_customer_id": cust_username})
+        assigned_t = trolleys_collection.find_one({"$or": trolley_queries})
         if assigned_t:
             trolleys_collection.update_one(
                 {"_id": assigned_t["_id"]},
@@ -3056,36 +3151,52 @@ def delete_customer(cust_id=None):
             )
 
         # 3. Delete from customers_collection
-        customers_collection.delete_many({
-            "$or": [
-                {"id": actual_id},
-                {"customer_id": actual_id},
-                {"id": cust_id},
-                {"customer_id": cust_id},
-                {"username": cust_id.lower()}
-            ]
-        })
+        del_queries = [
+            {"id": actual_id},
+            {"customer_id": actual_id},
+            {"id": cust_id},
+            {"customer_id": cust_id},
+            {"username": cust_id.lower()}
+        ]
+        if cust_username:
+            del_queries.append({"username": cust_username})
+        if cust and "_id" in cust:
+            del_queries.append({"_id": cust["_id"]})
+        if is_obj_id:
+            del_queries.append({"_id": ObjectId(cust_id)})
+
+        customers_collection.delete_many({"$or": del_queries})
 
         # 4. Also delete user login account from users_collection if role is 'customer'
         user_queries = [
             {"username": actual_id.lower()},
             {"username": cust_id.lower()}
         ]
+        if cust_username:
+            user_queries.append({"username": cust_username})
         if cust_phone:
             user_queries.append({"phone": cust_phone})
         if cust_email:
             user_queries.append({"email": cust_email.lower()})
 
-        user_match = users_collection.find_one({
+        matched_users = list(users_collection.find({
             "role": "customer",
             "$or": user_queries
-        })
-        if user_match:
-            users_collection.delete_one({"_id": user_match["_id"]})
-            password_resets_collection.delete_many({"username": user_match["username"]})
+        }))
+        for u in matched_users:
+            users_collection.delete_one({"_id": u["_id"]})
+            password_resets_collection.delete_many({"username": u.get("username")})
 
         # 5. Clean up any saved wishlist
-        db['wishlists'].delete_many({"customer_id": actual_id})
+        wishlist_queries = [
+            {"customer_id": actual_id},
+            {"customer_id": cust_id},
+            {"username": cust_id.lower()}
+        ]
+        if cust_username:
+            wishlist_queries.append({"username": cust_username})
+            wishlist_queries.append({"customer_id": cust_username})
+        db['wishlists'].delete_many({"$or": wishlist_queries})
 
         # 6. Log customer deletion event to feed
         db['feed'].insert_one({
@@ -3628,11 +3739,17 @@ def verify_razorpay_payment():
     # Look up trolley for customer metadata
     trolley = trolleys_collection.find_one({"_id": trolley_id}) or {}
     cust_id = trolley.get("assigned_customer_id")
-    cust_name = trolley.get("assigned_customer_name", "")
+    cust_name = (data.get("customer_name") or data.get("customerName") or "").strip()
+    if not cust_name:
+        cust_name = trolley.get("assigned_customer_name", "")
+    if not cust_name and cust_id:
+        cust_doc = customers_collection.find_one({"id": cust_id})
+        if cust_doc:
+            cust_name = cust_doc.get("name", "")
     if not phone and trolley.get("assigned_customer_phone"):
         phone = trolley.get("assigned_customer_phone")
 
-    invoice_id = f"INV-{int(timestamp)}-{random.randint(1000, 9999)}"
+    invoice_id = generate_invoice_id()
 
     txn_res = transactions_collection.insert_one({
         "invoiceId":        invoice_id,
@@ -4301,7 +4418,7 @@ def save_employee():
         return jsonify({"success": False, "message": "Employee name must be at least 2 characters long."}), 400
 
     if email and not EMAIL_REGEX.match(email):
-        return jsonify({"success": False, "message": "Please enter a valid email address (e.g. employee@smarttrolley.com)."}), 400
+        return jsonify({"success": False, "message": "Please enter a valid email address in the form of example@gmail.com."}), 400
 
     if role.lower() not in ["admin", "manager", "cashier"]:
         return jsonify({"success": False, "message": "Role must be Admin, Manager, or Cashier."}), 400
@@ -4375,7 +4492,7 @@ def update_employee_email(emp_id):
     email = (data.get("email") or "").strip().lower()
 
     if email and not EMAIL_REGEX.match(email):
-        return jsonify({"success": False, "message": "Please enter a valid email address (e.g. employee@smarttrolley.com)."}), 400
+        return jsonify({"success": False, "message": "Please enter a valid email address in the form of example@gmail.com."}), 400
 
     employees_collection = db["employees"]
     emp = employees_collection.find_one({"id": emp_id})
@@ -4487,11 +4604,23 @@ def delete_employee(emp_id):
         return jsonify({"success": True, "message": "Employee deleted"})
     return jsonify({"success": False, "message": "Employee not found"}), 404
 
-@app.route("/api/feedback", methods=["GET", "POST"])
-def manage_feedback():
+@app.route("/api/feedback", methods=["GET", "POST", "DELETE"])
+@app.route("/api/feedback/", methods=["GET", "POST", "DELETE"])
+@app.route("/api/feedback/<path:feedback_id>", methods=["DELETE"])
+def manage_feedback(feedback_id=None):
     feedback_collection = db["feedback"]
     if request.method == "GET":
-        feedbacks = list(feedback_collection.find({}, {"_id": 0}))
+        raw_feedbacks = list(feedback_collection.find())
+        feedbacks = []
+        for f in raw_feedbacks:
+            fid = str(f["_id"])
+            feedbacks.append({
+                "id": fid,
+                "_id": fid,
+                "rating": f.get("rating", 5),
+                "comments": f.get("comments", ""),
+                "date": f.get("date", "Today")
+            })
         ratings = [f.get("rating", 5) for f in feedbacks]
         avg_rating = sum(ratings) / len(ratings) if ratings else 5.0
         return jsonify({
@@ -4519,6 +4648,54 @@ def manage_feedback():
             "date":     datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         })
         return jsonify({"success": True, "message": "Feedback submitted successfully"})
+
+    elif request.method == "DELETE":
+        from bson import ObjectId
+
+        # Check if user requested bulk clear
+        is_clear_all = (
+            feedback_id == "all"
+            or request.args.get("all") == "true"
+            or (request.is_json and request.json and request.json.get("action") == "clear_all")
+        )
+        if is_clear_all:
+            del_result = feedback_collection.delete_many({})
+            db['feed'].insert_one({
+                "actionType": "FEEDBACK_CLEARED_ALL",
+                "count": del_result.deleted_count,
+                "timestamp": time.time()
+            })
+            return jsonify({
+                "success": True,
+                "message": f"All customer feedback logs ({del_result.deleted_count}) deleted successfully.",
+                "deleted_count": del_result.deleted_count
+            })
+
+        # Single feedback deletion
+        target_id = feedback_id or request.args.get("id") or request.args.get("feedback_id")
+        if not target_id and request.is_json and request.json:
+            target_id = request.json.get("id") or request.json.get("_id") or request.json.get("feedback_id")
+
+        if not target_id:
+            return jsonify({"success": False, "message": "Feedback ID is required for deletion."}), 400
+
+        target_id = str(target_id).strip()
+        queries = [{"id": target_id}]
+        if ObjectId.is_valid(target_id):
+            queries.append({"_id": ObjectId(target_id)})
+
+        res = feedback_collection.delete_one({"$or": queries})
+        if res.deleted_count > 0:
+            db['feed'].insert_one({
+                "actionType": "FEEDBACK_DELETED",
+                "feedback_id": target_id,
+                "timestamp": time.time()
+            })
+            return jsonify({
+                "success": True,
+                "message": "Feedback review deleted successfully."
+            })
+        return jsonify({"success": False, "message": "Feedback review not found."}), 404
 
 # ── Customer Portal API ───────────────────────────────────────────────────────
 
@@ -4577,13 +4754,14 @@ def get_customer_profile():
                 raw_items = cart_doc.get("items", {})
                 if isinstance(raw_items, dict):
                     for rfid, it in raw_items.items():
-                        qty = it.get("qty", 1)
+                        qty = it.get("quantity", it.get("qty", 1))
                         item_count += qty
                         items_list.append({
                             "rfid": rfid,
                             "name": it.get("name", "Unknown Item"),
                             "price": float(it.get("price", 0.0)),
                             "qty": qty,
+                            "quantity": qty,
                             "total": float(it.get("price", 0.0)) * qty,
                             "shelf": it.get("shelf", "Aisle A"),
                             "offer": it.get("offer", "Standard Price")
@@ -4897,19 +5075,28 @@ def serial_loop():
         try:
             line = global_ser.readline().decode('utf-8', errors='ignore').strip()
             if line:
-                now_ts = time.time()
-                trolleys_collection.update_one(
-                    {"_id": SERIAL_TROLLEY_ID},
-                    {"$set": {"status": "online", "last_seen": now_ts, "last_heartbeat": now_ts, "rfid_ready": True, "lcd_ready": True, "hardware_health": "HEALTHY", "hardware_status": "healthy"}},
-                    upsert=True
-                )
+                # Only mark hardware online if this is a genuine protocol line from firmware
+                valid_prefixes = ("UID:", "SCAN:", "MODE:", "[BTN DIAG]", "[RFID]", "Smart Trolley", "HEARTBEAT", "LCD:")
+                is_valid_telemetry = any(line.startswith(p) for p in valid_prefixes) or "READY" in line.upper()
+
+                if is_valid_telemetry:
+                    now_ts = time.time()
+                    trolleys_collection.update_one(
+                        {"_id": SERIAL_TROLLEY_ID},
+                        {"$set": {"status": "online", "last_seen": now_ts, "last_heartbeat": now_ts, "rfid_ready": True, "lcd_ready": True, "hardware_health": "HEALTHY", "hardware_status": "healthy"}},
+                        upsert=True
+                    )
                 print(f"Arduino: {line}")
 
                 if line in ["CONFIRMED_HARDWARE_RESET"] or "[INTENTIONAL_RESET]" in line:
-                    print("[RESET] Verified intentional hardware reset button triggered (held for >2.5s)")
-                    perform_reset(SERIAL_TROLLEY_ID)
-                    send_command_to_arduino("LCD:Cart Reset!|Total: Rs.0.00")
-                    send_command_to_arduino("BEEP:2")
+                    # Cart must NEVER be reset without trolley being connected and active
+                    if is_trolley_connected(SERIAL_TROLLEY_ID) and global_ser and global_ser.is_open:
+                        print(f"[RESET] Verified intentional hardware reset button triggered for connected {SERIAL_TROLLEY_ID}")
+                        perform_reset(SERIAL_TROLLEY_ID, force=True)
+                        send_command_to_arduino("LCD:Cart Reset!|Total: Rs.0.00")
+                        send_command_to_arduino("BEEP:2")
+                    else:
+                        print(f"[RESET IGNORED] Hardware reset pulse '{line}' ignored because {SERIAL_TROLLEY_ID} is not fully connected. Cart preserved.")
                 elif line in ["HARDWARE_BTN_RESET", "CMD:RESET"]:
                     print(f"[RESET IGNORED] Transient reset pulse '{line}' received on startup/disconnect. Ignored to preserve cart.")
 
