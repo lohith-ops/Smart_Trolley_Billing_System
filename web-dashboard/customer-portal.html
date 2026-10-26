@@ -179,6 +179,20 @@
                         </button>
                     </div>
 
+                    <!-- Registered Customer Search Input & Results Dropdown -->
+                    <div id="portal-cust-search-container" style="position: relative; display: flex; align-items: center;">
+                        <div style="display: flex; align-items: center; background: rgba(255,255,255,0.06); border: 1px solid var(--panel-border); border-radius: 8px; padding: 5px 10px; gap: 8px;">
+                            <i class="fa-solid fa-magnifying-glass" style="color: var(--accent-cyan); font-size: 0.8rem;"></i>
+                            <input type="text" id="portal-customer-search-input" placeholder="Search registered customers..." style="background: transparent; border: none; color: #fff; font-size: 0.82rem; width: 180px; outline: none;" autocomplete="off">
+                            <button type="button" id="portal-cust-search-clear" style="background: none; border: none; color: var(--text-secondary); cursor: pointer; display: none; padding: 0 2px; font-size: 0.85rem;" title="Clear search">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+                        <!-- Suggestion Results Dropdown -->
+                        <div id="portal-cust-search-results" class="glass-panel" style="display: none; position: absolute; top: calc(100% + 6px); right: 0; width: 330px; max-height: 300px; overflow-y: auto; z-index: 1050; border-radius: 10px; border: 1px solid var(--panel-border); box-shadow: 0 14px 35px rgba(0,0,0,0.65); padding: 6px; background: rgba(17, 24, 39, 0.95); backdrop-filter: blur(16px);">
+                        </div>
+                    </div>
+
                     <a href="login.html" class="btn btn-outline" id="portal-login-nav-btn" style="display: none; padding: 6px 12px; font-size: 0.85rem; text-decoration: none;">
                         <i class="fa-solid fa-right-to-bracket"></i> Sign In
                     </a>
@@ -255,6 +269,11 @@
                     <!-- Rate Experience Button -->
                     <button id="portal-open-feedback-btn" class="btn btn-outline" style="margin-top: 12px; width: 100%; text-align: center; font-size: 0.85rem; color: #f59e0b; border-color: rgba(245, 158, 11, 0.4);">
                         <i class="fa-solid fa-star" style="margin-right: 6px;"></i> Rate Shopping Experience
+                    </button>
+
+                    <!-- Delete Customer Account Button -->
+                    <button id="portal-delete-customer-btn" class="btn btn-outline" style="margin-top: 8px; width: 100%; text-align: center; font-size: 0.82rem; color: #f43f5e; border-color: rgba(244, 63, 94, 0.4); display: none;">
+                        <i class="fa-solid fa-trash-can" style="margin-right: 6px;"></i> Delete Registered Customer
                     </button>
                 </div>
 

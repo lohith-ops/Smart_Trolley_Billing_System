@@ -1032,10 +1032,6 @@ function setupPaymentModalListeners() {
                         otpStatus.style.color = '#34d399';
                         otpStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> ${data.message || 'OTP sent successfully.'}`;
                     }
-                    if (data.otp && demoOtpBanner && demoOtpVal) {
-                        demoOtpVal.textContent = data.otp;
-                        demoOtpBanner.style.display = 'flex';
-                    }
                     if (otpInput) otpInput.focus();
                 } else {
                     if (otpStatus) {
@@ -1054,11 +1050,6 @@ function setupPaymentModalListeners() {
         });
     }
 
-    if (demoOtpFill && demoOtpVal && otpInput) {
-        demoOtpFill.addEventListener('click', () => {
-            otpInput.value = demoOtpVal.textContent.trim();
-        });
-    }
 
     if (verifyOtpBtn) {
         verifyOtpBtn.addEventListener('click', () => {

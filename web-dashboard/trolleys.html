@@ -200,7 +200,11 @@
                 <!-- Existing Customer Mode -->
                 <div id="section-assign-existing">
                     <div class="form-group">
-                        <label>Select Registered Customer</label>
+                        <label>Search & Select Registered Customer</label>
+                        <div style="position: relative; margin-bottom: 8px;">
+                            <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--accent-cyan); font-size: 0.82rem; pointer-events: none;"></i>
+                            <input type="text" id="modal-assign-search-input" placeholder="Search by name, ID, mobile, email..." class="form-input" style="padding-left: 34px; font-size: 0.85rem; width: 100%;">
+                        </div>
                         <select id="modal-assign-customer-select" class="form-input">
                             <option value="">-- Choose Registered Customer --</option>
                         </select>

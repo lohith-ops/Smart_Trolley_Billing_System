@@ -351,6 +351,71 @@ def run_tests():
     assert "valid text strings" in res.get_json().get("message", "")
     print("[PASS] Non-string NoSQL injection dictionary in login rejected with 400.")
 
+    # 34. Test Deleting Registered Customer via Admin API (/api/customers/<cust_id>)
+    print("\n[TEST 34] Testing Deleting Registered Customer via Admin API...")
+    # Register test customer
+    res = client.post("/api/customers", json={
+        "id": "CUST-DEL-TEST",
+        "name": "Delete Target Customer",
+        "phone": "9876500001",
+        "email": "deltarget@example.com"
+    })
+    assert res.status_code == 201
+    # Verify in list
+    res = client.get("/api/customers")
+    assert any(c.get("id") == "CUST-DEL-TEST" for c in res.get_json())
+    # Delete customer
+    res = client.delete("/api/customers/CUST-DEL-TEST", headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 200
+    assert res.get_json().get("success") is True
+    # Verify deleted from list
+    res = client.get("/api/customers")
+    assert not any(c.get("id") == "CUST-DEL-TEST" for c in res.get_json())
+    print("[PASS] Admin successfully deleted registered customer.")
+
+    # 35. Test Customer Deleting Own Account (/api/customer/account)
+    print("\n[TEST 35] Testing Customer Deleting Own Account...")
+    res = client.post("/api/auth/signup", json={
+        "name": "Self Delete Customer",
+        "username": "selfdelcust",
+        "email": "selfdel@example.com",
+        "phone": "9876500002",
+        "password": "password123"
+    })
+    assert res.status_code == 200
+    cust_token = res.get_json()["token"]
+    res = client.delete("/api/customer/account", headers={"Authorization": f"Bearer {cust_token}"})
+    assert res.status_code == 200
+    assert res.get_json().get("success") is True
+    # Verify user account is gone
+    res = client.post("/api/auth/login", json={"username": "selfdelcust", "password": "password123"})
+    assert res.status_code == 401
+    print("[PASS] Customer successfully deleted their own account.")
+
+    # 36. Test Sending OTP to Registered Email on Forgot Password
+    print("\n[TEST 36] Testing Forgot Password OTP to Registered Email...")
+    res = client.post("/api/auth/signup", json={
+        "name": "Email OTP Customer",
+        "username": "emailotpcust",
+        "email": "emailotp@example.com",
+        "phone": "9876500003",
+        "password": "password123"
+    })
+    assert res.status_code == 200
+    # Request forgot password by registered email
+    res = client.post("/api/auth/forgot-password/request", json={"identifier": "emailotp@example.com"})
+    assert res.status_code == 200
+    fp_res = res.get_json()
+    assert fp_res.get("success") is True
+    assert "email" in fp_res.get("channels", [])
+    assert fp_res.get("otp") is not None
+    assert len(fp_res.get("otp")) == 6
+    assert "masked_target" in fp_res
+    print(f"[PASS] OTP generated & checked for registered email. Masked: {fp_res.get('masked_target')}, OTP: {fp_res.get('otp')}")
+
+    # Clean up test user
+    client.delete("/api/customers/emailotpcust", headers={"Authorization": f"Bearer {admin_token}"})
+
     # Clean up test users
     client.delete("/api/auth/users/supercashier1", headers={"Authorization": f"Bearer {admin_token}"})
     client.delete("/api/auth/users/customer_jane", headers={"Authorization": f"Bearer {admin_token}"})

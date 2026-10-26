@@ -151,17 +151,11 @@
                     <span id="step2-target-info">Verification code sent to your registered contact</span>
                 </div>
 
-                <div id="demo-otp-banner" class="demo-otp-chip" style="display: none; margin: 10px 0;">
-                    <span class="demo-otp-label"><i class="fa-solid fa-key"></i> Code:</span>
-                    <span class="demo-otp-code" id="demo-otp-val">123456</span>
-                    <button type="button" class="demo-otp-btn" id="demo-otp-fill-btn">Autofill</button>
-                </div>
-
-                <div class="form-group">
+                <div class="form-group" style="margin-top: 14px;">
                     <label for="forgot-otp"><i class="fa-solid fa-shield-halved"></i> 6-Digit Verification Code</label>
                     <div class="input-with-icon">
                         <input type="text" id="forgot-otp" maxlength="6" pattern="[0-9]{6}"
-                            placeholder="6-digit code (e.g. 123456)" required autocomplete="one-time-code"
+                            placeholder="Enter 6-digit code from email" required autocomplete="off"
                             style="letter-spacing: 4px; font-weight: 700; font-size: 1.1rem; text-align: center;">
                         <i class="fa-solid fa-hashtag input-icon"></i>
                     </div>

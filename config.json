@@ -12,7 +12,7 @@
     "smtpServer": "smtp.gmail.com",
     "smtpPort": 587,
     "smtpUser": "llohithacharya@gmail.com",
-    "smtpPassword": "vish123",
+    "smtpPassword": "",
     "fast2smsApiKey": "",
     "twilioSid": "",
     "twilioAuthToken": "",

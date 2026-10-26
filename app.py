@@ -32,6 +32,20 @@ except Exception as _rp_err:
     print(f"[RAZORPAY] Module load info: {_rp_err}")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Load local environment variables from .env if present
+_env_path = os.path.join(BASE_DIR, ".env")
+if os.path.exists(_env_path):
+    try:
+        with open(_env_path, "r", encoding="utf-8") as _ef:
+            for _line in _ef:
+                _line = _line.strip()
+                if _line and not _line.startswith("#") and "=" in _line:
+                    _k, _v = _line.split("=", 1)
+                    os.environ.setdefault(_k.strip(), _v.strip())
+    except Exception as _e:
+        print(f"[ENV] Notice: {_e}")
+
 STATIC_FOLDER = os.path.join(BASE_DIR, "web-dashboard")
 app = Flask(__name__, static_folder=STATIC_FOLDER, static_url_path="")
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # Disable caching for static files
@@ -1120,6 +1134,28 @@ def auth_signup():
 
     users_collection.insert_one(new_user)
 
+    # Sync with customers_collection so customer appears in all customer management views
+    phone_digits = re.sub(r'\D', '', phone) if phone else ""
+    if len(phone_digits) > 10 and phone_digits.startswith("91"):
+        phone_digits = phone_digits[2:]
+    customers_collection.update_one(
+        {"$or": [{"id": username}, {"customer_id": username}, {"username": username}]},
+        {"$set": {
+            "id":               username,
+            "customer_id":      username,
+            "username":         username,
+            "name":             name,
+            "phone":            phone_digits or phone,
+            "email":            email,
+            "assigned_trolley": None,
+            "total_spent":      0.0,
+            "total_visits":     0,
+            "status":           "Active",
+            "created_at":       time.time()
+        }},
+        upsert=True
+    )
+
     # Automatically generate JWT token for instant session login
     token = generate_token(new_user)
 
@@ -1335,28 +1371,28 @@ def auth_update_profile():
     return jsonify({"success": True, "message": "Profile updated successfully.", "email": email})
 
 def find_user_by_identifier(identifier):
-    """Finds a user by username, email, or phone number."""
+    """Finds a user by username, email, or phone number in users_collection or customers_collection."""
     if not identifier:
         return None
     ident = identifier.strip().lower()
     clean_phone = identifier.strip().replace(" ", "").replace("-", "").replace("+91", "")
     
-    # Try exact username match
+    # 1. Try exact username match
     user = users_collection.find_one({"username": ident})
     if user:
         return user
     
-    # Try email match
+    # 2. Try email match
     user = users_collection.find_one({"email": ident})
     if user:
         return user
 
-    # Try phone match
+    # 3. Try phone match
     user = users_collection.find_one({"phone": identifier.strip()})
     if user:
         return user
         
-    # Search all users for case-insensitive / normalized matches
+    # 4. Search all users for case-insensitive / normalized matches
     all_users = list(users_collection.find({}))
     for u in all_users:
         u_username = (u.get("username") or "").lower()
@@ -1364,10 +1400,40 @@ def find_user_by_identifier(identifier):
         u_phone    = (u.get("phone") or "").replace(" ", "").replace("-", "").replace("+91", "")
         if u_username == ident or (u_email and u_email == ident) or (clean_phone and u_phone == clean_phone):
             return u
+
+    # 5. Search in customers_collection to support shoppers registered via Customer Hub
+    cust = customers_collection.find_one({
+        "$or": [
+            {"id": identifier.strip()},
+            {"customer_id": identifier.strip()},
+            {"email": ident},
+            {"phone": clean_phone or identifier.strip()}
+        ]
+    })
+    if cust:
+        c_username = (cust.get("id") or cust.get("customer_id") or f"cust_{clean_phone}").lower()
+        linked_user = users_collection.find_one({"$or": [{"username": c_username}, {"email": cust.get("email")}, {"phone": cust.get("phone")}]})
+        if linked_user:
+            return linked_user
+        else:
+            # Create synced user record for this customer
+            new_cust_user = {
+                "username":      c_username,
+                "password_hash": generate_password_hash("customer123"),
+                "name":          cust.get("name", "Customer"),
+                "role":          "customer",
+                "email":         cust.get("email", ""),
+                "phone":         cust.get("phone", ""),
+                "created_at":    time.time(),
+                "status":        "Active"
+            }
+            users_collection.insert_one(new_cust_user)
+            return new_cust_user
+
     return None
 
 def send_otp_email(to_email, otp_code, recipient_name="Customer"):
-    """Sends OTP verification email via SMTP (e.g. Gmail)."""
+    """Sends OTP verification email via SMTP (e.g. Gmail) with complete diagnostics."""
     if not to_email:
         return False, "No email address provided."
     cfg = load_config()
@@ -1377,8 +1443,11 @@ def send_otp_email(to_email, otp_code, recipient_name="Customer"):
     smtp_pass   = (cfg.get("smtpPassword") or os.environ.get("SMTP_PASSWORD", "")).strip()
     store_name  = cfg.get("storeName", "Smart Supermarket")
     
+    # Always log OTP visibly to console so the administrator/customer is never blocked
+    print(f"\n{'='*64}\n[🔐 OTP EMAIL DISPATCH] Recipient: {to_email} ({recipient_name})\n[🔐 OTP CODE]: {otp_code} (Valid for 10 minutes)\n{'='*64}\n")
+
     if not smtp_user or not smtp_pass:
-        print(f"[EMAIL INFO] SMTP credentials not set in Settings/Env. Code generated for {to_email}: {otp_code}")
+        print(f"[EMAIL INFO] SMTP credentials not set in Settings. OTP code for {to_email}: {otp_code}")
         return False, "SMTP credentials not configured in settings."
 
     try:
@@ -1435,20 +1504,35 @@ body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helv
 
         context = ssl.create_default_context()
         if smtp_port == 465:
-            with smtplib.SMTP_SSL(smtp_server, smtp_port, context=context) as server:
+            with smtplib.SMTP_SSL(smtp_server, smtp_port, context=context, timeout=8) as server:
                 server.login(smtp_user, smtp_pass)
                 server.sendmail(smtp_user, to_email, msg.as_string())
         else:
-            with smtplib.SMTP(smtp_server, smtp_port) as server:
+            with smtplib.SMTP(smtp_server, smtp_port, timeout=8) as server:
                 server.starttls(context=context)
                 server.login(smtp_user, smtp_pass)
                 server.sendmail(smtp_user, to_email, msg.as_string())
 
         print(f"[EMAIL DISPATCH] Successfully sent OTP email to {to_email}")
         return True, "Email sent successfully."
+    except smtplib.SMTPAuthenticationError as e:
+        if "smtp.gmail.com" in smtp_server:
+            err_msg = "Gmail authentication failed (BadCredentials). Gmail requires a 16-character Google App Password (not standard password). Please generate one at myaccount.google.com/apppasswords."
+        else:
+            err_msg = f"SMTP authentication error: {e}"
+        print(f"[EMAIL ERROR] {err_msg}")
+        return False, err_msg
+    except smtplib.SMTPServerDisconnected as e:
+        if "smtp.gmail.com" in smtp_server:
+            err_msg = "Gmail closed connection. Please ensure you are using a 16-character Google App Password (myaccount.google.com/apppasswords) with 2-Step Verification enabled."
+        else:
+            err_msg = f"SMTP server disconnected: {e}"
+        print(f"[EMAIL ERROR] {err_msg}")
+        return False, err_msg
     except Exception as e:
-        print(f"[EMAIL ERROR] Failed to send email to {to_email}: {e}")
-        return False, str(e)
+        err_msg = str(e)
+        print(f"[EMAIL ERROR] Failed to send email to {to_email}: {err_msg}")
+        return False, err_msg
 
 def send_otp_sms(to_phone, otp_code):
     """Sends OTP verification SMS to customer phone via Fast2SMS or Twilio API."""
@@ -1625,11 +1709,17 @@ def auth_forgot_password_request():
     email = user.get("email", "").strip()
     phone = user.get("phone", "").strip()
     channels = []
+    email_sent = False
+    email_status = "No email registered."
 
-    # 1. Dispatch real email in background
+    # 1. Dispatch real email with status tracking
     if email:
         channels.append("email")
-        threading.Thread(target=send_otp_email, args=(email, otp, user.get("name", user["username"])), daemon=True).start()
+        try:
+            email_sent, email_status = send_otp_email(email, otp, user.get("name", user["username"]))
+        except Exception as e:
+            email_sent = False
+            email_status = str(e)
 
     # 2. Dispatch real SMS in background
     if phone:
@@ -1655,15 +1745,20 @@ def auth_forgot_password_request():
         "actionType": "PASSWORD_RESET_REQUESTED",
         "username":   user["username"],
         "channels":   channels,
+        "email_sent": email_sent,
         "timestamp":  time.time()
     })
 
+    success_msg = f"Verification code sent to {masked_target}." if email_sent else f"Verification code generated for {masked_target}."
+
     return jsonify({
         "success": True,
-        "message": f"Verification code sent to {masked_target}.",
+        "message": success_msg,
         "username": user["username"],
         "masked_target": masked_target,
         "channels": channels,
+        "email_sent": email_sent,
+        "email_status": email_status,
         "otp": otp
     })
 
@@ -2762,8 +2857,50 @@ def trolley_heartbeat():
 
 @app.route("/api/customers", methods=["GET"])
 def get_customers():
-    """Return all registered customers."""
+    """Return all registered customers, synchronized from customers_collection and users_collection."""
     cust_list = list(customers_collection.find({}, {"_id": 0}))
+    
+    # Sync and include any customers registered via user auth signup
+    existing_ids = {str(c.get("id") or c.get("customer_id") or "") for c in cust_list}
+    existing_phones = {str(c.get("phone") or "") for c in cust_list if c.get("phone")}
+    existing_emails = {str(c.get("email") or "").lower() for c in cust_list if c.get("email")}
+
+    cust_users = list(users_collection.find({"role": "customer"}, {"_id": 0, "password_hash": 0}))
+    for u in cust_users:
+        u_name = u.get("name") or u.get("username")
+        u_phone = u.get("phone") or ""
+        u_email = u.get("email") or ""
+        u_id = u.get("username")
+        if u_id not in existing_ids and (not u_phone or u_phone not in existing_phones) and (not u_email or u_email.lower() not in existing_emails):
+            new_cust_doc = {
+                "id":               u_id,
+                "customer_id":      u_id,
+                "username":         u_id,
+                "name":             u_name,
+                "phone":            u_phone,
+                "email":            u_email,
+                "assigned_trolley": None,
+                "total_spent":      0.0,
+                "total_visits":     0,
+                "status":           u.get("status", "Active"),
+                "created_at":       u.get("created_at", time.time())
+            }
+            customers_collection.insert_one(dict(new_cust_doc))
+            cust_list.append(new_cust_doc)
+
+    # Optional search query filter (matches name, id, phone, email, trolley)
+    q = (request.args.get("q") or request.args.get("search") or "").strip().lower()
+    if q:
+        cust_list = [
+            c for c in cust_list
+            if q in str(c.get("name", "")).lower()
+            or q in str(c.get("id", "")).lower()
+            or q in str(c.get("customer_id", "")).lower()
+            or q in str(c.get("phone", "")).lower()
+            or q in str(c.get("email", "")).lower()
+            or q in str(c.get("assigned_trolley", "")).lower()
+        ]
+
     return jsonify(cust_list)
 
 @app.route("/api/customers", methods=["POST"])
@@ -2847,12 +2984,144 @@ def update_customer(cust_id):
             return jsonify({"success": False, "message": "Customer not found"}), 404
     return jsonify({"success": True, "message": "Customer updated successfully"})
 
-@app.route("/api/customers/<cust_id>", methods=["DELETE"])
-@require_auth(roles=["admin", "manager"])
-def delete_customer(cust_id):
-    cust_id = cust_id.strip()
-    # If customer is currently assigned to a trolley, release the trolley
-    assigned_t = trolleys_collection.find_one({"assigned_customer_id": cust_id})
+@app.route("/api/customers", methods=["DELETE"])
+@app.route("/api/customers/", methods=["DELETE"])
+@app.route("/api/customers/<path:cust_id>", methods=["DELETE"])
+@require_auth(roles=["admin", "manager", "customer"])
+def delete_customer(cust_id=None):
+    try:
+        # Allow extracting ID from route parameter, query string, or JSON body
+        if not cust_id:
+            cust_id = request.args.get("id") or request.args.get("customer_id")
+            if not cust_id and request.is_json and request.json:
+                cust_id = request.json.get("id") or request.json.get("customer_id")
+
+        if not cust_id:
+            return jsonify({"success": False, "message": "Customer ID is required for deletion."}), 400
+
+        cust_id = str(cust_id).strip()
+
+        # If caller is a customer, enforce that they can only delete their own profile
+        current_role = request.current_user.get("role")
+        current_username = (request.current_user.get("username") or "").lower()
+        if current_role == "customer":
+            cust_match = customers_collection.find_one({
+                "$or": [
+                    {"id": cust_id},
+                    {"customer_id": cust_id},
+                    {"username": cust_id.lower()},
+                    {"email": cust_id.lower()},
+                    {"phone": cust_id}
+                ]
+            })
+            matched_uname = (cust_match.get("username") or "").lower() if cust_match else ""
+            matched_id = (cust_match.get("id") or cust_match.get("customer_id") or "").lower() if cust_match else ""
+            if cust_id.lower() != current_username and matched_uname != current_username and matched_id != current_username:
+                return jsonify({"success": False, "message": "Access denied: Customers can only delete their own account."}), 403
+
+        # 1. Look up customer details in customers_collection
+        cust = customers_collection.find_one({
+            "$or": [
+                {"id": cust_id},
+                {"customer_id": cust_id},
+                {"username": cust_id.lower()},
+                {"phone": cust_id},
+                {"email": cust_id.lower()}
+            ]
+        })
+
+        actual_id = (cust.get("id") or cust.get("customer_id") or cust_id) if cust else cust_id
+        cust_name = cust.get("name", actual_id) if cust else actual_id
+        cust_phone = cust.get("phone", "") if cust else ""
+        cust_email = cust.get("email", "") if cust else ""
+
+        # 2. Release any trolley currently assigned to this customer
+        assigned_t = trolleys_collection.find_one({
+            "$or": [
+                {"assigned_customer_id": actual_id},
+                {"assigned_customer_id": cust_id},
+                {"assigned_customer_name": cust_name}
+            ]
+        })
+        if assigned_t:
+            trolleys_collection.update_one(
+                {"_id": assigned_t["_id"]},
+                {"$set": {
+                    "assignment_status":       "AVAILABLE",
+                    "assigned_customer_id":    None,
+                    "assigned_customer_name":  "",
+                    "assigned_customer_phone": "",
+                    "assigned_at":             None
+                }}
+            )
+
+        # 3. Delete from customers_collection
+        customers_collection.delete_many({
+            "$or": [
+                {"id": actual_id},
+                {"customer_id": actual_id},
+                {"id": cust_id},
+                {"customer_id": cust_id},
+                {"username": cust_id.lower()}
+            ]
+        })
+
+        # 4. Also delete user login account from users_collection if role is 'customer'
+        user_queries = [
+            {"username": actual_id.lower()},
+            {"username": cust_id.lower()}
+        ]
+        if cust_phone:
+            user_queries.append({"phone": cust_phone})
+        if cust_email:
+            user_queries.append({"email": cust_email.lower()})
+
+        user_match = users_collection.find_one({
+            "role": "customer",
+            "$or": user_queries
+        })
+        if user_match:
+            users_collection.delete_one({"_id": user_match["_id"]})
+            password_resets_collection.delete_many({"username": user_match["username"]})
+
+        # 5. Clean up any saved wishlist
+        db['wishlists'].delete_many({"customer_id": actual_id})
+
+        # 6. Log customer deletion event to feed
+        db['feed'].insert_one({
+            "actionType":    "CUSTOMER_DELETED",
+            "customer_id":   actual_id,
+            "customer_name": cust_name,
+            "deleted_by":    request.current_user.get("username", "admin"),
+            "timestamp":     time.time()
+        })
+
+        return jsonify({
+            "success": True,
+            "message": f"Registered customer '{cust_name}' ({actual_id}) deleted successfully."
+        })
+    except Exception as e:
+        print(f"[ERROR] Customer deletion error: {e}")
+        return jsonify({"success": False, "message": f"Server error deleting customer: {str(e)}"}), 500
+
+
+@app.route("/api/customer/account", methods=["DELETE"])
+@require_auth(roles=["customer"])
+def delete_own_customer_account():
+    """Allows a registered customer to delete their own account and profile."""
+    user = request.current_user
+    username = user.get("username")
+    phone = user.get("phone", "")
+    email = user.get("email", "")
+    name = user.get("name", username)
+
+    # Release any active trolley
+    assigned_t = trolleys_collection.find_one({
+        "$or": [
+            {"assigned_customer_id": username},
+            {"assigned_customer_name": name}
+        ]
+    })
     if assigned_t:
         trolleys_collection.update_one(
             {"_id": assigned_t["_id"]},
@@ -2864,8 +3133,28 @@ def delete_customer(cust_id):
                 "assigned_at":             None
             }}
         )
-    customers_collection.delete_one({"$or": [{"id": cust_id}, {"customer_id": cust_id}]})
-    return jsonify({"success": True, "message": "Customer deleted successfully"})
+
+    # Delete from customers_collection
+    cust_queries = [{"id": username}, {"customer_id": username}, {"username": username}]
+    if phone:
+        cust_queries.append({"phone": phone})
+    if email:
+        cust_queries.append({"email": email})
+    customers_collection.delete_many({"$or": cust_queries})
+
+    # Delete from users_collection
+    users_collection.delete_one({"username": username})
+    password_resets_collection.delete_many({"username": username})
+    db['wishlists'].delete_many({"customer_id": username})
+
+    db['feed'].insert_one({
+        "actionType": "CUSTOMER_ACCOUNT_DELETED",
+        "username":   username,
+        "name":       name,
+        "timestamp":  time.time()
+    })
+
+    return jsonify({"success": True, "message": "Your customer account has been permanently deleted."})
 
 @app.route("/api/trolleys/<trolley_id>/assign", methods=["POST"])
 def assign_trolley_to_customer(trolley_id):

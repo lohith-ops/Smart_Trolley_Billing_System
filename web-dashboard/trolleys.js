@@ -456,13 +456,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Populate registered customers
         const custSel = document.getElementById('modal-assign-customer-select');
+        const custSearchIn = document.getElementById('modal-assign-search-input');
+        if (custSearchIn) custSearchIn.value = '';
+
+        let assignableCustomers = [];
+        function filterAssignCustomerSelect(query = '') {
+            if (!custSel) return;
+            const q = query.trim().toLowerCase();
+            const filtered = q ? assignableCustomers.filter(c => 
+                (c.name && c.name.toLowerCase().includes(q)) ||
+                (c.id && c.id.toLowerCase().includes(q)) ||
+                (c.customer_id && c.customer_id.toLowerCase().includes(q)) ||
+                (c.phone && c.phone.includes(q)) ||
+                (c.email && c.email.toLowerCase().includes(q))
+            ) : assignableCustomers;
+
+            custSel.innerHTML = '<option value="">-- Choose Registered Customer --</option>' +
+                filtered.map(c => {
+                    const cid = c.id || c.customer_id;
+                    const contact = c.phone || c.email || 'No contact';
+                    const tag = c.assigned_trolley ? ` [Assigned: ${c.assigned_trolley}]` : '';
+                    return `<option value="${cid}">${c.name} (${contact}) - ${cid}${tag}</option>`;
+                }).join('');
+        }
+
+        if (custSearchIn) {
+            custSearchIn.oninput = (e) => filterAssignCustomerSelect(e.target.value);
+        }
+
         if (custSel) {
             try {
                 const res = await fetch('/api/customers');
                 if (res.ok) {
-                    const custs = await res.json();
-                    custSel.innerHTML = '<option value="">-- Choose Registered Customer --</option>' +
-                        custs.map(c => `<option value="${c.id}">${c.name} (${c.phone || c.email || 'No phone'}) - ${c.id}${c.assigned_trolley ? ` [Has ${c.assigned_trolley}]` : ''}</option>`).join('');
+                    assignableCustomers = await res.json();
+                    filterAssignCustomerSelect('');
                 }
             } catch (err) {
                 console.error("Load customers error:", err);

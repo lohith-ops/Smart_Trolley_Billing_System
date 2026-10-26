@@ -180,11 +180,11 @@ function renderSidebar() {
             `;
         }
 
-        if (role === 'admin') {
+        if (role === 'admin' || role === 'manager') {
             adminNavItems += `
                 <a href="employees.html" class="nav-item" id="nav-employees">
                     <i class="fa-solid fa-users-gear"></i>
-                    <span>Staff & Roles</span>
+                    <span>Staff & Customers</span>
                 </a>
             `;
         }

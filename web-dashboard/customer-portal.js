@@ -7,10 +7,14 @@ let currentCustomerId = null;
 let activePollingTimer = null;
 let currentRating = 5;
 let allCatalogProducts = [];
+let allRegisteredCustomers = [];
 
 document.addEventListener('DOMContentLoaded', () => {
     const els = {
         customerSelect: document.getElementById('portal-customer-select'),
+        custSearchInput: document.getElementById('portal-customer-search-input'),
+        custSearchClear: document.getElementById('portal-cust-search-clear'),
+        custSearchResults: document.getElementById('portal-cust-search-results'),
         regModalBtn: document.getElementById('portal-register-modal-btn'),
         regModal: document.getElementById('portal-register-modal'),
         closeRegModal: document.getElementById('portal-close-reg-modal'),
@@ -65,6 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function initPortal() {
         setupAuthHeader();
         await loadCustomerList();
+        setupCustomerSearch();
         setupEventListeners();
         await loadCatalog();
         startRealtimePolling();
@@ -107,6 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (res.ok) {
                 customers = await res.json();
             }
+            allRegisteredCustomers = customers;
 
             if (els.customerSelect) {
                 els.customerSelect.innerHTML = '';
@@ -303,6 +309,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const guestCta = document.getElementById('portal-guest-cta');
         if (guestCta) {
             guestCta.style.display = isGuest ? 'block' : 'none';
+        }
+
+        // Delete Registered Customer Button (Visible only for registered shoppers)
+        const deleteCustBtn = document.getElementById('portal-delete-customer-btn');
+        if (deleteCustBtn) {
+            deleteCustBtn.style.display = isGuest ? 'none' : 'block';
         }
     }
 
@@ -823,6 +835,139 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function setupCustomerSearch() {
+        if (!els.custSearchInput || !els.custSearchResults) return;
+
+        function renderSearchResults(query = '') {
+            const q = query.trim().toLowerCase();
+            els.custSearchResults.innerHTML = '';
+
+            if (!q) {
+                els.custSearchResults.style.display = 'none';
+                if (els.custSearchClear) els.custSearchClear.style.display = 'none';
+                return;
+            }
+
+            if (els.custSearchClear) els.custSearchClear.style.display = 'block';
+
+            const matches = allRegisteredCustomers.filter(c => 
+                (c.name && c.name.toLowerCase().includes(q)) ||
+                (c.id && c.id.toLowerCase().includes(q)) ||
+                (c.customer_id && c.customer_id.toLowerCase().includes(q)) ||
+                (c.phone && c.phone.includes(q)) ||
+                (c.email && c.email.toLowerCase().includes(q)) ||
+                (c.assigned_trolley && c.assigned_trolley.toLowerCase().includes(q))
+            );
+
+            const matchesGuest = 'guest shopper'.includes(q);
+
+            if (matches.length === 0 && !matchesGuest) {
+                els.custSearchResults.innerHTML = `
+                    <div style="padding: 14px; text-align: center; color: var(--text-secondary); font-size: 0.82rem;">
+                        <i class="fa-solid fa-magnifying-glass" style="margin-right: 6px; opacity: 0.5;"></i> No registered customers match "<strong>${query}</strong>"
+                    </div>
+                `;
+                els.custSearchResults.style.display = 'block';
+                return;
+            }
+
+            let html = '';
+            if (matchesGuest) {
+                html += `
+                    <div class="search-cust-item" data-id="guest" data-name="Guest Shopper" style="padding: 10px 12px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.15s;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div style="width: 30px; height: 30px; border-radius: 50%; background: #64748b; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700;">GS</div>
+                            <div>
+                                <div style="font-weight: 600; font-size: 0.85rem; color: #fff;">Guest Shopper</div>
+                                <div style="font-size: 0.72rem; color: var(--text-secondary);">Current Session</div>
+                            </div>
+                        </div>
+                        <span class="badge" style="background: rgba(148, 163, 184, 0.15); color: #94a3b8; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px;">Guest</span>
+                    </div>
+                `;
+            }
+
+            matches.forEach(c => {
+                const cId = c.id || c.customer_id;
+                const initials = (c.name || 'Customer').split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
+                const trolleyBadge = c.assigned_trolley ? 
+                    `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px;"><i class="fa-solid fa-cart-shopping"></i> ${c.assigned_trolley}</span>` :
+                    `<span class="badge" style="background: rgba(255,255,255,0.05); color: var(--text-secondary); font-size: 0.7rem; padding: 2px 6px; border-radius: 4px;">Unassigned</span>`;
+                
+                html += `
+                    <div class="search-cust-item" data-id="${cId}" data-name="${c.name || cId}" style="padding: 10px 12px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.15s;">
+                        <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+                            <div style="width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, #06b6d4, #3b82f6); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; flex-shrink: 0;">${initials}</div>
+                            <div style="min-width: 0;">
+                                <div style="font-weight: 600; font-size: 0.85rem; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${c.name}</div>
+                                <div style="font-size: 0.72rem; color: var(--accent-cyan); font-family: monospace;">
+                                    ${cId} ${c.phone ? `• ${c.phone}` : ''}
+                                </div>
+                            </div>
+                        </div>
+                        <div style="flex-shrink: 0; margin-left: 8px;">
+                            ${trolleyBadge}
+                        </div>
+                    </div>
+                `;
+            });
+
+            els.custSearchResults.innerHTML = html;
+            els.custSearchResults.style.display = 'block';
+
+            // Bind click events on items
+            els.custSearchResults.querySelectorAll('.search-cust-item').forEach(item => {
+                item.addEventListener('mouseenter', () => item.style.background = 'rgba(6, 182, 212, 0.12)');
+                item.addEventListener('mouseleave', () => item.style.background = 'transparent');
+                item.addEventListener('click', async () => {
+                    const selId = item.getAttribute('data-id');
+                    const selName = item.getAttribute('data-name') || selId;
+                    currentCustomerId = selId;
+                    if (els.customerSelect) els.customerSelect.value = selId;
+                    els.custSearchResults.style.display = 'none';
+                    if (els.custSearchInput) els.custSearchInput.value = '';
+                    if (els.custSearchClear) els.custSearchClear.style.display = 'none';
+                    await loadProfileData(selId);
+                    if (window.showToast) {
+                        window.showToast("Customer Selected", `Switched to ${selName}`, "info");
+                    }
+                });
+            });
+        }
+
+        els.custSearchInput.addEventListener('input', (e) => {
+            renderSearchResults(e.target.value);
+        });
+
+        els.custSearchInput.addEventListener('focus', () => {
+            if (els.custSearchInput.value.trim()) {
+                renderSearchResults(els.custSearchInput.value);
+            }
+        });
+
+        if (els.custSearchClear) {
+            els.custSearchClear.addEventListener('click', () => {
+                els.custSearchInput.value = '';
+                renderSearchResults('');
+                els.custSearchInput.focus();
+            });
+        }
+
+        // Close search dropdown on click outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#portal-cust-search-container')) {
+                els.custSearchResults.style.display = 'none';
+            }
+        });
+
+        // Close on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                els.custSearchResults.style.display = 'none';
+            }
+        });
+    }
+
     function setupEventListeners() {
         // Customer Select change
         if (els.customerSelect) {
@@ -879,6 +1024,57 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (err) {
                     console.error("Registration error:", err);
                     alert("Network error creating customer.");
+                }
+            });
+        }
+
+        // Delete Customer Profile Button
+        const deleteCustBtn = document.getElementById('portal-delete-customer-btn');
+        if (deleteCustBtn) {
+            deleteCustBtn.addEventListener('click', async () => {
+                if (currentCustomerId === 'guest') return;
+                const custName = (els.name && els.name.textContent) || currentCustomerId;
+                
+                if (!confirm(`Are you sure you want to permanently delete registered customer account "${custName}" (${currentCustomerId})?\n\nThis will release any active trolley session and remove all loyalty data.`)) {
+                    return;
+                }
+
+                try {
+                    const fetchFn = window.authFetch || fetch;
+                    const res = await fetchFn(`/api/customers/${encodeURIComponent(currentCustomerId)}`, {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    
+                    let data = null;
+                    try {
+                        data = await res.json();
+                    } catch (jsonErr) {
+                        const text = await res.text().catch(() => '');
+                        data = { 
+                            success: false, 
+                            message: `Server returned HTTP ${res.status}: ${text ? text.slice(0, 100) : res.statusText || 'Unexpected server response'}` 
+                        };
+                    }
+
+                    if (res.ok && data && data.success) {
+                        if (window.showToast) {
+                            window.showToast("Account Deleted", `Customer account ${custName} has been deleted.`, "info");
+                        }
+                        // If current logged-in user is customer, log them out
+                        const authUser = window.getAuthUser ? window.getAuthUser() : null;
+                        if (authUser && authUser.role === 'customer') {
+                            localStorage.clear();
+                            setTimeout(() => { window.location.href = 'login.html'; }, 1000);
+                        } else {
+                            await loadCustomerList('guest');
+                        }
+                    } else {
+                        alert((data && data.message) || `Failed to delete customer (HTTP ${res.status}).`);
+                    }
+                } catch (e) {
+                    console.error("Delete customer error:", e);
+                    alert(`Unable to delete customer: ${e.message || 'Network error. Please make sure Flask backend is running on port 5000.'}`);
                 }
             });
         }

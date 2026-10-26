@@ -203,13 +203,7 @@ function initLoginPage() {
     const toggleForgotPass  = document.getElementById('toggle-forgot-pass');
     const toggleForgotPassIcon = document.getElementById('toggle-forgot-pass-icon');
 
-    // Elements for Demo OTP
-    const demoOtpBanner     = document.getElementById('demo-otp-banner');
-    const demoOtpVal        = document.getElementById('demo-otp-val');
-    const demoOtpFillBtn    = document.getElementById('demo-otp-fill-btn');
-
     let activeResetUsername = '';
-    let currentOtpCode      = '';
 
     function openForgotModal() {
         if (!forgotModal) return;
@@ -246,9 +240,6 @@ function initLoginPage() {
         if (successState) {
             successState.classList.add('hidden');
             successState.style.display = 'none';
-        }
-        if (demoOtpBanner) {
-            demoOtpBanner.style.display = 'none';
         }
         if (otpInput) otpInput.value = '';
         if (newPassInput) newPassInput.value = '';
@@ -331,7 +322,6 @@ function initLoginPage() {
 
                 if (res.ok && data.success) {
                     activeResetUsername = data.username || identifier;
-                    currentOtpCode = data.otp || '';
 
                     step1Form.classList.add('hidden');
                     step1Form.style.display = 'none';
@@ -339,16 +329,20 @@ function initLoginPage() {
                     step2Form.style.display = 'block';
                     
                     if (step2TargetInfo) {
-                        step2TargetInfo.textContent = `Verification code sent to ${data.masked_target || identifier}`;
+                        if (data.email_sent) {
+                            step2TargetInfo.innerHTML = `<i class="fa-solid fa-circle-check" style="color: #10b981; margin-right: 6px;"></i> Verification code sent to registered email: <strong>${data.masked_target || identifier}</strong>`;
+                        } else {
+                            step2TargetInfo.innerHTML = `<i class="fa-solid fa-envelope" style="color: var(--accent-cyan); margin-right: 6px;"></i> Verification code generated for: <strong>${data.masked_target || identifier}</strong>`;
+                        }
                     }
 
-                    // Show helper OTP banner if code is returned
-                    if (data.otp && demoOtpBanner && demoOtpVal) {
-                        demoOtpVal.textContent = data.otp;
-                        demoOtpBanner.style.display = 'flex';
+                    if (data.email_sent) {
+                        showForgotAlert(`A 6-digit verification code has been dispatched to your registered email (${data.masked_target}). Please check your inbox and enter the code below.`, 'success');
+                    } else if (data.email_status) {
+                        showForgotAlert(`A 6-digit verification code was sent to ${data.masked_target}. (Notice: ${data.email_status})`, 'info');
+                    } else {
+                        showForgotAlert(`A 6-digit verification code has been sent to ${data.masked_target}. Please enter it below.`, 'info');
                     }
-
-                    showForgotAlert(`A 6-digit code has been generated & sent. Please enter it below.`, 'info');
                     setTimeout(() => otpInput && otpInput.focus(), 150);
                 } else {
                     showForgotAlert(data.message || 'Unable to request password reset code.');
@@ -359,16 +353,6 @@ function initLoginPage() {
             } finally {
                 sendBtn.disabled = false;
                 sendBtn.innerHTML = `<span>Send Verification Code (OTP)</span> <i class="fa-solid fa-paper-plane"></i>`;
-            }
-        });
-    }
-
-    // Autofill OTP helper button
-    if (demoOtpFillBtn && otpInput) {
-        demoOtpFillBtn.addEventListener('click', () => {
-            if (currentOtpCode) {
-                otpInput.value = currentOtpCode;
-                if (newPassInput) newPassInput.focus();
             }
         });
     }
@@ -464,11 +448,11 @@ function initLoginPage() {
                 });
                 const data = await res.json();
                 if (res.ok && data.success) {
-                    currentOtpCode = data.otp || '';
-                    if (data.otp && demoOtpVal) {
-                        demoOtpVal.textContent = data.otp;
+                    if (data.email_sent) {
+                        showForgotAlert(`A new 6-digit verification code has been dispatched to your registered email (${data.masked_target || activeResetUsername}).`, 'success');
+                    } else {
+                        showForgotAlert(`A new 6-digit verification code has been sent. Please enter it below.`, 'info');
                     }
-                    showForgotAlert(`New verification code sent!`, 'success');
                 } else {
                     showForgotAlert(data.message || 'Failed to resend code.');
                 }

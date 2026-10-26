@@ -113,6 +113,21 @@ window.fetch = async function (resource, init = {}) {
     let url = typeof resource === 'string' ? resource : (resource && resource.url ? resource.url : '');
     const token = getAuthToken();
 
+    // Route to Flask backend on port 5000 if running from Live Server (port != 5000) or file://
+    const isExternalOrigin = window.location.protocol === 'file:' || 
+                             (window.location.port && window.location.port !== '5000');
+    if (isExternalOrigin && url && (url.startsWith('/api/') || url.startsWith('api/'))) {
+        const cleanPath = url.startsWith('/') ? url : `/${url}`;
+        const baseHost = (window.location.hostname && window.location.hostname !== '') ? window.location.hostname : '127.0.0.1';
+        const targetUrl = `http://${baseHost}:5000${cleanPath}`;
+        if (typeof resource === 'string') {
+            resource = targetUrl;
+        } else if (resource && resource.url) {
+            resource = new Request(targetUrl, init);
+        }
+        url = targetUrl;
+    }
+
     if (token && url && (url.startsWith('/api/') || url.includes('/api/')) && !url.includes('/api/auth/login')) {
         init = init || {};
         let headers = init.headers;
