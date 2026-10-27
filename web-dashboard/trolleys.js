@@ -46,14 +46,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── Summary stat bar ────────────────────────────────────────────────────
     function updateSummaryStats() {
         const onlineTrolleys = allTrolleys.filter(t => t.status === 'online' || t.connection_status === 'connected');
-        const battAvg = onlineTrolleys.length
-            ? Math.round(onlineTrolleys.reduce((s, t) => s + (t.battery || 0), 0) / onlineTrolleys.length)
+        const activeTrolleys = allTrolleys.filter(t => t.assignment_status === 'ASSIGNED');
+        const onlineCount = onlineTrolleys.length;
+        const activeCount = activeTrolleys.length;
+        const battAvg = onlineCount
+            ? Math.round(onlineTrolleys.reduce((s, t) => s + (t.battery || 0), 0) / onlineCount)
             : '—';
 
-        if (els.statOnline) els.statOnline.textContent = online;
+        if (els.statOnline) els.statOnline.textContent = onlineCount;
         if (els.statTotal) els.statTotal.textContent = allTrolleys.length;
         if (els.statBattery) els.statBattery.textContent = (battAvg !== '—') ? (battAvg + '%') : '—';
-        if (els.statActive) els.statActive.textContent = active;
+        if (els.statActive) els.statActive.textContent = activeCount;
     }
 
     // ── Render trolley cards ────────────────────────────────────────────────

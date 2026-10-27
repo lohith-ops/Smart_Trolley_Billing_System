@@ -2127,6 +2127,10 @@ def cart_action():
     send_command_to_arduino("BEEP:1")
 
     cart = carts_collection.find_one({"_id": cart_id})
+    trolleys_collection.update_one(
+        {"_id": trolley_id},
+        {"$set": {"status": "online", "last_seen": time.time(), "connection_status": "connected"}}
+    )
     return jsonify({
         "success":   True,
         "product":   {"name": product["name"], "price": product["price"], "stock": product.get("stock", 0)},
@@ -2140,7 +2144,7 @@ def cart_action():
 def reset_cart():
     data = request.json or {}
     trolley_id = data.get("trolley_id", "TROLLEY-001")
-    is_force = bool(data.get("force", False) or data.get("simulator", False) or app.config.get("TESTING", False))
+    is_force = bool(data.get("force", False) or data.get("manual", False) or data.get("simulator", False) or app.config.get("TESTING", False))
 
     if not is_force and not is_trolley_connected(trolley_id):
         print(f"[RESET REJECTED] Cannot reset cart: {trolley_id} is not connected. Cart items preserved.")
@@ -2152,6 +2156,10 @@ def reset_cart():
 
     init_cart(trolley_id)
     perform_reset(trolley_id, force=True)
+    trolleys_collection.update_one(
+        {"_id": trolley_id},
+        {"$set": {"status": "online", "last_seen": time.time(), "connection_status": "connected"}}
+    )
     return jsonify({
         "success": True,
         "connected": True,

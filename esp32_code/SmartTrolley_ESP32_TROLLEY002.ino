@@ -43,6 +43,7 @@
 #include <WiFi.h>
 #include <esp_wifi.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <SPI.h>
 #include <Wire.h>
 #include <MFRC522.h>
@@ -78,21 +79,38 @@ const int NUM_KNOWN_NETWORKS = sizeof(knownNetworks) / sizeof(knownNetworks[0]);
 
 const char* defaultSSID = "Yogaraj";               // Active Wi-Fi network
 const char* defaultPass = "1234567890";            // Active Wi-Fi password
-char serverIP[40]       = "10.32.97.241";          // Current Flask server local IP
-char serverPort[6]      = "5000";                  // Default Flask server port
+char serverIP[120]      = "https://smart-trolley-billing-system.onrender.com"; // Deployed Render Cloud URL
+char serverPort[6]      = "443";                  // Port (443 for HTTPS cloud, 5000 for local)
 Preferences preferences;                           // Non-volatile storage handler
 bool shouldSaveConfig = false;
 
 // ── API Endpoints (Dynamic based on serverIP & serverPort) ──────────────────
-String BASE_URL     = "http://" + String(serverIP) + ":" + String(serverPort);
-String apiAction    = BASE_URL + "/api/cart/action";
-String apiReset     = BASE_URL + "/api/reset";
-String apiMode      = BASE_URL + "/api/simulator/mode";
-String apiHeartbeat = BASE_URL + "/api/trolley/heartbeat";
-String apiRegister  = BASE_URL + "/api/trolley/register";
+String BASE_URL;
+String apiAction;
+String apiReset;
+String apiMode;
+String apiHeartbeat;
+String apiRegister;
 
 void updateApiEndpoints() {
-  BASE_URL     = "http://" + String(serverIP) + ":" + String(serverPort);
+  String s = String(serverIP);
+  s.trim();
+  while (s.endsWith("/")) s = s.substring(0, s.length() - 1);
+
+  if (s.startsWith("https://") || s.startsWith("http://")) {
+    BASE_URL = s;
+  } else if (s.indexOf('.') != -1 && (s.indexOf("onrender.com") != -1 || s.indexOf(".com") != -1 || s.indexOf(".app") != -1)) {
+    BASE_URL = "https://" + s;
+  } else {
+    String portStr = String(serverPort);
+    portStr.trim();
+    if (portStr.length() > 0 && portStr != "80" && portStr != "443") {
+      BASE_URL = "http://" + s + ":" + portStr;
+    } else {
+      BASE_URL = "http://" + s;
+    }
+  }
+
   apiAction    = BASE_URL + "/api/cart/action";
   apiReset     = BASE_URL + "/api/reset";
   apiMode      = BASE_URL + "/api/simulator/mode";
@@ -425,16 +443,37 @@ void reconnectWiFi() {
   }
 }
 
+// ── Universal API POST Helper (Supports both HTTPS Cloud & HTTP Local) ───────
+int sendApiPost(const String& url, const String& payload, String* responseBody = nullptr) {
+  if (WiFi.status() != WL_CONNECTED) return -1;
+  HTTPClient http;
+
+  if (url.startsWith("https://")) {
+    WiFiClientSecure secureClient;
+    secureClient.setInsecure(); // Allows connecting to cloud hosting (Render, Railway, etc.)
+    secureClient.setTimeout(8000);
+    http.begin(secureClient, url);
+  } else {
+    WiFiClient plainClient;
+    plainClient.setTimeout(8000);
+    http.begin(plainClient, url);
+  }
+
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("Connection", "close");
+  http.setTimeout(8000);
+
+  int code = http.POST(payload);
+  if (code > 0 && responseBody != nullptr) {
+    *responseBody = http.getString();
+  }
+  http.end();
+  return code;
+}
+
 // ── Register Trolley on Server ─────────────────────────────────────────────
 void registerWithServer() {
   if (WiFi.status() != WL_CONNECTED) return;
-
-  WiFiClient client;
-  HTTPClient http;
-  http.begin(client, apiRegister);
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("Connection", "close");
-  http.setTimeout(5000);
 
   StaticJsonDocument<256> doc;
   doc["trolley_id"]       = TROLLEY_ID;
@@ -445,21 +484,13 @@ void registerWithServer() {
   String payload;
   serializeJson(doc, payload);
 
-  int code = http.POST(payload);
+  int code = sendApiPost(apiRegister, payload);
   Serial.println("[REGISTER] Server response code: " + String(code));
-  http.end();
 }
 
 // ── Send Heartbeat ─────────────────────────────────────────────────────────
 void sendHeartbeat() {
   if (WiFi.status() != WL_CONNECTED) return;
-
-  WiFiClient client;
-  HTTPClient http;
-  http.begin(client, apiHeartbeat);
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("Connection", "close");
-  http.setTimeout(5000);
 
   int batteryPct = 85;
   int rssiVal = getWifiSignalDbm();
@@ -479,33 +510,24 @@ void sendHeartbeat() {
   String payload;
   serializeJson(doc, payload);
 
-  int code = http.POST(payload);
+  int code = sendApiPost(apiHeartbeat, payload);
   if (code == 200) {
     Serial.println("[HEARTBEAT] OK — Battery: " + String(batteryPct) + "%, RSSI: " + String(rssiVal) + " dBm | RFID: " + (rfidOk ? "OK" : "FAULT") + " | LCD: " + (lcdOk ? "OK" : "FAULT"));
   } else {
     Serial.println("[HEARTBEAT] Code: " + String(code));
   }
-  http.end();
 }
 
 // ── Sync Mode with Server ──────────────────────────────────────────────────
 void syncModeWithServer(String mode) {
   if (WiFi.status() != WL_CONNECTED) return;
 
-  WiFiClient client;
-  HTTPClient http;
-  http.begin(client, apiMode);
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("Connection", "close");
-  http.setTimeout(3000);
-
   StaticJsonDocument<128> doc;
   doc["mode"]       = mode;
   doc["trolley_id"] = TROLLEY_ID;
   String payload;
   serializeJson(doc, payload);
-  http.POST(payload);
-  http.end();
+  sendApiPost(apiMode, payload);
 }
 
 // ── Setup ──────────────────────────────────────────────────────────────────
@@ -592,13 +614,13 @@ void setup() {
   preferences.begin("trolley-cfg", false);
   String storedIP   = preferences.getString("server_ip", "");
   String storedPort = preferences.getString("server_port", "");
-  // Check if stored IP has a valid non-empty string and not the obsolete default
-  if (storedIP.length() > 0 && storedIP != "10.175.93.241") {
+  // Prioritize cloud URL over old local IP strings stored in flash
+  if (storedIP.length() > 0 && storedIP.startsWith("https://")) {
     strncpy(serverIP, storedIP.c_str(), sizeof(serverIP) - 1);
   } else {
     preferences.putString("server_ip", serverIP);
   }
-  if (storedPort.length() > 0) {
+  if (storedPort.length() > 0 && storedPort == "443") {
     strncpy(serverPort, storedPort.c_str(), sizeof(serverPort) - 1);
   } else {
     preferences.putString("server_port", serverPort);
@@ -658,8 +680,8 @@ void setup() {
   wm.setConfigPortalTimeout(300);  // 5 minutes active portal (plenty of time to configure)
 
   // Custom parameters for Flask server IP & Port
-  WiFiManagerParameter custom_server_ip("server_ip", "Flask Server IP (e.g. 10.221.37.241)", serverIP, 40);
-  WiFiManagerParameter custom_server_port("server_port", "Flask Server Port", serverPort, 6);
+  WiFiManagerParameter custom_server_ip("server_ip", "Server Host / Cloud URL", serverIP, 110);
+  WiFiManagerParameter custom_server_port("server_port", "Port (443 for Cloud, 5000 for Local)", serverPort, 6);
   wm.addParameter(&custom_server_ip);
   wm.addParameter(&custom_server_port);
 
@@ -853,27 +875,20 @@ void loop() {
       lcdShow("Resetting Cart", "Please wait...");
 
       if (WiFi.status() == WL_CONNECTED) {
-        WiFiClient client;
-        HTTPClient http;
-        http.begin(client, apiReset);
-        http.addHeader("Content-Type", "application/json");
-        http.addHeader("Connection", "close");
-        http.setTimeout(5000);
-
         StaticJsonDocument<128> doc;
         doc["trolley_id"] = TROLLEY_ID;
-        doc["manual"] = true;
+        doc["manual"]     = true;
+        doc["force"]      = true;
         String payload;
         serializeJson(doc, payload);
 
-        int responseCode = http.POST(payload);
+        int responseCode = sendApiPost(apiReset, payload);
         if (responseCode == 200) {
           lcdShow("Cart Reset!", "Total: Rs.0.00");
           beepOnce();
         } else {
           lcdShow("Reset Local", "Err: " + String(responseCode));
         }
-        http.end();
       } else {
         lcdShow("Reset Local", "WiFi offline");
       }
@@ -942,13 +957,6 @@ void loop() {
   }
 
   // ── Send scan request to Flask ────────────────────────────────────────────
-  WiFiClient client;
-  HTTPClient http;
-  http.begin(client, apiAction);
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("Connection", "close");
-  http.setTimeout(5000);
-
   StaticJsonDocument<200> doc;
   doc["trolley_id"] = TROLLEY_ID;
   doc["action"]     = currentMode;
@@ -956,10 +964,10 @@ void loop() {
   String requestPayload;
   serializeJson(doc, requestPayload);
 
-  int httpCode = http.POST(requestPayload);
+  String response = "";
+  int httpCode = sendApiPost(apiAction, requestPayload, &response);
 
   if (httpCode == 200) {
-    String response = http.getString();
     Serial.println("[API] Response: " + response);
 
     StaticJsonDocument<256> resDoc;
@@ -980,20 +988,27 @@ void loop() {
     lcdShow("Unknown Card!", "Check Dashboard");
     beepTriple();
   } else if (httpCode == 400) {
-    Serial.println("[API] Cart locked (HTTP 400)");
-    lcdShow("Cart Locked!", "Pay/Cancel Bill");
+    Serial.println("[API] Error 400: " + response);
+    StaticJsonDocument<256> errDoc;
+    deserializeJson(errDoc, response);
+    String msg = errDoc["message"].as<String>();
+    if (msg.indexOf("locked") != -1 || msg.indexOf("Locked") != -1) {
+      lcdShow("Cart Locked!", "Pay/Cancel Bill");
+    } else if (msg.length() > 0) {
+      lcdShow("Scan Error:", msg.substring(0, 16));
+    } else {
+      lcdShow("Cart Locked!", "Pay/Cancel Bill");
+    }
     beepTriple();
   } else if (httpCode < 0) {
     Serial.println("[API Error] Connection failed, code: " + String(httpCode));
-    lcdShow("Connection Error", "IP: " + String(serverIP));
+    lcdShow("Connection Error", "Code: " + String(httpCode));
     beepTriple();
   } else {
     Serial.println("[API Error] HTTP " + String(httpCode));
     lcdShow("Server Error!", "Code: " + String(httpCode));
     beepTriple();
   }
-
-  http.end();
   mfrc522.PICC_HaltA();
   mfrc522.PCD_StopCrypto1();
   isDisplayingScanResult = true;
