@@ -447,29 +447,39 @@ void reconnectWiFi() {
 int sendApiPost(const String& url, const String& payload, String* responseBody = nullptr) {
   if (WiFi.status() != WL_CONNECTED) return -1;
   HTTPClient http;
+  int code = -1;
 
   if (url.startsWith("https://")) {
     WiFiClientSecure secureClient;
     secureClient.setInsecure(); // Allows connecting to cloud hosting (Render, Railway, etc.)
     secureClient.setTimeout(8000);
-    http.begin(secureClient, url);
+    if (http.begin(secureClient, url)) {
+      http.addHeader("Content-Type", "application/json");
+      http.addHeader("Connection", "close");
+      http.setTimeout(8000);
+      code = http.POST(payload);
+      if (code > 0 && responseBody != nullptr) {
+        *responseBody = http.getString();
+      }
+      http.end();
+    }
   } else {
     WiFiClient plainClient;
     plainClient.setTimeout(8000);
-    http.begin(plainClient, url);
+    if (http.begin(plainClient, url)) {
+      http.addHeader("Content-Type", "application/json");
+      http.addHeader("Connection", "close");
+      http.setTimeout(8000);
+      code = http.POST(payload);
+      if (code > 0 && responseBody != nullptr) {
+        *responseBody = http.getString();
+      }
+      http.end();
+    }
   }
-
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("Connection", "close");
-  http.setTimeout(8000);
-
-  int code = http.POST(payload);
-  if (code > 0 && responseBody != nullptr) {
-    *responseBody = http.getString();
-  }
-  http.end();
   return code;
 }
+
 
 // ── Register Trolley on Server ─────────────────────────────────────────────
 void registerWithServer() {
@@ -991,13 +1001,16 @@ void loop() {
     Serial.println("[API] Error 400: " + response);
     StaticJsonDocument<256> errDoc;
     deserializeJson(errDoc, response);
-    String msg = errDoc["message"].as<String>();
+    String msg = "";
+    if (errDoc.containsKey("message") && !errDoc["message"].isNull()) {
+      msg = errDoc["message"].as<String>();
+    }
     if (msg.indexOf("locked") != -1 || msg.indexOf("Locked") != -1) {
       lcdShow("Cart Locked!", "Pay/Cancel Bill");
-    } else if (msg.length() > 0) {
+    } else if (msg.length() > 0 && msg != "null") {
       lcdShow("Scan Error:", msg.substring(0, 16));
     } else {
-      lcdShow("Cart Locked!", "Pay/Cancel Bill");
+      lcdShow("Scan Error!", "Check Dashboard");
     }
     beepTriple();
   } else if (httpCode < 0) {

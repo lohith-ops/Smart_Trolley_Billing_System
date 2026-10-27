@@ -64,6 +64,17 @@ def add_header(response):
     response.headers["Expires"] = "0"
     return response
 
+@app.errorhandler(400)
+def handle_bad_request(e):
+    msg = getattr(e, 'description', 'Bad Request')
+    return jsonify({"success": False, "message": str(msg)}), 400
+
+@app.errorhandler(500)
+def handle_server_error(e):
+    msg = getattr(e, 'description', 'Internal Server Error')
+    return jsonify({"success": False, "message": str(msg)}), 500
+
+
 # ── Configuration File Persistence ───────────────────────────────────────────
 CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
 
