@@ -5,3 +5,4 @@ pyserial==3.5
 pyjwt>=2.8.0
 razorpay>=1.4.1
 gunicorn>=21.2.0
+dnspython>=2.6.0

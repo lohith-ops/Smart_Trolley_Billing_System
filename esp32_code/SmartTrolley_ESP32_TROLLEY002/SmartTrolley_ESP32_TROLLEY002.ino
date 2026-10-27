@@ -78,7 +78,7 @@ const int NUM_KNOWN_NETWORKS = sizeof(knownNetworks) / sizeof(knownNetworks[0]);
 
 const char* defaultSSID = "Yogaraj";               // Active Wi-Fi network
 const char* defaultPass = "1234567890";            // Active Wi-Fi password
-char serverIP[40]       = "10.221.37.241";         // Current Flask server local IP
+char serverIP[40]       = "10.32.97.241";          // Current Flask server local IP
 char serverPort[6]      = "5000";                  // Default Flask server port
 Preferences preferences;                           // Non-volatile storage handler
 bool shouldSaveConfig = false;

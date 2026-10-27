@@ -3999,6 +3999,7 @@ def get_all_known_ips(cfg, current_ip):
         pass
 
     # 4. Known Firmware IPs
+    add_ip("10.32.97.241", "ESP32 Firmware Current (10.32.97.241)", "firmware")
     add_ip("10.221.37.241", "ESP32 Firmware Default (10.221.37.241)", "firmware")
     add_ip("10.175.93.241", "ESP32 NVS Fallback (10.175.93.241)", "firmware")
     add_ip("192.168.1.101", "Trolley 001 Lab Static IP (192.168.1.101)", "static")
