@@ -1698,9 +1698,9 @@ def send_otp_email_via_http(to_email, otp_code, recipient_name="Customer", cfg=N
     if cfg is None:
         cfg = load_config()
     store_name = cfg.get("storeName", "Smart Supermarket")
-    brevo_key = (cfg.get("brevoApiKey") or os.environ.get("BREVO_API_KEY", "")).strip()
-    resend_key = (cfg.get("resendApiKey") or os.environ.get("RESEND_API_KEY", "")).strip()
-    sendgrid_key = (cfg.get("sendgridApiKey") or os.environ.get("SENDGRID_API_KEY", "")).strip()
+    brevo_key = (cfg.get("brevoApiKey") or os.environ.get("BREVO_API_KEY", "")).strip().replace('"', '').replace("'", "").replace(" ", "")
+    resend_key = (cfg.get("resendApiKey") or os.environ.get("RESEND_API_KEY", "")).strip().replace('"', '').replace("'", "").replace(" ", "")
+    sendgrid_key = (cfg.get("sendgridApiKey") or os.environ.get("SENDGRID_API_KEY", "")).strip().replace('"', '').replace("'", "").replace(" ", "")
 
     subject = f"Verification Code: {otp_code} - {store_name}"
     html_body = f"""<div style="font-family:sans-serif;background:#0f172a;color:#f8fafc;padding:24px;border-radius:12px;max-width:500px;margin:auto;">
@@ -1738,6 +1738,7 @@ def send_otp_email_via_http(to_email, otp_code, recipient_name="Customer", cfg=N
     # 2. Try Resend HTTP API (Port 443)
     if resend_key:
         try:
+            print(f"[EMAIL RESEND DISPATCH] Target: {to_email}, Key prefix: {resend_key[:6]}, len: {len(resend_key)}")
             payload = json.dumps({
                 "from": f"{store_name} <onboarding@resend.dev>",
                 "to": [to_email],
@@ -1774,9 +1775,9 @@ def send_otp_email(to_email, otp_code, recipient_name="Customer"):
     print(f"\n{'='*64}\n[OTP EMAIL DISPATCH] Recipient: {to_email} ({recipient_name})\n[OTP CODE]: {otp_code} (Valid for 10 minutes)\n{'='*64}\n")
 
     # 1. First check if any HTTPS Email API is configured (Port 443 - unaffected by cloud SMTP port blocks)
-    has_http_api = any([(cfg.get("brevoApiKey") or os.environ.get("BREVO_API_KEY")),
-                        (cfg.get("resendApiKey") or os.environ.get("RESEND_API_KEY")),
-                        (cfg.get("sendgridApiKey") or os.environ.get("SENDGRID_API_KEY"))])
+    res_k = (cfg.get("resendApiKey") or os.environ.get("RESEND_API_KEY", "")).strip().replace('"', '').replace("'", "").replace(" ", "")
+    brv_k = (cfg.get("brevoApiKey") or os.environ.get("BREVO_API_KEY", "")).strip().replace('"', '').replace("'", "").replace(" ", "")
+    has_http_api = bool(res_k or brv_k or (cfg.get("sendgridApiKey") or os.environ.get("SENDGRID_API_KEY")))
     if has_http_api:
         http_ok, http_msg = send_otp_email_via_http(to_email, otp_code, recipient_name, cfg)
         if http_ok:
