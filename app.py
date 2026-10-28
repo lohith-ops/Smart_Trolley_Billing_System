@@ -93,22 +93,48 @@ def load_config():
         "razorpayEnabled": True,
         "razorpayKeyId": os.environ.get("RAZORPAY_KEY_ID", "rzp_test_1DP5mmOlF5G5ag"),
         "razorpayKeySecret": os.environ.get("RAZORPAY_KEY_SECRET", ""),
-        "smtpServer": "smtp.gmail.com",
-        "smtpPort": 587,
-        "smtpUser": "",
-        "smtpPassword": "",
-        "fast2smsApiKey": "",
-        "twilioSid": "",
-        "twilioAuthToken": "",
-        "twilioFromPhone": ""
+        "smtpServer": os.environ.get("SMTP_SERVER", "smtp.gmail.com"),
+        "smtpPort": int(os.environ.get("SMTP_PORT", 587)),
+        "smtpUser": os.environ.get("SMTP_EMAIL", os.environ.get("SMTP_USER", "")),
+        "smtpPassword": os.environ.get("SMTP_PASSWORD", os.environ.get("SMTP_PASS", "")),
+        "fast2smsApiKey": os.environ.get("FAST2SMS_API_KEY", ""),
+        "twilioSid": os.environ.get("TWILIO_SID", ""),
+        "twilioAuthToken": os.environ.get("TWILIO_AUTH_TOKEN", ""),
+        "twilioFromPhone": os.environ.get("TWILIO_FROM_PHONE", "")
     }
+    cfg = dict(defaults)
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                return {**defaults, **json.load(f)}
+                cfg.update(json.load(f))
         except Exception as e:
             print(f"[CONFIG] Error reading config file: {e}")
-    return defaults
+
+    # Check MongoDB settings_collection if initialized
+    try:
+        if 'settings_collection' in globals() and settings_collection is not None:
+            db_cfg = settings_collection.find_one({"_id": "app_config"})
+            if db_cfg:
+                for k, v in db_cfg.items():
+                    if k != "_id" and v is not None and v != "":
+                        cfg[k] = v
+    except Exception:
+        pass
+
+    # Ensure environment variables take precedence if explicitly provided
+    if os.environ.get("SMTP_EMAIL"):
+        cfg["smtpUser"] = os.environ.get("SMTP_EMAIL").strip()
+    if os.environ.get("SMTP_PASSWORD"):
+        cfg["smtpPassword"] = os.environ.get("SMTP_PASSWORD").strip()
+    if os.environ.get("SMTP_SERVER"):
+        cfg["smtpServer"] = os.environ.get("SMTP_SERVER").strip()
+    if os.environ.get("SMTP_PORT"):
+        try:
+            cfg["smtpPort"] = int(os.environ.get("SMTP_PORT"))
+        except:
+            pass
+
+    return cfg
 
 def save_config(cfg):
     try:
@@ -117,6 +143,15 @@ def save_config(cfg):
         print(f"[CONFIG] Configuration saved to {CONFIG_FILE}")
     except Exception as e:
         print(f"[CONFIG] Error saving config file: {e}")
+
+    try:
+        if 'settings_collection' in globals() and settings_collection is not None:
+            cfg_doc = dict(cfg)
+            cfg_doc["_id"] = "app_config"
+            settings_collection.update_one({"_id": "app_config"}, {"$set": cfg_doc}, upsert=True)
+            print("[CONFIG] Configuration persisted to MongoDB settings collection.")
+    except Exception as e:
+        print(f"[CONFIG WARN] Could not persist settings to MongoDB: {e}")
 
 # ── Default Trolleys ──────────────────────────────────────────────────────────
 DEFAULT_TROLLEYS = [
@@ -308,6 +343,7 @@ try:
     otp_verifications_collection = db['otp_verifications']
     customers_collection    = db['customers']
     razorpay_orders_collection = db['razorpay_orders']
+    settings_collection     = db['settings']
     mongo_ok = True
     print(f"[DB] Connected to MongoDB ({'Cloud Atlas' if 'mongodb+srv' in MONGO_URI else 'Local'}) successfully.")
 except Exception as e:
@@ -324,6 +360,7 @@ except Exception as e:
     otp_verifications_collection = db['otp_verifications']
     customers_collection    = db['customers']
     razorpay_orders_collection = db['razorpay_orders']
+    settings_collection     = db['settings']
 
 # ── Catalog Data Model & Category Intelligence ────────────────────────────────
 def normalize_uid(uid_str):
@@ -1640,17 +1677,20 @@ def send_otp_email(to_email, otp_code, recipient_name="Customer"):
     if not to_email:
         return False, "No email address provided."
     cfg = load_config()
-    smtp_server = cfg.get("smtpServer", "smtp.gmail.com")
-    smtp_port   = int(cfg.get("smtpPort", 587))
+    smtp_server = (cfg.get("smtpServer") or "smtp.gmail.com").strip()
+    try:
+        smtp_port = int(cfg.get("smtpPort", 587))
+    except:
+        smtp_port = 587
     smtp_user   = (cfg.get("smtpUser") or os.environ.get("SMTP_EMAIL", "")).strip()
-    smtp_pass   = (cfg.get("smtpPassword") or os.environ.get("SMTP_PASSWORD", "")).strip()
+    smtp_pass   = (cfg.get("smtpPassword") or os.environ.get("SMTP_PASSWORD", "")).strip().replace(" ", "")
     store_name  = cfg.get("storeName", "Smart Supermarket")
     
     # Always log OTP visibly to console so the administrator/customer is never blocked
-    print(f"\n{'='*64}\n[🔐 OTP EMAIL DISPATCH] Recipient: {to_email} ({recipient_name})\n[🔐 OTP CODE]: {otp_code} (Valid for 10 minutes)\n{'='*64}\n")
+    print(f"\n{'='*64}\n[OTP EMAIL DISPATCH] Recipient: {to_email} ({recipient_name})\n[OTP CODE]: {otp_code} (Valid for 10 minutes)\n{'='*64}\n")
 
     if not smtp_user or not smtp_pass:
-        print(f"[EMAIL INFO] SMTP credentials not set in Settings. OTP code for {to_email}: {otp_code}")
+        print(f"[EMAIL INFO] SMTP credentials not set in Settings/Env. OTP code for {to_email}: {otp_code}")
         return False, "SMTP credentials not configured in settings."
 
     try:
@@ -1707,11 +1747,11 @@ body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helv
 
         context = ssl.create_default_context()
         if smtp_port == 465:
-            with smtplib.SMTP_SSL(smtp_server, smtp_port, context=context, timeout=8) as server:
+            with smtplib.SMTP_SSL(smtp_server, smtp_port, context=context, timeout=15) as server:
                 server.login(smtp_user, smtp_pass)
                 server.sendmail(smtp_user, to_email, msg.as_string())
         else:
-            with smtplib.SMTP(smtp_server, smtp_port, timeout=8) as server:
+            with smtplib.SMTP(smtp_server, smtp_port, timeout=15) as server:
                 server.starttls(context=context)
                 server.login(smtp_user, smtp_pass)
                 server.sendmail(smtp_user, to_email, msg.as_string())
