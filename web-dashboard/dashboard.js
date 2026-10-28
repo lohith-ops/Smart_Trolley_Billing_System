@@ -242,6 +242,10 @@ async function fetchDashboard() {
                 (now - latestEvent.timestamp) < 5 &&
                 State.lastProcessedUnknownUID !== latestEvent.uid) {
                 State.lastProcessedUnknownUID = latestEvent.uid;
+                if (window.showToast) {
+                    const tLbl = latestEvent.trolley_id ? latestEvent.trolley_id.replace('TROLLEY-00', 'Trolley #').replace('TROLLEY-', 'Trolley #') : 'Live Cart';
+                    window.showToast("Unregistered Card Scanned", `Card UID ${latestEvent.uid} on ${tLbl} is not in catalog. Check Live Cart to register it.`, "warning");
+                }
             }
         }
 
@@ -357,6 +361,36 @@ function renderActiveCartAndItems() {
         const heartbeatText = cart.last_heartbeat_display || cart.lastActive || 'Just now';
         const productOptions = Products.map(p => `<option value="${p.uid}">${p.name} — Rs.${p.price.toFixed(2)}</option>`).join('');
 
+        // Detect unknown / unregistered card scan for this specific trolley
+        const unknownScan = cart.last_unknown_scan || (
+            State.feed && State.feed.find(f => f.actionType === 'UNKNOWN_SCAN' && (f.trolley_id === trolleyId || f.trolley_id === cart.id) && (Date.now()/1000 - f.timestamp < 180))
+        );
+        let unknownAlertHtml = '';
+        if (unknownScan && unknownScan.uid) {
+            unknownAlertHtml = `
+                <div class="unknown-scan-alert-box" style="margin-top: 12px; margin-bottom: 6px; padding: 10px 14px; background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 8px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; box-shadow: 0 0 15px rgba(239, 68, 68, 0.15);">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <i class="fa-solid fa-triangle-exclamation" style="color: #ef4444; font-size: 1.25rem;"></i>
+                        <div>
+                            <div style="font-weight: 700; color: #fca5a5; font-size: 0.88rem; display: flex; align-items: center; gap: 6px;">
+                                <span>Unregistered Card Scanned!</span>
+                                <span style="font-size: 0.68rem; background: rgba(239, 68, 68, 0.25); color: #fecaca; padding: 1px 6px; border-radius: 10px;">Action Required</span>
+                            </div>
+                            <div style="font-size: 0.78rem; color: #cbd5e1; margin-top: 3px;">
+                                Scanned Card UID: <code style="color: #38bdf8; font-weight: bold; font-family: monospace; background: rgba(0,0,0,0.4); padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(56, 189, 248, 0.3);">${unknownScan.uid}</code>
+                                <span style="color: var(--text-secondary); margin-left: 4px;">is not in the inventory catalog.</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button class="btn btn-primary btn-reg-unknown-tag" data-uid="${unknownScan.uid}" style="padding: 5px 12px; font-size: 0.8rem; background: linear-gradient(135deg, #3b82f6, #6366f1); color: #fff; border: none; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: 600;">
+                            <i class="fa-solid fa-plus-circle"></i> Register Product
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
         return `
             <div class="active-cart" style="padding: 16px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; margin-bottom: 16px;">
                 <div class="cart-header-row" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px;">
@@ -378,6 +412,8 @@ function renderActiveCartAndItems() {
                         <button class="btn btn-checkout btn-cart-bill" data-trolley-id="${trolleyId}" title="Generate bill for ${trolleyId}" style="padding: 4px 10px; font-size: 0.75rem;"><i class="fa-solid fa-receipt"></i> Bill</button>
                     </div>
                 </div>
+
+                ${unknownAlertHtml}
 
                 ${itemsHtml}
 
@@ -403,6 +439,15 @@ function renderActiveCartAndItems() {
 
 // Bind event listeners for cart item modification buttons
 function bindCartControlListeners() {
+    // Register unknown card button from Live Cart
+    document.querySelectorAll('.btn-reg-unknown-tag').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const uid = btn.getAttribute('data-uid');
+            showRegistrationModal(uid);
+        });
+    });
+
     // Add 1 quantity button (+)
     document.querySelectorAll('.btn-qty-add').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -521,8 +566,13 @@ async function modifyCartItem(uid, action, trolleyId) {
                 window.showToast(actTitle, `${data.product.name} updated in ${targetTrolley}.`, "success");
             }
         } else {
-            if (window.showToast) window.showToast("Action Blocked", data.message || "Could not modify cart.", "error");
-            else alert(data.message || "Could not modify cart.");
+            await fetchDashboard();
+            if (res.status === 404 || (data.message && data.message.includes("not found"))) {
+                if (window.showToast) window.showToast("Unregistered Card", `Card UID ${uid} is not in catalog. See alert in Live Cart to register.`, "warning");
+            } else {
+                if (window.showToast) window.showToast("Action Blocked", data.message || "Could not modify cart.", "error");
+                else alert(data.message || "Could not modify cart.");
+            }
         }
     } catch (err) {
         console.error("Cart item modification error:", err);
