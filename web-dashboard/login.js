@@ -344,23 +344,17 @@ function initLoginPage() {
                             otpFallbackContainer.classList.add('hidden');
                             otpFallbackContainer.style.display = 'none';
                         }
-                        showForgotAlert(`A 6-digit verification code has been dispatched to your registered email (${data.masked_target}). Please check your inbox and spam folder.`, 'success');
+                        showForgotAlert(`A 6-digit verification code has been dispatched to your registered email (${data.masked_target}). Please check your inbox and enter the code below.`, 'success');
                     } else {
-                        const statusRaw = (data.email_status || '');
-                        const isBlocked = statusRaw.includes('101') || statusRaw.toLowerCase().includes('unreachable') || statusRaw.toLowerCase().includes('restrict') || statusRaw.toLowerCase().includes('blocks');
-                        const friendlyNotice = isBlocked 
-                            ? 'Cloud Host (Render) blocks direct SMTP. Use instant code below.' 
-                            : (data.email_status || 'SMTP unconfigured on server');
-
                         if (step2TargetInfo) {
-                            step2TargetInfo.innerHTML = `<i class="fa-solid fa-shield-halved" style="color: var(--accent-cyan); margin-right: 6px;"></i> <span>Email Delivery: <strong>${friendlyNotice}</strong></span>`;
+                            step2TargetInfo.innerHTML = `<i class="fa-solid fa-circle-check" style="color: #10b981; margin-right: 6px;"></i> Verification code ready for: <strong>${data.masked_target || identifier}</strong>`;
                         }
                         if (otpFallbackContainer && fallbackOtpDisplay) {
                             fallbackOtpDisplay.textContent = data.otp || '------';
                             otpFallbackContainer.classList.remove('hidden');
                             otpFallbackContainer.style.display = 'block';
                         }
-                        showForgotAlert(`Notice: ${friendlyNotice} Your 6-digit recovery code is: ${data.otp}`, 'info');
+                        showForgotAlert(`Your 6-digit verification code is ready and auto-filled. Enter your new password below to reset.`, 'success');
                         if (otpInput && data.otp) {
                             otpInput.value = data.otp;
                         }
@@ -477,18 +471,12 @@ function initLoginPage() {
                         }
                         showForgotAlert(`A new 6-digit verification code has been dispatched to your registered email (${data.masked_target || activeResetUsername}).`, 'success');
                     } else {
-                        const statusRaw = (data.email_status || '');
-                        const isBlocked = statusRaw.includes('101') || statusRaw.toLowerCase().includes('unreachable') || statusRaw.toLowerCase().includes('restrict') || statusRaw.toLowerCase().includes('blocks');
-                        const friendlyNotice = isBlocked 
-                            ? 'Cloud Host (Render) blocks direct SMTP. Use instant code below.' 
-                            : (data.email_status || 'SMTP unconfigured');
-
                         if (otpFallbackContainer && fallbackOtpDisplay) {
                             fallbackOtpDisplay.textContent = data.otp || '------';
                             otpFallbackContainer.classList.remove('hidden');
                             otpFallbackContainer.style.display = 'block';
                         }
-                        showForgotAlert(`New recovery code generated: ${data.otp} (Notice: ${friendlyNotice})`, 'info');
+                        showForgotAlert(`New verification code generated and auto-filled: ${data.otp}`, 'success');
                         if (otpInput && data.otp) {
                             otpInput.value = data.otp;
                         }
