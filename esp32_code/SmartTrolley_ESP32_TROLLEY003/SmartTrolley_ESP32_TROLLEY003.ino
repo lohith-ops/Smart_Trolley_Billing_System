@@ -452,11 +452,11 @@ int sendApiPost(const String& url, const String& payload, String* responseBody =
   if (url.startsWith("https://")) {
     WiFiClientSecure secureClient;
     secureClient.setInsecure(); // Allows connecting to cloud hosting (Render, Railway, etc.)
-    secureClient.setTimeout(8000);
+    secureClient.setTimeout(25000); // 25s for Render cloud wake-up
     if (http.begin(secureClient, url)) {
       http.addHeader("Content-Type", "application/json");
       http.addHeader("Connection", "close");
-      http.setTimeout(8000);
+      http.setTimeout(25000); // 25s for Render cloud wake-up
       code = http.POST(payload);
       if (code > 0 && responseBody != nullptr) {
         *responseBody = http.getString();
@@ -465,11 +465,11 @@ int sendApiPost(const String& url, const String& payload, String* responseBody =
     }
   } else {
     WiFiClient plainClient;
-    plainClient.setTimeout(8000);
+    plainClient.setTimeout(15000);
     if (http.begin(plainClient, url)) {
       http.addHeader("Content-Type", "application/json");
       http.addHeader("Connection", "close");
-      http.setTimeout(8000);
+      http.setTimeout(25000); // 25s for Render cloud wake-up
       code = http.POST(payload);
       if (code > 0 && responseBody != nullptr) {
         *responseBody = http.getString();
@@ -624,11 +624,13 @@ void setup() {
   preferences.begin("trolley-cfg", false);
   String storedIP   = preferences.getString("server_ip", "");
   String storedPort = preferences.getString("server_port", "");
-  // Prioritize cloud URL over old local IP strings stored in flash
-  if (storedIP.length() > 0 && storedIP.startsWith("https://")) {
+  // Always ensure serverIP uses the deployed Render cloud URL
+  if (storedIP.length() > 0 && (storedIP.indexOf("onrender.com") != -1 || storedIP.startsWith("https://"))) {
     strncpy(serverIP, storedIP.c_str(), sizeof(serverIP) - 1);
   } else {
+    strncpy(serverIP, "https://smart-trolley-billing-system.onrender.com", sizeof(serverIP) - 1);
     preferences.putString("server_ip", serverIP);
+    preferences.putString("server_port", "443");
   }
   if (storedPort.length() > 0 && storedPort == "443") {
     strncpy(serverPort, storedPort.c_str(), sizeof(serverPort) - 1);

@@ -928,7 +928,7 @@ def send_command_to_arduino(cmd):
         except Exception as e:
             print(f"[SERIAL ERROR] {e}")
 
-OFFLINE_THRESHOLD_SECS = 25  # Trolley marked offline after 25s with no heartbeat (ESP32 sends every 15s)
+OFFLINE_THRESHOLD_SECS = 75  # Increased to 75s to allow smooth cloud latency without dropouts  # Trolley marked offline after 25s with no heartbeat (ESP32 sends every 15s)
 SERIAL_TROLLEY_ID = "TROLLEY-001"  # Default serial hardware identifier
 
 def is_trolley_connected(trolley_id: str) -> bool:
@@ -965,7 +965,7 @@ def forward_cart_action_to_cloud(trolley_id, uid, action):
                 headers={"Content-Type": "application/json", "User-Agent": "SmartTrolleyLocalRelay/2.0"}
             )
             try:
-                with urllib.request.urlopen(req, timeout=5) as resp:
+                with urllib.request.urlopen(req, timeout=15) as resp:
                     pass
             except urllib.error.HTTPError:
                 # HTTP 404 for unknown cards is expected and correctly logged into feed on cloud
@@ -986,7 +986,7 @@ def forward_cart_reset_to_cloud(trolley_id):
                 data=payload,
                 headers={"Content-Type": "application/json", "User-Agent": "SmartTrolleyLocalRelay/2.0"}
             )
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            with urllib.request.urlopen(req, timeout=15) as resp:
                 pass
         except Exception:
             pass
@@ -1004,7 +1004,7 @@ def forward_trolley_offline_to_cloud(trolley_id):
                 data=payload,
                 headers={"Content-Type": "application/json", "User-Agent": "SmartTrolleyLocalRelay/2.0"}
             )
-            with urllib.request.urlopen(req, timeout=4) as resp:
+            with urllib.request.urlopen(req, timeout=15) as resp:
                 pass
         except Exception:
             pass
@@ -1043,7 +1043,7 @@ def cloud_relay_loop():
                             data=payload,
                             headers={"Content-Type": "application/json", "User-Agent": "SmartTrolleyLocalRelay/2.0"}
                         )
-                        with urllib.request.urlopen(req, timeout=4) as resp:
+                        with urllib.request.urlopen(req, timeout=15) as resp:
                             pass
                     except Exception:
                         pass
