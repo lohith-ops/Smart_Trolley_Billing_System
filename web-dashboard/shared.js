@@ -118,6 +118,11 @@ function renderSidebar() {
         'admin': { bg: 'rgba(244, 63, 94, 0.15)', text: '#f43f5e', border: '#f43f5e' },
         'manager': { bg: 'rgba(192, 132, 252, 0.15)', text: '#c084fc', border: '#c084fc' },
         'cashier': { bg: 'rgba(16, 185, 129, 0.15)', text: '#10b981', border: '#10b981' },
+        'inventory': { bg: 'rgba(245, 158, 11, 0.15)', text: '#f59e0b', border: '#f59e0b' },
+        'inventory incharge': { bg: 'rgba(245, 158, 11, 0.15)', text: '#f59e0b', border: '#f59e0b' },
+        'inventory staff': { bg: 'rgba(245, 158, 11, 0.15)', text: '#f59e0b', border: '#f59e0b' },
+        'staff': { bg: 'rgba(59, 130, 246, 0.15)', text: '#3b82f6', border: '#3b82f6' },
+        'store staff': { bg: 'rgba(59, 130, 246, 0.15)', text: '#3b82f6', border: '#3b82f6' },
         'customer': { bg: 'rgba(6, 182, 212, 0.15)', text: '#06b6d4', border: '#06b6d4' },
         'guest': { bg: 'rgba(148, 163, 184, 0.15)', text: '#94a3b8', border: '#94a3b8' }
     };
@@ -134,7 +139,7 @@ function renderSidebar() {
     let customerNavItems = '';
 
     // Admin Suite items
-    if (role === 'admin' || role === 'manager' || role === 'cashier') {
+    if (role === 'admin' || role === 'manager' || role === 'cashier' || role === 'inventory' || role === 'inventory incharge' || role === 'inventory staff' || role === 'staff' || role === 'store staff') {
         adminNavItems += `
             <div class="sidebar-group-label">Operations</div>
             <a href="index.html" class="nav-item" id="nav-index">
@@ -151,7 +156,7 @@ function renderSidebar() {
             </a>
         `;
 
-        if (role === 'admin' || role === 'manager') {
+        if (role === 'admin' || role === 'manager' || role === 'inventory' || role === 'inventory incharge' || role === 'inventory staff' || role === 'staff' || role === 'store staff') {
             adminNavItems += `
                 <a href="inventory.html" class="nav-item" id="nav-inventory">
                     <i class="fa-solid fa-boxes-stacked"></i>

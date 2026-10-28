@@ -133,6 +133,8 @@ function initLoginPage() {
                         window.location.href = 'customer-portal.html';
                     } else if (data.user && data.user.role === 'cashier') {
                         window.location.href = 'trolleys.html';
+                    } else if (data.user && (data.user.role === 'inventory' || data.user.role === 'inventory incharge' || data.user.role === 'inventory staff' || data.user.role === 'staff' || data.user.role === 'store staff')) {
+                        window.location.href = 'inventory.html';
                     } else if (data.user && data.user.role === 'manager') {
                         window.location.href = 'index.html';
                     } else {
