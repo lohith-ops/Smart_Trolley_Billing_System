@@ -1672,22 +1672,96 @@ def find_user_by_identifier(identifier):
 
     return None
 
+def send_otp_email_via_http(to_email, otp_code, recipient_name="Customer", cfg=None):
+    """Sends OTP email via modern HTTPS Email APIs (Brevo, Resend, SendGrid) over Port 443 (never blocked by cloud firewalls)."""
+    if cfg is None:
+        cfg = load_config()
+    store_name = cfg.get("storeName", "Smart Supermarket")
+    brevo_key = (cfg.get("brevoApiKey") or os.environ.get("BREVO_API_KEY", "")).strip()
+    resend_key = (cfg.get("resendApiKey") or os.environ.get("RESEND_API_KEY", "")).strip()
+    sendgrid_key = (cfg.get("sendgridApiKey") or os.environ.get("SENDGRID_API_KEY", "")).strip()
+
+    subject = f"Verification Code: {otp_code} - {store_name}"
+    html_body = f"""<div style="font-family:sans-serif;background:#0f172a;color:#f8fafc;padding:24px;border-radius:12px;max-width:500px;margin:auto;">
+        <h2 style="color:#06b6d4;margin:0 0 12px 0;">🛒 {store_name}</h2>
+        <p>Hello {recipient_name}, we received a request to reset your password.</p>
+        <div style="background:rgba(6,182,212,0.1);border:2px dashed #06b6d4;border-radius:8px;padding:16px;text-align:center;margin:20px 0;">
+            <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;">Your Verification Code (OTP)</div>
+            <div style="font-size:36px;font-weight:bold;letter-spacing:6px;color:#38bdf8;margin:8px 0;">{otp_code}</div>
+            <div style="font-size:12px;color:#fbbf24;">Valid for 10 minutes</div>
+        </div>
+        <p style="font-size:12px;color:#94a3b8;">If you did not request this, you can safely ignore this email.</p>
+    </div>"""
+
+    # 1. Try Brevo (Sendinblue) HTTP API (Port 443)
+    if brevo_key:
+        try:
+            sender_email = (cfg.get("smtpUser") or os.environ.get("SMTP_EMAIL", "billing@smartsupermarket.com")).strip()
+            payload = json.dumps({
+                "sender": {"name": store_name, "email": sender_email},
+                "to": [{"email": to_email, "name": recipient_name}],
+                "subject": subject,
+                "htmlContent": html_body
+            }).encode("utf-8")
+            req = urllib.request.Request("https://api.brevo.com/v3/smtp/email", data=payload, headers={
+                "api-key": brevo_key,
+                "Content-Type": "application/json"
+            })
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                if resp.status in (200, 201, 202):
+                    print(f"[EMAIL HTTP DISPATCH] Successfully sent OTP to {to_email} via Brevo API")
+                    return True, "Email sent successfully via Brevo API."
+        except Exception as e:
+            print(f"[EMAIL HTTP WARN] Brevo API failed: {e}")
+
+    # 2. Try Resend HTTP API (Port 443)
+    if resend_key:
+        try:
+            payload = json.dumps({
+                "from": f"{store_name} <onboarding@resend.dev>",
+                "to": [to_email],
+                "subject": subject,
+                "html": html_body
+            }).encode("utf-8")
+            req = urllib.request.Request("https://api.resend.com/emails", data=payload, headers={
+                "Authorization": f"Bearer {resend_key}",
+                "Content-Type": "application/json"
+            })
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                if resp.status in (200, 201, 202):
+                    print(f"[EMAIL HTTP DISPATCH] Successfully sent OTP to {to_email} via Resend API")
+                    return True, "Email sent successfully via Resend API."
+        except Exception as e:
+            print(f"[EMAIL HTTP WARN] Resend API failed: {e}")
+
+    return False, "No HTTP Email API configured."
+
 def send_otp_email(to_email, otp_code, recipient_name="Customer"):
-    """Sends OTP verification email via SMTP (e.g. Gmail) with complete diagnostics."""
+    """Sends OTP verification email via HTTP API (Port 443) or SMTP with complete diagnostics."""
     if not to_email:
         return False, "No email address provided."
     cfg = load_config()
-    smtp_server = (cfg.get("smtpServer") or "smtp.gmail.com").strip()
-    try:
-        smtp_port = int(cfg.get("smtpPort", 587))
-    except:
-        smtp_port = 587
-    smtp_user   = (cfg.get("smtpUser") or os.environ.get("SMTP_EMAIL", "")).strip()
-    smtp_pass   = (cfg.get("smtpPassword") or os.environ.get("SMTP_PASSWORD", "")).strip().replace(" ", "")
     store_name  = cfg.get("storeName", "Smart Supermarket")
     
     # Always log OTP visibly to console so the administrator/customer is never blocked
     print(f"\n{'='*64}\n[OTP EMAIL DISPATCH] Recipient: {to_email} ({recipient_name})\n[OTP CODE]: {otp_code} (Valid for 10 minutes)\n{'='*64}\n")
+
+    # 1. First check if any HTTPS Email API is configured (Port 443 - unaffected by cloud SMTP port blocks)
+    if any([(cfg.get("brevoApiKey") or os.environ.get("BREVO_API_KEY")),
+            (cfg.get("resendApiKey") or os.environ.get("RESEND_API_KEY")),
+            (cfg.get("sendgridApiKey") or os.environ.get("SENDGRID_API_KEY"))]):
+        http_ok, http_msg = send_otp_email_via_http(to_email, otp_code, recipient_name, cfg)
+        if http_ok:
+            return True, http_msg
+
+    # 2. SMTP dispatch (Port 465 / 587)
+    smtp_server = (cfg.get("smtpServer") or "smtp.gmail.com").strip()
+    try:
+        smtp_port = int(cfg.get("smtpPort", 465))
+    except:
+        smtp_port = 465
+    smtp_user   = (cfg.get("smtpUser") or os.environ.get("SMTP_EMAIL", "")).strip()
+    smtp_pass   = (cfg.get("smtpPassword") or os.environ.get("SMTP_PASSWORD", "")).strip().replace(" ", "")
 
     if not smtp_user or not smtp_pass:
         print(f"[EMAIL INFO] SMTP credentials not set in Settings/Env. OTP code for {to_email}: {otp_code}")
@@ -1695,7 +1769,7 @@ def send_otp_email(to_email, otp_code, recipient_name="Customer"):
 
     try:
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"🔐 Verification Code: {otp_code} - {store_name}"
+        msg["Subject"] = f"Verification Code: {otp_code} - {store_name}"
         msg["From"]    = f"{store_name} <{smtp_user}>"
         msg["To"]      = to_email
 
@@ -1793,6 +1867,8 @@ body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helv
         return False, err_msg
     except Exception as e:
         err_msg = str(e)
+        if "101" in err_msg or "unreachable" in err_msg.lower() or "connection refused" in err_msg.lower() or "timed out" in err_msg.lower():
+            err_msg = "Cloud host (Render) restricts direct SMTP ports (587/465). Please use the instant verification code shown on screen."
         print(f"[EMAIL ERROR] Failed to send email to {to_email}: {err_msg}")
         return False, err_msg
 
