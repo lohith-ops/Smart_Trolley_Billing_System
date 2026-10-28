@@ -4226,8 +4226,9 @@ def get_notification_settings():
     masked_sms_key = ("•" * 8) if fast2sms_key else ""
     twilio_token = cfg.get("twilioAuthToken", "")
     masked_twilio_token = ("•" * 8) if twilio_token else ""
-    resend_key = cfg.get("resendApiKey", "")
+    resend_key = (cfg.get("resendApiKey") or os.environ.get("RESEND_API_KEY", "")).strip().replace('"', '').replace("'", "").replace(" ", "")
     masked_resend_key = ("•" * 8) if resend_key else ""
+    resend_source = "env" if os.environ.get("RESEND_API_KEY") else ("config/mongodb" if cfg.get("resendApiKey") else "none")
 
     return jsonify({
         "success": True,
@@ -4238,6 +4239,9 @@ def get_notification_settings():
         "smtpPasswordMask": masked_smtp_pass,
         "resendApiKeySet":  bool(resend_key),
         "resendApiKeyMask": masked_resend_key,
+        "resendSource":     resend_source,
+        "resendLength":     len(resend_key),
+        "resendPrefix":     resend_key[:8] if resend_key else "",
         "fast2smsApiKeySet": bool(fast2sms_key),
         "fast2smsApiKeyMask": masked_sms_key,
         "twilioSid":        cfg.get("twilioSid", ""),
