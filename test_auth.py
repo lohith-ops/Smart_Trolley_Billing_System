@@ -428,6 +428,62 @@ def run_tests():
     # Clean up test user
     client.delete("/api/customers/emailotpcust", headers={"Authorization": f"Bearer {admin_token}"})
 
+    # 37. Test Staff OTP Password Reset by Employee ID and Registered Staff Email
+    print("\n[TEST 37] Testing Staff OTP Password Reset by Employee ID & Registered Email...")
+    # Clean any stale test employee
+    client.delete("/api/employees/E888", headers={"Authorization": f"Bearer {admin_token}"})
+    client.delete("/api/auth/users/e888", headers={"Authorization": f"Bearer {admin_token}"})
+
+    # Register staff employee with a registered email
+    res = client.post("/api/employees", json={
+        "id": "E888",
+        "name": "Staff Worker",
+        "email": "staff.worker888@gmail.com",
+        "role": "Cashier",
+        "shift": "Morning (08:00 AM - 04:00 PM)",
+        "status": "Active"
+    }, headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 200
+
+    # 37a. Request OTP using Employee ID (E888)
+    res = client.post("/api/auth/forgot-password/request", json={"identifier": "E888"})
+    assert res.status_code == 200
+    fp_staff = res.get_json()
+    assert fp_staff.get("success") is True
+    assert "email" in fp_staff.get("channels", [])
+    assert "st***@gmail.com" in fp_staff.get("masked_target", "")
+    staff_otp = fp_staff.get("otp")
+    assert staff_otp is not None and len(staff_otp) == 6
+    print(f"[PASS] Staff OTP generated via Employee ID (E888) targeting registered email: {fp_staff.get('masked_target')}")
+
+    # 37b. Request OTP using Staff Registered Email directly
+    res = client.post("/api/auth/forgot-password/request", json={"identifier": "staff.worker888@gmail.com"})
+    assert res.status_code == 200
+    fp_email_lookup = res.get_json()
+    assert fp_email_lookup.get("success") is True
+    staff_otp_2 = fp_email_lookup.get("otp")
+    assert staff_otp_2 is not None
+
+    # 37c. Verify OTP and reset staff password
+    res = client.post("/api/auth/forgot-password/verify", json={
+        "identifier": "E888",
+        "otp": staff_otp_2,
+        "new_password": "newStaffPass123"
+    })
+    assert res.status_code == 200
+    assert res.get_json().get("success") is True
+    print("[PASS] Staff password reset successfully using verified OTP.")
+
+    # 37d. Login as staff with new password using Employee ID
+    res = client.post("/api/auth/login", json={"username": "E888", "password": "newStaffPass123"})
+    assert res.status_code == 200
+    assert res.get_json().get("token") is not None
+    print("[PASS] Staff logged in successfully with newly reset password via Employee ID.")
+
+    # Clean up test staff employee
+    client.delete("/api/employees/E888", headers={"Authorization": f"Bearer {admin_token}"})
+    client.delete("/api/auth/users/e888", headers={"Authorization": f"Bearer {admin_token}"})
+
     # Clean up test users
     client.delete("/api/auth/users/supercashier1", headers={"Authorization": f"Bearer {admin_token}"})
     client.delete("/api/auth/users/customer_jane", headers={"Authorization": f"Bearer {admin_token}"})
@@ -439,3 +495,4 @@ def run_tests():
 
 if __name__ == "__main__":
     run_tests()
+
