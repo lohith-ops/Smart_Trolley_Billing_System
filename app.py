@@ -4317,6 +4317,8 @@ def get_notification_settings():
     resend_key = (cfg.get("resendApiKey") or os.environ.get("RESEND_API_KEY", "")).strip().replace('"', '').replace("'", "").replace(" ", "")
     masked_resend_key = ("•" * 8) if resend_key else ""
     resend_source = "env" if os.environ.get("RESEND_API_KEY") else ("config/mongodb" if cfg.get("resendApiKey") else "none")
+    brevo_key = (cfg.get("brevoApiKey") or os.environ.get("BREVO_API_KEY", "")).strip().replace('"', '').replace("'", "").replace(" ", "")
+    masked_brevo_key = ("•" * 8) if brevo_key else ""
 
     return jsonify({
         "success": True,
@@ -4330,6 +4332,8 @@ def get_notification_settings():
         "resendSource":     resend_source,
         "resendLength":     len(resend_key),
         "resendPrefix":     resend_key[:8] if resend_key else "",
+        "brevoApiKeySet":   bool(brevo_key),
+        "brevoApiKeyMask":  masked_brevo_key,
         "fast2smsApiKeySet": bool(fast2sms_key),
         "fast2smsApiKeyMask": masked_sms_key,
         "twilioSid":        cfg.get("twilioSid", ""),
@@ -4358,6 +4362,9 @@ def update_notification_settings():
 
     if "resendApiKey" in data and data["resendApiKey"] != "••••••••":
         cfg["resendApiKey"] = (data["resendApiKey"] or "").strip()
+
+    if "brevoApiKey" in data and data["brevoApiKey"] != "••••••••":
+        cfg["brevoApiKey"] = (data["brevoApiKey"] or "").strip()
 
     if "fast2smsApiKey" in data and data["fast2smsApiKey"] != "••••••••":
         cfg["fast2smsApiKey"] = (data["fast2smsApiKey"] or "").strip()
