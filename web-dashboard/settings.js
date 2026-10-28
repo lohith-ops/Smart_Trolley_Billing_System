@@ -515,6 +515,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const smtpPortInput   = document.getElementById('smtp-port-input');
     const fast2smsKeyInput= document.getElementById('fast2sms-key-input');
     const resendKeyInput  = document.getElementById('resend-api-key-input');
+    const brevoKeyInput   = document.getElementById('brevo-api-key-input');
     const twilioSidInput  = document.getElementById('twilio-sid-input');
     const testNotifBtn    = document.getElementById('test-notification-btn');
 
@@ -533,6 +534,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (smtpServerInput) smtpServerInput.value = data.smtpServer || 'smtp.gmail.com';
                     if (smtpPortInput)   smtpPortInput.value = data.smtpPort || 587;
                     if (resendKeyInput && data.resendApiKeySet) resendKeyInput.placeholder = '•••••••• (Configured)';
+                    if (brevoKeyInput && data.brevoApiKeySet) brevoKeyInput.placeholder = '•••••••• (Configured)';
                     if (fast2smsKeyInput && data.fast2smsApiKeySet) fast2smsKeyInput.placeholder = '•••••••• (Configured)';
                     if (twilioSidInput)  twilioSidInput.value = data.twilioSid || '';
                 }
@@ -556,6 +558,7 @@ document.addEventListener('DOMContentLoaded', () => {
             smtpServer:      smtpServerInput ? smtpServerInput.value.trim() : 'smtp.gmail.com',
             smtpPort:        smtpPortInput ? parseInt(smtpPortInput.value) || 587 : 587,
             resendApiKey:    resendKeyInput ? resendKeyInput.value.trim() : '',
+            brevoApiKey:     brevoKeyInput ? brevoKeyInput.value.trim() : '',
             fast2smsApiKey:  fast2smsKeyInput ? fast2smsKeyInput.value.trim() : '',
             twilioSid:       twilioSidInput ? twilioSidInput.value.trim() : ''
         };
