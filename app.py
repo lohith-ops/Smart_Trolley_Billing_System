@@ -265,6 +265,21 @@ class MockCollection:
             for k, v in update["$inc"].items():
                 doc[k] = doc.get(k, 0) + v
         return type('UpdateResult', (object,), {'upserted_id': None, 'matched_count': 1, 'modified_count': 1})()
+    def update_many(self, filter, update, upsert=False):
+        matched = 0
+        modified = 0
+        for doc in self.data:
+            if self._match_doc(doc, filter):
+                matched += 1
+                if "$set" in update:
+                    for k, v in update["$set"].items():
+                        doc[k] = v
+                    modified += 1
+                if "$inc" in update:
+                    for k, v in update["$inc"].items():
+                        doc[k] = doc.get(k, 0) + v
+                    modified += 1
+        return type('UpdateResult', (object,), {'upserted_id': None, 'matched_count': matched, 'modified_count': modified})()
     def insert_many(self, documents):
         ids = []
         for document in documents:
@@ -497,6 +512,27 @@ def ensure_catalog_integrity():
 # Run initial integrity check on startup
 ensure_catalog_integrity()
 
+
+VALID_ROLES = ["admin", "manager", "cashier", "inventory", "staff", "customer"]
+
+def normalize_role(role_str):
+    if not role_str:
+        return "cashier"
+    r = str(role_str).strip().lower()
+    if r in ["admin", "administrator", "system administrator", "system admin"]:
+        return "admin"
+    if r in ["manager", "store manager"]:
+        return "manager"
+    if r in ["inventory", "inventory incharge", "inventory staff", "inventory clerk", "inventory in charge"]:
+        return "inventory"
+    if r in ["staff", "store staff", "floor staff", "associate"]:
+        return "staff"
+    if r in ["cashier", "billing cashier", "pos"]:
+        return "cashier"
+    if r in ["customer", "shopper", "guest"]:
+        return r
+    return "cashier"
+
 # ── User Accounts & Authentication Setup ─────────────────────────────────────
 DEFAULT_USERS = [
     {
@@ -518,6 +554,20 @@ DEFAULT_USERS = [
         "password": "cashier123",
         "name":     "Billing Cashier",
         "role":     "cashier",
+        "email":    "llohithacharya@gmail.com"
+    },
+    {
+        "username": "inventory",
+        "password": "inventory123",
+        "name":     "Inventory Incharge",
+        "role":     "inventory",
+        "email":    "llohithacharya@gmail.com"
+    },
+    {
+        "username": "staff",
+        "password": "staff123",
+        "name":     "Store Staff",
+        "role":     "staff",
         "email":    "llohithacharya@gmail.com"
     },
     {
@@ -561,8 +611,7 @@ def init_users():
             emp_name = (emp.get("name") or "").strip()
             emp_id = (emp.get("id") or "").strip()
             emp_role = (emp.get("role") or "Cashier").strip().lower()
-            if emp_role not in ["admin", "manager", "cashier", "customer"]:
-                emp_role = "cashier"
+            emp_role = normalize_role(emp.get("role"))
 
             usernames_to_check = []
             if emp.get("username"):
@@ -1709,8 +1758,7 @@ def find_user_by_identifier(identifier):
         emp_email = (emp.get("email") or "").strip().lower()
         emp_name = emp.get("name") or emp_uname
         emp_role = (emp.get("role") or "cashier").strip().lower()
-        if emp_role not in ["admin", "manager", "cashier", "customer"]:
-            emp_role = "cashier"
+        emp_role = normalize_role(emp.get("role"))
 
         # Search for corresponding user in users_collection
         linked_user = users_collection.find_one({
@@ -2288,7 +2336,7 @@ def get_products():
     return jsonify(products)
 
 @app.route("/api/products/register", methods=["POST"])
-@require_auth(roles=["admin", "manager"])
+@require_auth(roles=["admin", "manager", "inventory", "staff"])
 def register_product():
     data = request.json or {}
     uid = (data.get("uid") or "").strip()
@@ -2381,7 +2429,7 @@ def register_product():
     return jsonify({"success": True, "message": f"Product '{name}' saved successfully."})
 
 @app.route("/api/products/<uid>", methods=["DELETE"])
-@require_auth(roles=["admin", "manager"])
+@require_auth(roles=["admin", "manager", "inventory", "staff"])
 def delete_product(uid):
     uid_norm = normalize_uid(uid)
     result = products_collection.delete_one({"uid_norm": uid_norm})
@@ -4923,8 +4971,10 @@ def save_employee():
     if email and not EMAIL_REGEX.match(email):
         return jsonify({"success": False, "message": "Please enter a valid email address in the form of example@gmail.com."}), 400
 
-    if role.lower() not in ["admin", "manager", "cashier"]:
-        return jsonify({"success": False, "message": "Role must be Admin, Manager, or Cashier."}), 400
+    norm_role = normalize_role(role)
+    if norm_role not in ["admin", "manager", "cashier", "inventory", "staff"]:
+        return jsonify({"success": False, "message": "Role must be Admin, Manager, Cashier, Inventory Incharge, or Store Staff."}), 400
+    user_role = norm_role
 
     if password and len(password) < 6:
         return jsonify({"success": False, "message": "Password must be at least 6 characters long."}), 400
@@ -4944,9 +4994,7 @@ def save_employee():
     )
 
     # If a password is provided (or when creating a new employee), sync with users_collection
-    user_role = role.lower()
-    if user_role not in ["admin", "manager", "cashier", "customer"]:
-        user_role = "cashier"
+    user_role = normalize_role(role)
 
     user_update_fields = {
         "username":      username,
@@ -5045,7 +5093,7 @@ def reset_employee_password(emp_id):
     target_username = emp.get("username", emp_id.lower()) if emp else emp_id.lower()
     name = emp.get("name", target_username) if emp else target_username
     role = (emp.get("role", "cashier") if emp else "cashier").lower()
-    if role not in ["admin", "manager", "cashier"]:
+    if normalize_role(role) not in ["admin", "manager", "cashier", "inventory", "staff"]:
         role = "cashier"
 
     new_hash = generate_password_hash(new_password)

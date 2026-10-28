@@ -10,6 +10,11 @@ const AUTH_CONFIG = {
         'admin': ['*'],
         'manager': ['index.html', 'trolleys.html', 'trolley-monitor.html', 'inventory.html', 'transactions.html', 'analytics.html', 'reports.html', 'feedback.html', 'customer-portal.html', 'product-search.html', 'navigation.html', 'receipt.html'],
         'cashier': ['index.html', 'trolleys.html', 'trolley-monitor.html', 'transactions.html', 'feedback.html', 'customer-portal.html', 'product-search.html', 'navigation.html', 'receipt.html'],
+        'inventory': ['index.html', 'inventory.html', 'trolleys.html', 'trolley-monitor.html', 'transactions.html', 'product-search.html', 'navigation.html', 'receipt.html', 'feedback.html'],
+        'inventory incharge': ['index.html', 'inventory.html', 'trolleys.html', 'trolley-monitor.html', 'transactions.html', 'product-search.html', 'navigation.html', 'receipt.html', 'feedback.html'],
+        'inventory staff': ['index.html', 'inventory.html', 'trolleys.html', 'trolley-monitor.html', 'transactions.html', 'product-search.html', 'navigation.html', 'receipt.html', 'feedback.html'],
+        'staff': ['index.html', 'inventory.html', 'trolleys.html', 'trolley-monitor.html', 'transactions.html', 'product-search.html', 'navigation.html', 'receipt.html', 'feedback.html'],
+        'store staff': ['index.html', 'inventory.html', 'trolleys.html', 'trolley-monitor.html', 'transactions.html', 'product-search.html', 'navigation.html', 'receipt.html', 'feedback.html'],
         'customer': ['customer-portal.html', 'product-search.html', 'navigation.html', 'feedback.html', 'receipt.html'],
         'guest': ['customer-portal.html', 'product-search.html', 'navigation.html', 'feedback.html', 'receipt.html']
     }
