@@ -77,11 +77,18 @@ document.addEventListener('DOMContentLoaded', () => {
                         const opt = document.createElement('option');
                         opt.value = p.port;
                         opt.textContent = `${p.port} - ${p.description}`;
-                        if (p.port === data.currentPort || p.port === els.serialPortInput.value) {
+                        const curVal = els.serialPortInput ? els.serialPortInput.value : '';
+                        if (p.port === data.currentPort || (curVal && p.port === curVal)) {
                             opt.selected = true;
                         }
                         els.portsSelect.appendChild(opt);
                     });
+                } else if (data.isCloud) {
+                    const opt = document.createElement('option');
+                    opt.value = 'CLOUD_WIRELESS';
+                    opt.textContent = 'Cloud Gateway (Wireless Fleet Mode - Wi-Fi)';
+                    opt.selected = true;
+                    els.portsSelect.appendChild(opt);
                 } else {
                     const opt = document.createElement('option');
                     opt.value = '';
@@ -111,16 +118,41 @@ document.addEventListener('DOMContentLoaded', () => {
                     const dot = els.hwStatus.querySelector('.pulse-dot');
                     const text = els.hwStatus.querySelector('span:last-child');
                     
+                    const isCloud = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+                    const onlineCount = data.onlineTrolleys || 0;
+
                     if (data.arduinoConnected) {
                         els.hwStatus.className = "status-text online";
-                        dot.style.backgroundColor = "var(--accent-green)";
-                        dot.style.boxShadow = "0 0 10px var(--accent-green)";
-                        text.textContent = `Connected (${data.serialPort})`;
+                        if (dot) {
+                            dot.style.backgroundColor = "var(--accent-green)";
+                            dot.style.boxShadow = "0 0 10px var(--accent-green)";
+                            dot.style.animation = "pulse 2s infinite";
+                        }
+                        if (text) text.textContent = `Connected (USB: ${data.serialPort})`;
+                    } else if (onlineCount > 0) {
+                        els.hwStatus.className = "status-text online";
+                        if (dot) {
+                            dot.style.backgroundColor = "var(--accent-green)";
+                            dot.style.boxShadow = "0 0 10px var(--accent-green)";
+                            dot.style.animation = "pulse 2s infinite";
+                        }
+                        if (text) text.textContent = `Connected (${onlineCount} Trolley${onlineCount > 1 ? 's' : ''} Online)`;
+                    } else if (isCloud) {
+                        els.hwStatus.className = "status-text online";
+                        if (dot) {
+                            dot.style.backgroundColor = "var(--accent-cyan)";
+                            dot.style.boxShadow = "0 0 8px var(--accent-cyan)";
+                            dot.style.animation = "pulse 2.5s infinite";
+                        }
+                        if (text) text.textContent = "Cloud Gateway Active (Wireless Standby)";
                     } else {
                         els.hwStatus.className = "status-text offline";
-                        dot.style.backgroundColor = "var(--accent-red)";
-                        dot.style.boxShadow = "none";
-                        text.textContent = "Disconnected";
+                        if (dot) {
+                            dot.style.backgroundColor = "var(--accent-red)";
+                            dot.style.boxShadow = "none";
+                            dot.style.animation = "none";
+                        }
+                        if (text) text.textContent = "Disconnected";
                     }
                 }
             }
@@ -688,11 +720,16 @@ document.addEventListener('DOMContentLoaded', () => {
             if (wifiEls.curIp) wifiEls.curIp.textContent = data.localIP || '--';
 
             if (wifiEls.activeBadge && wifiEls.activeStatusText) {
-                if (data.connected) {
+                if (data.isCloud || data.connected) {
                     wifiEls.activeBadge.style.background = 'rgba(16, 185, 129, 0.15)';
                     wifiEls.activeBadge.style.borderColor = 'rgba(16, 185, 129, 0.3)';
                     wifiEls.activeBadge.style.color = '#10b981';
-                    wifiEls.activeStatusText.textContent = `Connected: ${data.ssid || 'Wi-Fi'} (${data.signal || ''})`;
+                    if (data.isCloud) {
+                        const count = data.onlineTrolleys || 0;
+                        wifiEls.activeStatusText.textContent = `Cloud Server Live (HTTPS) • ${count} Trolley${count === 1 ? '' : 's'} Online`;
+                    } else {
+                        wifiEls.activeStatusText.textContent = `Connected: ${data.ssid || 'Wi-Fi'} (${data.signal || ''})`;
+                    }
                 } else {
                     wifiEls.activeBadge.style.background = 'rgba(239, 68, 68, 0.15)';
                     wifiEls.activeBadge.style.borderColor = 'rgba(239, 68, 68, 0.3)';
@@ -868,6 +905,22 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const res = await fetch('/api/wifi/scan');
             const data = await res.json();
+
+            if (data.isCloud) {
+                if (wifiEls.scannedCount) wifiEls.scannedCount.textContent = 'Cloud Fleet Gateway';
+                wifiEls.scannedContainer.innerHTML = `
+                    <div style="text-align: center; color: var(--accent-cyan); font-size: 0.85rem; padding: 25px; line-height: 1.6;">
+                        <i class="fa-solid fa-cloud" style="font-size: 2rem; margin-bottom: 8px; display: block; color: var(--accent-cyan);"></i>
+                        <strong style="color: var(--text-primary); font-size: 0.95rem;">Cloud Gateway Active (Render HTTPS)</strong><br>
+                        Smart trolleys transmit telemetry directly over HTTPS to this cloud endpoint via Wi-Fi.<br>
+                        <span style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 8px; display: inline-block; background: rgba(255,255,255,0.05); padding: 4px 10px; border-radius: 6px;">
+                            Cloud Endpoint: <code>https://smart-trolley-billing-system.onrender.com/api/trolley/update</code>
+                        </span>
+                    </div>
+                `;
+                showAssistantStatus('Running in Cloud Mode. ESP32 smart trolleys communicate directly via HTTPS endpoint.', 'info', 6000);
+                return;
+            }
 
             if (res.ok && data.success && Array.isArray(data.networks)) {
                 if (wifiEls.scannedCount) {
