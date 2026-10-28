@@ -216,11 +216,16 @@
 
                                 <!-- Saved & Detected IP Addresses Section -->
                                 <div style="background: rgba(255,255,255,0.03); border: 1px dashed var(--panel-border); border-radius: 8px; padding: 12px; margin-bottom: 14px;">
-                                    <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary); display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                                        <span><i class="fa-solid fa-network-wired" style="color: var(--accent-cyan);"></i> Saved IP Addresses</span>
-                                        <button type="button" id="wifi-use-live-ip-btn" class="btn btn-outline" style="padding: 2px 8px; font-size: 0.72rem; border-color: rgba(16, 185, 129, 0.4); color: #10b981;">
-                                            <i class="fa-solid fa-bolt"></i> Use Live Host IP
-                                        </button>
+                                    <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary); display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                                        <span><i class="fa-solid fa-network-wired" style="color: var(--accent-cyan);"></i> Saved Server Addresses</span>
+                                        <div style="display: flex; gap: 6px;">
+                                            <button type="button" id="wifi-use-cloud-url-btn" class="btn btn-outline" style="padding: 2px 8px; font-size: 0.72rem; border-color: rgba(99, 102, 241, 0.4); color: #818cf8;" title="Configure ESP32 to connect to deployed Render link">
+                                                <i class="fa-solid fa-cloud"></i> Use Render Cloud URL
+                                            </button>
+                                            <button type="button" id="wifi-use-live-ip-btn" class="btn btn-outline" style="padding: 2px 8px; font-size: 0.72rem; border-color: rgba(16, 185, 129, 0.4); color: #10b981;">
+                                                <i class="fa-solid fa-bolt"></i> Use Live Host IP
+                                            </button>
+                                        </div>
                                     </label>
                                     <select id="wifi-saved-ips-select" class="form-input" style="width: 100%; font-size: 0.82rem; padding: 6px 10px; margin-bottom: 8px;">
                                         <option value="">-- Select from Saved / Detected IP Addresses --</option>

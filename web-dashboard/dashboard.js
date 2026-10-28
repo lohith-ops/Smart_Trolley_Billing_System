@@ -669,7 +669,7 @@ function renderFeed() {
 
 // Update ALL mode toggle buttons on the page (top bar + simulator panel)
 function updateSimulatorModeUI() {
-    const isAnyTrolleyOnline = (State.onlineTrolleys > 0) || Boolean(State.arduinoConnected);
+    const isAnyTrolleyOnline = (State.onlineTrolleys > 0) || Boolean(State.arduinoConnected) || (State.activeCarts && State.activeCarts.some(c => c.connection_status === 'connected' || c.trolley_status === 'online'));
 
     document.querySelectorAll('.sim-mode-opt').forEach(opt => {
         const optMode = opt.getAttribute('data-mode');
@@ -1836,7 +1836,7 @@ async function triggerSimulatorCheckout() {
 let lcdTimeout = null;
 
 function getSimLcdHeaderLine() {
-    const isAnyTrolleyOnline = (State.onlineTrolleys > 0) || Boolean(State.arduinoConnected);
+    const isAnyTrolleyOnline = (State.onlineTrolleys > 0) || Boolean(State.arduinoConnected) || (State.activeCarts && State.activeCarts.some(c => c.connection_status === 'connected' || c.trolley_status === 'online'));
     let rssi = -58;
     if (State.activeCarts && State.activeCarts.length > 0) {
         const c = State.activeCarts[0];
@@ -1864,7 +1864,7 @@ function triggerLcdFeedback(line1, line2 = "", durationMs = 0) {
 
     if (durationMs > 0) {
         lcdTimeout = setTimeout(() => {
-            const isAnyTrolleyOnline = (State.onlineTrolleys > 0) || Boolean(State.arduinoConnected);
+            const isAnyTrolleyOnline = (State.onlineTrolleys > 0) || Boolean(State.arduinoConnected) || (State.activeCarts && State.activeCarts.some(c => c.connection_status === 'connected' || c.trolley_status === 'online'));
             if (els.simLcdLine1) {
                 els.simLcdLine1.textContent = getSimLcdHeaderLine();
             }

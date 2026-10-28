@@ -621,6 +621,7 @@ document.addEventListener('DOMContentLoaded', () => {
         savedIpsSelect:     document.getElementById('wifi-saved-ips-select'),
         savedIpsChips:      document.getElementById('wifi-saved-ips-chips'),
         useLiveIpBtn:       document.getElementById('wifi-use-live-ip-btn'),
+        useCloudUrlBtn:     document.getElementById('wifi-use-cloud-url-btn'),
         knownNetsSelect:    document.getElementById('wifi-known-networks-select'),
         refreshProfilesBtn: document.getElementById('wifi-refresh-profiles-btn'),
         activeBadge:        document.getElementById('wifi-active-badge'),
@@ -789,6 +790,17 @@ document.addEventListener('DOMContentLoaded', () => {
             if (val && wifiEls.serverIp) {
                 wifiEls.serverIp.value = val;
                 showAssistantStatus(`Selected Trolley Server IP: ${val}`, 'info', 3000);
+            }
+        });
+    }
+
+    if (wifiEls.useCloudUrlBtn) {
+        wifiEls.useCloudUrlBtn.addEventListener('click', () => {
+            const cloudUrl = 'https://smart-trolley-billing-system.onrender.com';
+            if (wifiEls.serverIp) {
+                wifiEls.serverIp.value = cloudUrl;
+                if (wifiEls.serverPort) wifiEls.serverPort.value = '443';
+                showAssistantStatus(`Set to Render Cloud URL: ${cloudUrl} (Port 443)`, 'success', 3500);
             }
         });
     }

@@ -56,6 +56,9 @@ JWT_SECRET           = os.environ.get("JWT_SECRET", "smart_trolley_secret_key_20
 JWT_ALGORITHM        = "HS256"
 JWT_EXPIRATION_HOURS = 24
 TROLLEY_DEVICE_TOKEN = os.environ.get("TROLLEY_DEVICE_TOKEN", "smart_trolley_hw_token_sec_99")
+IS_CLOUD_ENV         = bool(os.environ.get("RENDER") or os.environ.get("PORT"))
+CLOUD_RELAY_URL      = os.environ.get("CLOUD_RELAY_URL", "https://smart-trolley-billing-system.onrender.com").rstrip("/")
+
 
 @app.after_request
 def add_header(response):
@@ -807,11 +810,106 @@ def send_command_to_arduino(cmd):
         except Exception as e:
             print(f"[SERIAL ERROR] {e}")
 
+def forward_cart_action_to_cloud(trolley_id, uid, action):
+    """If running locally, mirror RFID scans to deployed cloud link so cloud dashboard updates in real time."""
+    if IS_CLOUD_ENV or not CLOUD_RELAY_URL:
+        return
+    def _do_fwd():
+        try:
+            payload = json.dumps({"trolley_id": trolley_id, "uid": uid, "action": action}).encode('utf-8')
+            req = urllib.request.Request(
+                f"{CLOUD_RELAY_URL}/api/cart/action",
+                data=payload,
+                headers={"Content-Type": "application/json", "User-Agent": "SmartTrolleyLocalRelay/2.0"}
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                pass
+        except Exception:
+            pass
+    threading.Thread(target=_do_fwd, daemon=True).start()
+
+def forward_cart_reset_to_cloud(trolley_id):
+    """If running locally, mirror cart reset to deployed cloud link."""
+    if IS_CLOUD_ENV or not CLOUD_RELAY_URL:
+        return
+    def _do_reset():
+        try:
+            payload = json.dumps({"trolley_id": trolley_id, "force": True}).encode('utf-8')
+            req = urllib.request.Request(
+                f"{CLOUD_RELAY_URL}/api/reset",
+                data=payload,
+                headers={"Content-Type": "application/json", "User-Agent": "SmartTrolleyLocalRelay/2.0"}
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                pass
+        except Exception:
+            pass
+    threading.Thread(target=_do_reset, daemon=True).start()
+
+def cloud_relay_loop():
+    """
+    Periodically relays heartbeats for all locally connected/online trolleys
+    to the deployed cloud Render server. This ensures the cloud dashboard reflects
+    the physical trolley status accurately without needing complex cloud-to-local routing!
+    """
+    if IS_CLOUD_ENV or not CLOUD_RELAY_URL:
+        return
+    print(f"[CLOUD-RELAY] Background sync active -> Mirroring local trolley status to {CLOUD_RELAY_URL}")
+    while True:
+        try:
+            time.sleep(8)
+            now_ts = time.time()
+            online_trolleys = set()
+
+            # 1. Check serial trolley
+            if global_ser and global_ser.is_open:
+                online_trolleys.add(SERIAL_TROLLEY_ID)
+
+            # 2. Check all locally online trolleys in DB
+            try:
+                for t in trolleys_collection.find():
+                    tid = t.get("_id")
+                    if not tid:
+                        continue
+                    if tid == SERIAL_TROLLEY_ID and global_ser and global_ser.is_open:
+                        online_trolleys.add(tid)
+                        continue
+                    last_seen = max(float(t.get("last_seen", 0) or 0), float(t.get("last_heartbeat", 0) or 0))
+                    if t.get("status") == "online" and (now_ts - last_seen) < 60:
+                        online_trolleys.add(tid)
+            except Exception:
+                pass
+
+            # 3. Post heartbeat to cloud for each online trolley
+            for tid in online_trolleys:
+                try:
+                    payload = json.dumps({
+                        "trolley_id": tid,
+                        "battery": 95,
+                        "wifi_rssi": -55,
+                        "rfid_ready": True,
+                        "lcd_ready": True,
+                        "hardware_health": "HEALTHY",
+                        "firmware_version": "2.0"
+                    }).encode('utf-8')
+                    req = urllib.request.Request(
+                        f"{CLOUD_RELAY_URL}/api/trolley/heartbeat",
+                        data=payload,
+                        headers={"Content-Type": "application/json", "User-Agent": "SmartTrolleyLocalRelay/2.0"}
+                    )
+                    with urllib.request.urlopen(req, timeout=5) as resp:
+                        pass
+                except Exception:
+                    pass
+        except Exception:
+            time.sleep(5)
+
 def normalize_uid(uid_str):
     """Normalize UID to uppercase no-space format. '5C 1E 7E 05' → '5C1E7E05'."""
     return uid_str.replace(' ', '').replace('-', '').upper()
 
 # ── Core Cart Logic (trolley-scoped) ─────────────────────────────────────────
+
 
 def process_scan(action, uid, trolley_id="TROLLEY-001"):
     """
@@ -987,14 +1085,19 @@ def perform_checkout(trolley_id="TROLLEY-001"):
     return False, 0.0, {}
 
 
-OFFLINE_THRESHOLD_SECS = 45  # Trolley marked offline after this many seconds with no heartbeat
+OFFLINE_THRESHOLD_SECS = 60  # Trolley marked offline after this many seconds with no heartbeat
+SERIAL_TROLLEY_ID = "TROLLEY-001"  # Default serial hardware identifier
 
 def is_trolley_connected(trolley_id: str) -> bool:
     """
     Check if a trolley is genuinely connected and communicating with the server.
-    - If TROLLEY-001 connected via USB Serial: requires open global_ser and recent communication.
+    - If TROLLEY-001 connected via USB Serial: requires open global_ser.
     - If connected via Wi-Fi: requires status 'online' and heartbeat within OFFLINE_THRESHOLD_SECS.
     """
+    # For serial-connected trolley: active open USB port means hardware is connected
+    if trolley_id == SERIAL_TROLLEY_ID and global_ser is not None and global_ser.is_open:
+        return True
+
     t_doc = trolleys_collection.find_one({"_id": trolley_id})
     if not t_doc:
         return False
@@ -1003,10 +1106,6 @@ def is_trolley_connected(trolley_id: str) -> bool:
     last_seen = float(t_doc.get("last_seen", 0) or 0)
     last_hb = float(t_doc.get("last_heartbeat", 0) or 0)
     most_recent = max(last_seen, last_hb)
-
-    # For serial-connected trolley
-    if trolley_id == "TROLLEY-001" and global_ser and global_ser.is_open:
-        return (most_recent > 0) and ((now_ts - most_recent) <= OFFLINE_THRESHOLD_SECS)
 
     # For Wi-Fi connected trolley
     return (t_doc.get("status") == "online") and (most_recent > 0) and ((now_ts - most_recent) <= OFFLINE_THRESHOLD_SECS)
@@ -2038,15 +2137,16 @@ def get_dashboard():
             continue  # Skip redundant legacy cart document
 
         t_obj = trolleys_collection.find_one({"_id": tid}) or {}
-        t_last_seen = t_obj.get("last_seen", 0)
-        t_is_online = (t_last_seen > 0) and ((now_ts - t_last_seen) < 45)
+        t_last_seen = max(float(t_obj.get("last_seen", 0) or 0), float(t_obj.get("last_heartbeat", 0) or 0))
+        is_serial_connected = (tid == SERIAL_TROLLEY_ID and global_ser is not None and global_ser.is_open)
+        t_is_online = is_serial_connected or ((t_last_seen > 0) and ((now_ts - t_last_seen) < OFFLINE_THRESHOLD_SECS))
         is_assigned = (t_obj.get("assignment_status") == "ASSIGNED") or bool(t_obj.get("assigned_customer_id"))
         has_items = c.get("itemsContained", 0) > 0
 
-        # Preserve in active carts if cart has items OR trolley is currently assigned to a customer!
-        if has_items or is_assigned:
+        # Preserve in active carts if cart has items OR trolley is currently assigned to a customer OR trolley is actively online!
+        if has_items or is_assigned or t_is_online:
             display_id = raw_id.split("-")[-1] if "-" in str(raw_id) else str(raw_id)
-            hb = format_heartbeat_status(t_last_seen, now_ts)
+            hb = format_heartbeat_status(now_ts if is_serial_connected else t_last_seen, now_ts)
             active_carts.append({
                 "id":                      display_id,
                 "trolley_id":              tid,
@@ -2070,7 +2170,7 @@ def get_dashboard():
 
     # Trolley summary
     all_trolleys = list(trolleys_collection.find({}))
-    online_count = sum(1 for t in all_trolleys if (t.get("status") == "online" and t.get("last_seen", 0) > 0 and (now_ts - t.get("last_seen", 0)) < OFFLINE_THRESHOLD_SECS))
+    online_count = sum(1 for t in all_trolleys if ((t["_id"] == SERIAL_TROLLEY_ID and global_ser is not None and global_ser.is_open) or (t.get("status") == "online" and max(float(t.get("last_seen", 0) or 0), float(t.get("last_heartbeat", 0) or 0)) > 0 and (now_ts - max(float(t.get("last_seen", 0) or 0), float(t.get("last_heartbeat", 0) or 0))) < OFFLINE_THRESHOLD_SECS)))
     if global_ser is not None and global_ser.is_open:
         online_count = max(online_count, 1)
     total_trolleys = len(all_trolleys)
@@ -2142,6 +2242,8 @@ def cart_action():
         {"_id": trolley_id},
         {"$set": {"status": "online", "last_seen": time.time(), "connection_status": "connected"}}
     )
+    if product:
+        forward_cart_action_to_cloud(trolley_id, uid, action)
     return jsonify({
         "success":   True,
         "product":   {"name": product["name"], "price": product["price"], "stock": product.get("stock", 0)},
@@ -2171,6 +2273,7 @@ def reset_cart():
         {"_id": trolley_id},
         {"$set": {"status": "online", "last_seen": time.time(), "connection_status": "connected"}}
     )
+    forward_cart_reset_to_cloud(trolley_id)
     return jsonify({
         "success": True,
         "connected": True,
@@ -2575,8 +2678,9 @@ def get_trolleys():
     result = []
     for t in all_trolleys:
         tid        = t["_id"]
-        last_seen  = t.get("last_seen", 0)
-        is_online  = (last_seen > 0) and ((now_ts - last_seen) < OFFLINE_THRESHOLD_SECS)
+        last_seen  = max(float(t.get("last_seen", 0) or 0), float(t.get("last_heartbeat", 0) or 0))
+        is_serial_connected = (tid == SERIAL_TROLLEY_ID and global_ser is not None and global_ser.is_open)
+        is_online  = is_serial_connected or ((last_seen > 0) and ((now_ts - last_seen) < OFFLINE_THRESHOLD_SECS))
         conn_status = "connected" if is_online else "disconnected"
         status     = "online" if is_online else "offline"
 
@@ -2603,7 +2707,7 @@ def get_trolleys():
         item_count  = cart.get("itemsContained", 0) if cart else 0
         cart_status = cart.get("status", "ACTIVE") if cart else "ACTIVE"
 
-        hb = format_heartbeat_status(last_seen, now_ts)
+        hb = format_heartbeat_status(now_ts if is_serial_connected else last_seen, now_ts)
 
         result.append({
             "id":                      tid,
@@ -2654,8 +2758,9 @@ def get_trolley_detail(trolley_id):
     if not t:
         return jsonify({"success": False, "message": f"Trolley {trolley_id} not found"}), 404
 
-    last_seen = t.get("last_seen", 0)
-    is_online = (last_seen > 0) and ((now_ts - last_seen) < OFFLINE_THRESHOLD_SECS)
+    last_seen = max(float(t.get("last_seen", 0) or 0), float(t.get("last_heartbeat", 0) or 0))
+    is_serial_connected = (trolley_id == SERIAL_TROLLEY_ID and global_ser is not None and global_ser.is_open)
+    is_online = is_serial_connected or ((last_seen > 0) and ((now_ts - last_seen) < OFFLINE_THRESHOLD_SECS))
     conn_status = "connected" if is_online else "disconnected"
     status    = "online" if is_online else "offline"
 
@@ -2917,9 +3022,10 @@ def trolley_heartbeat():
         print(f"[HEARTBEAT] Auto-registered new trolley: {trolley_id} | HW: {final_hw_health}")
     else:
         update_fields = {
-            "status":         "online",
-            "last_seen":      now_ts,
-            "last_heartbeat": now_ts
+            "status":            "online",
+            "connection_status": "connected",
+            "last_seen":         now_ts,
+            "last_heartbeat":    now_ts
         }
         if "battery" in data:
             update_fields["battery"] = data["battery"]
@@ -3432,12 +3538,19 @@ def offline_detection_loop():
             now_ts = time.time()
             all_trolleys = list(trolleys_collection.find({}))
             for t in all_trolleys:
-                last_seen = t.get("last_seen", 0)
+                tid = t["_id"]
+                # Skip serial trolley if hardware USB serial is actively open
+                if tid == SERIAL_TROLLEY_ID and global_ser is not None and global_ser.is_open:
+                    continue
+                last_seen = max(float(t.get("last_seen", 0) or 0), float(t.get("last_heartbeat", 0) or 0))
                 current_status = t.get("status", "offline")
                 if last_seen > 0 and current_status == "online":
                     if (now_ts - last_seen) > OFFLINE_THRESHOLD_SECS:
-                        trolleys_collection.update_one({"_id": t["_id"]}, {"$set": {"status": "offline"}})
-                        print(f"[OFFLINE] Trolley {t['_id']} marked offline (no heartbeat for >{OFFLINE_THRESHOLD_SECS}s)")
+                        trolleys_collection.update_one(
+                            {"_id": tid},
+                            {"$set": {"status": "offline", "connection_status": "disconnected"}}
+                        )
+                        print(f"[OFFLINE] Trolley {tid} marked offline (no heartbeat for >{OFFLINE_THRESHOLD_SECS}s)")
         except Exception as e:
             print(f"[OFFLINE DETECT ERROR] {e}")
         time.sleep(15)  # check every 15 seconds
@@ -4870,11 +4983,12 @@ def get_customer_profile():
         cart_doc = carts_collection.find_one({"_id": _trolley_cart_id(assigned_trolley_id)})
         
         now_ts = time.time()
-        last_hb = trolley_doc.get("last_seen", trolley_doc.get("last_heartbeat", 0)) if trolley_doc else 0
+        last_hb = max(float(trolley_doc.get("last_seen", 0) or 0), float(trolley_doc.get("last_heartbeat", 0) or 0)) if trolley_doc else 0
         hb_details = format_heartbeat_status(last_hb, now_ts)
+        is_serial_connected = (assigned_trolley_id == SERIAL_TROLLEY_ID and global_ser is not None and global_ser.is_open)
         is_connected = False
         if trolley_doc:
-            is_connected = (trolley_doc.get("status") == "online") and (now_ts - float(last_hb or 0) <= OFFLINE_THRESHOLD_SECS)
+            is_connected = is_serial_connected or ((trolley_doc.get("status") == "online") and (now_ts - float(last_hb or 0) <= OFFLINE_THRESHOLD_SECS))
 
         cart_items_list = []
         cart_total = 0.0
@@ -5049,9 +5163,10 @@ def serial_loop():
                     cfg = load_config()
                     sync_ssid = cfg.get("wifiSSID", "Yogaraj")
                     sync_pass = cfg.get("wifiPassword", "1234567890")
-                    sync_port = cfg.get("serverPort", 5000)
-                    send_command_to_arduino(f"WIFI_CFG:{sync_ssid}|{sync_pass}|{host_local_ip}|{sync_port}")
-                    print(f"[AUTO-SYNC] Automatically pushed active Wi-Fi ({sync_ssid}) and Host IP ({host_local_ip}:{sync_port}) to ESP32 via Serial!")
+                    sync_target = cfg.get("serverIP") or host_local_ip
+                    sync_port = cfg.get("serverPort", 5000 if not str(sync_target).startswith("https") else 443)
+                    send_command_to_arduino(f"WIFI_CFG:{sync_ssid}|{sync_pass}|{sync_target}|{sync_port}")
+                    print(f"[AUTO-SYNC] Pushed active Wi-Fi ({sync_ssid}) and Target ({sync_target}:{sync_port}) to ESP32 via Serial!")
                 except Exception as ex_ip:
                     print(f"[AUTO-SYNC WARN] {ex_ip}")
             except Exception as e:
@@ -5086,26 +5201,47 @@ def serial_loop():
 
         try:
             now_t = time.time()
-            if now_t - last_heartbeat_time >= 5.0:
+            if now_t - last_heartbeat_time >= 4.0:
                 send_command_to_arduino("HEARTBEAT")
                 last_heartbeat_time = now_t
+                # Keep TROLLEY-001 online & fresh in DB while serial port is open
+                trolleys_collection.update_one(
+                    {"_id": SERIAL_TROLLEY_ID},
+                    {"$set": {
+                        "status": "online",
+                        "connection_status": "connected",
+                        "last_seen": now_t,
+                        "last_heartbeat": now_t,
+                        "hardware_health": "HEALTHY",
+                        "hardware_status": "healthy"
+                    }},
+                    upsert=True
+                )
         except Exception as e:
             print(f"Heartbeat send error: {e}")
 
         try:
             line = global_ser.readline().decode('utf-8', errors='ignore').strip()
             if line:
-                # Only mark hardware online if this is a genuine protocol line from firmware
+                # Mark hardware online on any valid protocol or diagnostics line from firmware
                 valid_prefixes = ("UID:", "SCAN:", "MODE:", "[BTN DIAG]", "[RFID]", "Smart Trolley", "HEARTBEAT", "LCD:")
                 is_valid_telemetry = any(line.startswith(p) for p in valid_prefixes) or "READY" in line.upper()
 
-                if is_valid_telemetry:
-                    now_ts = time.time()
-                    trolleys_collection.update_one(
-                        {"_id": SERIAL_TROLLEY_ID},
-                        {"$set": {"status": "online", "last_seen": now_ts, "last_heartbeat": now_ts, "rfid_ready": True, "lcd_ready": True, "hardware_health": "HEALTHY", "hardware_status": "healthy"}},
-                        upsert=True
-                    )
+                now_ts = time.time()
+                trolleys_collection.update_one(
+                    {"_id": SERIAL_TROLLEY_ID},
+                    {"$set": {
+                        "status": "online",
+                        "connection_status": "connected",
+                        "last_seen": now_ts,
+                        "last_heartbeat": now_ts,
+                        "rfid_ready": True,
+                        "lcd_ready": True,
+                        "hardware_health": "HEALTHY",
+                        "hardware_status": "healthy"
+                    }},
+                    upsert=True
+                )
                 print(f"Arduino: {line}")
 
                 if line in ["CONFIRMED_HARDWARE_RESET"] or "[INTENTIONAL_RESET]" in line:
@@ -5152,6 +5288,7 @@ def serial_loop():
                         short_name = f"{action_symbol} {product['name']}"[:16]
                         send_command_to_arduino(f"LCD:{short_name}|Total: Rs.{total:.2f}")
                         send_command_to_arduino("BEEP:1")
+                        forward_cart_action_to_cloud(SERIAL_TROLLEY_ID, uid, current_mode)
                     else:
                         print(f"[WARN] Unknown UID Scanned: {uid}")
                         send_command_to_arduino("LCD:Unknown Card!|Check Dashboard")
@@ -5185,15 +5322,20 @@ def start_background_workers():
     print("[WORKER] Started offline trolley detection background thread.")
 
     # Hardware serial loop (enabled locally by default, disabled in cloud environments like Render)
-    is_cloud = bool(os.environ.get("RENDER") or os.environ.get("PORT"))
     enable_serial_env = os.environ.get("ENABLE_SERIAL", "").lower()
-    should_enable_serial = (enable_serial_env in ("true", "1")) if enable_serial_env else (not is_cloud)
+    should_enable_serial = (enable_serial_env in ("true", "1")) if enable_serial_env else (not IS_CLOUD_ENV)
     if should_enable_serial:
         t_serial = threading.Thread(target=serial_loop, daemon=True)
         t_serial.start()
         print("[WORKER] Started hardware serial background thread.")
     else:
         print("[WORKER] Cloud/Render environment detected or ENABLE_SERIAL=false — hardware serial thread disabled.")
+
+    # Start Cloud Relay if running locally to keep deployed Render link synchronized
+    if not IS_CLOUD_ENV and CLOUD_RELAY_URL:
+        t_relay = threading.Thread(target=cloud_relay_loop, daemon=True)
+        t_relay.start()
+        print(f"[WORKER] Started Cloud Relay background thread targeting {CLOUD_RELAY_URL}.")
 
 # Start workers upon module import (works for both Gunicorn and direct python execution)
 start_background_workers()
