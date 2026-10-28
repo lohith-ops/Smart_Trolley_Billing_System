@@ -1866,11 +1866,9 @@ body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helv
         print(f"[EMAIL ERROR] {err_msg}")
         return False, err_msg
     except Exception as e:
-        err_msg = str(e)
-        if "101" in err_msg or "unreachable" in err_msg.lower() or "connection refused" in err_msg.lower() or "timed out" in err_msg.lower():
-            err_msg = "Cloud host (Render) restricts direct SMTP ports (587/465). Please use the instant verification code shown on screen."
-        print(f"[EMAIL ERROR] Failed to send email to {to_email}: {err_msg}")
-        return False, err_msg
+        raw_err = str(e)
+        print(f"[EMAIL ERROR] Failed to send email to {to_email}: {raw_err}")
+        return False, "Verification code generated and ready."
 
 def send_otp_sms(to_phone, otp_code):
     """Sends OTP verification SMS to customer phone via Fast2SMS or Twilio API."""
@@ -2096,7 +2094,7 @@ def auth_forgot_password_request():
         "masked_target": masked_target,
         "channels": channels,
         "email_sent": email_sent,
-        "email_status": email_status,
+        "email_status": "Email sent successfully." if email_sent else "Verification code generated and ready.",
         "otp": otp
     })
 
