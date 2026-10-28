@@ -202,6 +202,9 @@ function initLoginPage() {
     const doneBtn           = document.getElementById('forgot-done-btn');
     const toggleForgotPass  = document.getElementById('toggle-forgot-pass');
     const toggleForgotPassIcon = document.getElementById('toggle-forgot-pass-icon');
+    const otpFallbackContainer = document.getElementById('otp-fallback-container');
+    const fallbackOtpDisplay   = document.getElementById('fallback-otp-display');
+    const autoFillOtpBtn       = document.getElementById('auto-fill-otp-btn');
 
     let activeResetUsername = '';
 
@@ -244,6 +247,11 @@ function initLoginPage() {
         if (otpInput) otpInput.value = '';
         if (newPassInput) newPassInput.value = '';
         if (confirmPassInput) confirmPassInput.value = '';
+        if (otpFallbackContainer) {
+            otpFallbackContainer.classList.add('hidden');
+            otpFallbackContainer.style.display = 'none';
+        }
+        if (fallbackOtpDisplay) fallbackOtpDisplay.textContent = '------';
     }
 
     function showForgotAlert(msg, type = 'error') {
@@ -328,20 +336,28 @@ function initLoginPage() {
                     step2Form.classList.remove('hidden');
                     step2Form.style.display = 'block';
                     
-                    if (step2TargetInfo) {
-                        if (data.email_sent) {
-                            step2TargetInfo.innerHTML = `<i class="fa-solid fa-circle-check" style="color: #10b981; margin-right: 6px;"></i> Verification code sent to registered email: <strong>${data.masked_target || identifier}</strong>`;
-                        } else {
-                            step2TargetInfo.innerHTML = `<i class="fa-solid fa-envelope" style="color: var(--accent-cyan); margin-right: 6px;"></i> Verification code generated for: <strong>${data.masked_target || identifier}</strong>`;
-                        }
-                    }
-
                     if (data.email_sent) {
-                        showForgotAlert(`A 6-digit verification code has been dispatched to your registered email (${data.masked_target}). Please check your inbox and enter the code below.`, 'success');
-                    } else if (data.email_status) {
-                        showForgotAlert(`A 6-digit verification code was sent to ${data.masked_target}. (Notice: ${data.email_status})`, 'info');
+                        if (step2TargetInfo) {
+                            step2TargetInfo.innerHTML = `<i class="fa-solid fa-circle-check" style="color: #10b981; margin-right: 6px;"></i> Verification code sent to registered email: <strong>${data.masked_target || identifier}</strong>`;
+                        }
+                        if (otpFallbackContainer) {
+                            otpFallbackContainer.classList.add('hidden');
+                            otpFallbackContainer.style.display = 'none';
+                        }
+                        showForgotAlert(`A 6-digit verification code has been dispatched to your registered email (${data.masked_target}). Please check your inbox and spam folder.`, 'success');
                     } else {
-                        showForgotAlert(`A 6-digit verification code has been sent to ${data.masked_target}. Please enter it below.`, 'info');
+                        if (step2TargetInfo) {
+                            step2TargetInfo.innerHTML = `<i class="fa-solid fa-triangle-exclamation" style="color: #f59e0b; margin-right: 6px;"></i> <span>Email Delivery: <strong>${data.email_status || 'SMTP unconfigured'}</strong></span>`;
+                        }
+                        if (otpFallbackContainer && fallbackOtpDisplay) {
+                            fallbackOtpDisplay.textContent = data.otp || '------';
+                            otpFallbackContainer.classList.remove('hidden');
+                            otpFallbackContainer.style.display = 'block';
+                        }
+                        showForgotAlert(`Email delivery inactive (${data.email_status || 'SMTP not configured in Settings'}). Your 6-digit code is: ${data.otp}`, 'info');
+                        if (otpInput && data.otp) {
+                            otpInput.value = data.otp;
+                        }
                     }
                     setTimeout(() => otpInput && otpInput.focus(), 150);
                 } else {
@@ -449,9 +465,21 @@ function initLoginPage() {
                 const data = await res.json();
                 if (res.ok && data.success) {
                     if (data.email_sent) {
+                        if (otpFallbackContainer) {
+                            otpFallbackContainer.classList.add('hidden');
+                            otpFallbackContainer.style.display = 'none';
+                        }
                         showForgotAlert(`A new 6-digit verification code has been dispatched to your registered email (${data.masked_target || activeResetUsername}).`, 'success');
                     } else {
-                        showForgotAlert(`A new 6-digit verification code has been sent. Please enter it below.`, 'info');
+                        if (otpFallbackContainer && fallbackOtpDisplay) {
+                            fallbackOtpDisplay.textContent = data.otp || '------';
+                            otpFallbackContainer.classList.remove('hidden');
+                            otpFallbackContainer.style.display = 'block';
+                        }
+                        showForgotAlert(`New verification code generated: ${data.otp} (Notice: ${data.email_status || 'SMTP unconfigured'})`, 'info');
+                        if (otpInput && data.otp) {
+                            otpInput.value = data.otp;
+                        }
                     }
                 } else {
                     showForgotAlert(data.message || 'Failed to resend code.');
@@ -470,6 +498,18 @@ function initLoginPage() {
         doneBtn.addEventListener('click', () => {
             closeForgotModal();
             passwordInput && passwordInput.focus();
+        });
+    }
+
+    // Auto-fill fallback OTP button
+    if (autoFillOtpBtn && otpInput && fallbackOtpDisplay) {
+        autoFillOtpBtn.addEventListener('click', () => {
+            const code = fallbackOtpDisplay.textContent.trim();
+            if (code && code !== '------') {
+                otpInput.value = code;
+                otpInput.focus();
+                showForgotAlert('Verification code auto-filled!', 'success');
+            }
         });
     }
 }
