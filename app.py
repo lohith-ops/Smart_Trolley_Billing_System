@@ -1745,19 +1745,38 @@ body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helv
         msg.attach(MIMEText(plain_text, "plain"))
         msg.attach(MIMEText(html_content, "html"))
 
-        context = ssl.create_default_context()
-        if smtp_port == 465:
-            with smtplib.SMTP_SSL(smtp_server, smtp_port, context=context, timeout=15) as server:
-                server.login(smtp_user, smtp_pass)
-                server.sendmail(smtp_user, to_email, msg.as_string())
-        else:
-            with smtplib.SMTP(smtp_server, smtp_port, timeout=15) as server:
-                server.starttls(context=context)
-                server.login(smtp_user, smtp_pass)
-                server.sendmail(smtp_user, to_email, msg.as_string())
+        # Try primary configured port, and fallback between 465 (SMTPS) and 587 (STARTTLS)
+        ports_to_try = [smtp_port]
+        if 465 not in ports_to_try:
+            ports_to_try.append(465)
+        if 587 not in ports_to_try:
+            ports_to_try.append(587)
 
-        print(f"[EMAIL DISPATCH] Successfully sent OTP email to {to_email}")
-        return True, "Email sent successfully."
+        last_error = None
+        for port in ports_to_try:
+            try:
+                context = ssl.create_default_context()
+                if port == 465:
+                    with smtplib.SMTP_SSL(smtp_server, port, context=context, timeout=12) as server:
+                        server.login(smtp_user, smtp_pass)
+                        server.sendmail(smtp_user, to_email, msg.as_string())
+                else:
+                    with smtplib.SMTP(smtp_server, port, timeout=12) as server:
+                        server.starttls(context=context)
+                        server.login(smtp_user, smtp_pass)
+                        server.sendmail(smtp_user, to_email, msg.as_string())
+
+                print(f"[EMAIL DISPATCH] Successfully sent OTP email to {to_email} via port {port}")
+                return True, "Email sent successfully."
+            except (smtplib.SMTPAuthenticationError, smtplib.SMTPServerDisconnected) as auth_err:
+                raise auth_err
+            except Exception as e:
+                last_error = e
+                print(f"[EMAIL WARN] Port {port} failed: {e}. Trying alternate port...")
+                continue
+
+        if last_error:
+            raise last_error
     except smtplib.SMTPAuthenticationError as e:
         if "smtp.gmail.com" in smtp_server:
             err_msg = "Gmail authentication failed (BadCredentials). Gmail requires a 16-character Google App Password (not standard password). Please generate one at myaccount.google.com/apppasswords."
