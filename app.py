@@ -113,10 +113,16 @@ def load_config():
         except Exception as e:
             print(f"[CONFIG] Error reading config file: {e}")
 
-    # Check MongoDB settings_collection if initialized
+    # Check MongoDB settings collection if initialized
     try:
+        s_coll = None
         if 'settings_collection' in globals() and settings_collection is not None:
-            db_cfg = settings_collection.find_one({"_id": "app_config"})
+            s_coll = settings_collection
+        elif 'db' in globals() and db is not None:
+            s_coll = db['settings']
+
+        if s_coll is not None:
+            db_cfg = s_coll.find_one({"_id": "app_config"})
             if db_cfg:
                 for k, v in db_cfg.items():
                     if k != "_id" and v is not None and v != "":
@@ -154,10 +160,16 @@ def save_config(cfg):
         print(f"[CONFIG] Error saving config file: {e}")
 
     try:
+        s_coll = None
         if 'settings_collection' in globals() and settings_collection is not None:
+            s_coll = settings_collection
+        elif 'db' in globals() and db is not None:
+            s_coll = db['settings']
+
+        if s_coll is not None:
             cfg_doc = dict(cfg)
             cfg_doc["_id"] = "app_config"
-            settings_collection.update_one({"_id": "app_config"}, {"$set": cfg_doc}, upsert=True)
+            s_coll.update_one({"_id": "app_config"}, {"$set": cfg_doc}, upsert=True)
             print("[CONFIG] Configuration persisted to MongoDB settings collection.")
     except Exception as e:
         print(f"[CONFIG WARN] Could not persist settings to MongoDB: {e}")
@@ -1744,8 +1756,10 @@ def send_otp_email_via_http(to_email, otp_code, recipient_name="Customer", cfg=N
         except urllib.error.HTTPError as he:
             err_body = he.read().decode('utf-8', errors='ignore')
             print(f"[EMAIL HTTP WARN] Resend API HTTP error ({he.code}): {err_body}")
+            return False, f"Resend API error: {err_body}"
         except Exception as e:
             print(f"[EMAIL HTTP WARN] Resend API failed: {e}")
+            return False, f"Resend API failed: {e}"
 
     return False, "No HTTP Email API configured."
 
@@ -1760,12 +1774,17 @@ def send_otp_email(to_email, otp_code, recipient_name="Customer"):
     print(f"\n{'='*64}\n[OTP EMAIL DISPATCH] Recipient: {to_email} ({recipient_name})\n[OTP CODE]: {otp_code} (Valid for 10 minutes)\n{'='*64}\n")
 
     # 1. First check if any HTTPS Email API is configured (Port 443 - unaffected by cloud SMTP port blocks)
-    if any([(cfg.get("brevoApiKey") or os.environ.get("BREVO_API_KEY")),
-            (cfg.get("resendApiKey") or os.environ.get("RESEND_API_KEY")),
-            (cfg.get("sendgridApiKey") or os.environ.get("SENDGRID_API_KEY"))]):
+    has_http_api = any([(cfg.get("brevoApiKey") or os.environ.get("BREVO_API_KEY")),
+                        (cfg.get("resendApiKey") or os.environ.get("RESEND_API_KEY")),
+                        (cfg.get("sendgridApiKey") or os.environ.get("SENDGRID_API_KEY"))])
+    if has_http_api:
         http_ok, http_msg = send_otp_email_via_http(to_email, otp_code, recipient_name, cfg)
         if http_ok:
             return True, http_msg
+        else:
+            print(f"[EMAIL HTTP FAIL] {http_msg}")
+            if os.environ.get("RENDER") or os.environ.get("PORT"):
+                return False, http_msg
 
     # 2. SMTP dispatch (Port 465 / 587)
     smtp_server = (cfg.get("smtpServer") or "smtp.gmail.com").strip()
