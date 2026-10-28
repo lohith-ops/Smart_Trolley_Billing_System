@@ -3642,7 +3642,13 @@ def get_available_ports():
     import serial.tools.list_ports
     ports = serial.tools.list_ports.comports()
     port_list = [{"port": p.device, "description": p.description, "hwid": p.hwid} for p in ports]
-    return jsonify({"success": True, "ports": port_list, "currentPort": SERIAL_PORT})
+    if IS_CLOUD_ENV or len(port_list) == 0:
+        port_list.append({
+            "port": "CLOUD_WIRELESS",
+            "description": "Cloud Gateway (Wireless Fleet Mode - Wi-Fi)",
+            "hwid": "CLOUD"
+        })
+    return jsonify({"success": True, "ports": port_list, "currentPort": SERIAL_PORT, "isCloud": IS_CLOUD_ENV})
 
 @app.route("/api/settings/update", methods=["POST"])
 @require_auth(roles=["admin"])
@@ -4256,7 +4262,22 @@ def update_wifi_settings():
 # ---------------------------------------------------------------------------
 
 def get_wifi_interface_status():
-    """Retrieve active Wi-Fi interface details on Windows."""
+    """Retrieve active Wi-Fi or Cloud network interface details."""
+    online_count = sum(1 for t in trolleys_collection.find({}) if is_trolley_connected(t["_id"]))
+
+    if IS_CLOUD_ENV or os.name != 'nt':
+        return {
+            "state": "connected",
+            "connected": True,
+            "isCloud": True,
+            "ssid": "Cloud Gateway (Render HTTPS)",
+            "signal": "100%",
+            "bssid": "render-cloud-node",
+            "adapter": "Cloud Virtual Ethernet (HTTPS)",
+            "localIP": "smart-trolley-billing-system.onrender.com",
+            "onlineTrolleys": online_count
+        }
+
     try:
         res = subprocess.run(['netsh', 'wlan', 'show', 'interfaces'], capture_output=True, text=True, errors='ignore', timeout=5)
         state_m = re.search(r'^\s*State\s*:\s*(.+)$', res.stdout, re.M)
@@ -4272,21 +4293,25 @@ def get_wifi_interface_status():
         return {
             "state": state,
             "connected": state.lower() == "connected",
+            "isCloud": False,
             "ssid": ssid,
             "signal": signal,
             "bssid": bssid,
             "adapter": desc,
-            "localIP": get_local_ip()
+            "localIP": get_local_ip(),
+            "onlineTrolleys": online_count
         }
     except Exception as e:
         return {
             "state": "unknown",
             "connected": False,
+            "isCloud": False,
             "ssid": "",
             "signal": "0%",
             "bssid": "",
             "adapter": "Unknown",
             "localIP": get_local_ip(),
+            "onlineTrolleys": online_count,
             "error": str(e)
         }
 
@@ -4302,6 +4327,15 @@ def api_wifi_status():
 @app.route("/api/wifi/saved-profiles", methods=["GET"])
 def api_wifi_saved_profiles():
     """Returns saved Windows Wi-Fi profiles and their known passwords."""
+    if IS_CLOUD_ENV or os.name != 'nt':
+        return jsonify({
+            "success": True,
+            "isCloud": True,
+            "profiles": [
+                {"ssid": "Cloud Gateway (Render HTTPS)", "hasPassword": False, "password": ""}
+            ]
+        })
+
     try:
         res = subprocess.run(['netsh', 'wlan', 'show', 'profiles'], capture_output=True, text=True, errors='ignore', timeout=5)
         names = [p.strip() for p in re.findall(r'All User Profile\s*:\s*(.+)', res.stdout)]
@@ -4319,13 +4353,21 @@ def api_wifi_saved_profiles():
         with ThreadPoolExecutor(max_workers=8) as ex:
             profiles = list(ex.map(fetch_key, names[:25]))
             
-        return jsonify({"success": True, "profiles": profiles})
+        return jsonify({"success": True, "profiles": profiles, "isCloud": False})
     except Exception as e:
-        return jsonify({"success": False, "profiles": [], "error": str(e)})
+        return jsonify({"success": False, "profiles": [], "error": str(e), "isCloud": False})
 
 @app.route("/api/wifi/scan", methods=["GET"])
 def api_wifi_scan():
     """Scans for nearby visible Wi-Fi networks in range."""
+    if IS_CLOUD_ENV or os.name != 'nt':
+        return jsonify({
+            "success": True,
+            "isCloud": True,
+            "networks": [],
+            "message": "Cloud Gateway Mode: ESP32 trolleys transmit telemetry directly over HTTPS to https://smart-trolley-billing-system.onrender.com"
+        })
+
     try:
         status = get_wifi_interface_status()
         current_ssid = status.get("ssid", "")
@@ -4380,6 +4422,12 @@ def api_wifi_scan():
 @require_auth(roles=["admin", "manager"])
 def api_wifi_connect():
     """Connect the host system to a Wi-Fi network."""
+    if IS_CLOUD_ENV or os.name != 'nt':
+        return jsonify({
+            "success": False,
+            "message": "Host Wi-Fi adapter configuration is disabled in Cloud Mode. ESP32 smart trolleys transmit data directly to https://smart-trolley-billing-system.onrender.com"
+        }), 400
+
     data = request.json or {}
     ssid = (data.get("ssid") or "").strip()
     password = (data.get("password") or "").strip()
@@ -4462,6 +4510,12 @@ def api_wifi_connect():
 @require_auth(roles=["admin", "manager"])
 def api_wifi_disconnect():
     """Disconnect active Wi-Fi connection."""
+    if IS_CLOUD_ENV or os.name != 'nt':
+        return jsonify({
+            "success": False,
+            "message": "Network adapter disconnect is disabled on Cloud Server."
+        }), 400
+
     try:
         subprocess.run(['netsh', 'wlan', 'disconnect'], capture_output=True, text=True, errors='ignore', timeout=5)
         return jsonify({"success": True, "message": "Disconnected from Wi-Fi network."})
