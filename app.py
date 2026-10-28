@@ -545,15 +545,13 @@ def init_users():
             })
             print(f"[AUTH] Seeded user account: {u['username']} ({u['role']})")
         else:
+            # Preserve user's existing email, name, role and custom password
+            update_fields = {"status": existing.get("status", "Active")}
+            if not existing.get("email") and u.get("email"):
+                update_fields["email"] = u["email"]
             users_collection.update_one(
                 {"username": u["username"]},
-                {"$set": {
-                    "email":         u["email"],
-                    "name":          u["name"],
-                    "role":          u["role"],
-                    "status":        "Active",
-                    "password_hash": generate_password_hash(u["password"])
-                }}
+                {"$set": update_fields}
             )
 
     # Sync existing employees in db['employees'] to users_collection
@@ -593,7 +591,7 @@ def init_users():
                             user_doc["email"] = emp_email
                         users_collection.insert_one(user_doc)
                         print(f"[AUTH] Auto-synced employee account: {uname} (Role: {emp_role}, Initial PW: {default_pw})")
-                    elif emp_email and not existing_user.get("email"):
+                    elif emp_email and existing_user.get("email") != emp_email:
                         users_collection.update_one({"username": uname}, {"$set": {"email": emp_email}})
     except Exception as ex:
         print(f"[AUTH WARN] Error auto-syncing employee accounts: {ex}")
@@ -1632,24 +1630,37 @@ def auth_update_profile():
     return jsonify({"success": True, "message": "Profile updated successfully.", "email": email})
 
 def find_user_by_identifier(identifier):
-    """Finds a user by username, email, or phone number in users_collection or customers_collection."""
+    """Finds a user by username, email, phone number, or employee ID across users, employees, or customers."""
     if not identifier:
         return None
-    ident = identifier.strip().lower()
-    clean_phone = identifier.strip().replace(" ", "").replace("-", "").replace("+91", "")
+    raw_ident = identifier.strip()
+    ident = raw_ident.lower()
+    clean_phone = raw_ident.replace(" ", "").replace("-", "").replace("+91", "")
     
-    # 1. Try exact username match
+    # 1. Try exact username match in users_collection
     user = users_collection.find_one({"username": ident})
     if user:
+        if not user.get("email"):
+            emp = db['employees'].find_one({
+                "$or": [
+                    {"username": ident},
+                    {"id": raw_ident.upper()},
+                    {"id": ident},
+                    {"name": user.get("name")}
+                ]
+            })
+            if emp and emp.get("email"):
+                users_collection.update_one({"_id": user["_id"]}, {"$set": {"email": emp["email"]}})
+                user["email"] = emp["email"]
         return user
     
-    # 2. Try email match
+    # 2. Try email match in users_collection
     user = users_collection.find_one({"email": ident})
     if user:
         return user
 
-    # 3. Try phone match
-    user = users_collection.find_one({"phone": identifier.strip()})
+    # 3. Try phone match in users_collection
+    user = users_collection.find_one({"phone": raw_ident})
     if user:
         return user
         
@@ -1660,21 +1671,95 @@ def find_user_by_identifier(identifier):
         u_email    = (u.get("email") or "").lower()
         u_phone    = (u.get("phone") or "").replace(" ", "").replace("-", "").replace("+91", "")
         if u_username == ident or (u_email and u_email == ident) or (clean_phone and u_phone == clean_phone):
+            if not u.get("email"):
+                emp = db['employees'].find_one({
+                    "$or": [
+                        {"username": u_username},
+                        {"id": raw_ident.upper()},
+                        {"name": u.get("name")}
+                    ]
+                })
+                if emp and emp.get("email"):
+                    users_collection.update_one({"_id": u["_id"]}, {"$set": {"email": emp["email"]}})
+                    u["email"] = emp["email"]
             return u
 
-    # 5. Search in customers_collection to support shoppers registered via Customer Hub
+    # 5. Search in db['employees'] to support staff registered via Employee Management
+    emp = db['employees'].find_one({
+        "$or": [
+            {"id": raw_ident.upper()},
+            {"id": raw_ident},
+            {"id": ident},
+            {"username": ident},
+            {"email": ident}
+        ]
+    })
+    if not emp:
+        # Also try case-insensitive regex for name or ID
+        emp = db['employees'].find_one({
+            "$or": [
+                {"name": {"$regex": f"^{re.escape(raw_ident)}$", "$options": "i"}},
+                {"id": {"$regex": f"^{re.escape(raw_ident)}$", "$options": "i"}}
+            ]
+        })
+
+    if emp:
+        emp_id = (emp.get("id") or "").strip()
+        emp_uname = (emp.get("username") or emp_id.lower()).strip().lower()
+        emp_email = (emp.get("email") or "").strip().lower()
+        emp_name = emp.get("name") or emp_uname
+        emp_role = (emp.get("role") or "cashier").strip().lower()
+        if emp_role not in ["admin", "manager", "cashier", "customer"]:
+            emp_role = "cashier"
+
+        # Search for corresponding user in users_collection
+        linked_user = users_collection.find_one({
+            "$or": [
+                {"username": emp_uname},
+                {"username": emp_id.lower()},
+                {"id": emp_id},
+                {"email": emp_email} if emp_email else {"_id": None},
+                {"name": emp_name}
+            ]
+        })
+        if linked_user:
+            if emp_email and linked_user.get("email") != emp_email:
+                users_collection.update_one(
+                    {"_id": linked_user["_id"]},
+                    {"$set": {"email": emp_email, "updated_at": time.time()}}
+                )
+                linked_user["email"] = emp_email
+            return linked_user
+        else:
+            # Create user document for this employee
+            new_emp_user = {
+                "username":      emp_uname or emp_id.lower(),
+                "password_hash": generate_password_hash(f"{emp_uname}123"),
+                "name":          emp_name,
+                "role":          emp_role,
+                "email":         emp_email,
+                "status":        emp.get("status", "Active"),
+                "created_at":    time.time()
+            }
+            users_collection.insert_one(new_emp_user)
+            return new_emp_user
+
+    # 6. Search in customers_collection to support shoppers registered via Customer Hub
     cust = customers_collection.find_one({
         "$or": [
-            {"id": identifier.strip()},
-            {"customer_id": identifier.strip()},
+            {"id": raw_ident},
+            {"customer_id": raw_ident},
             {"email": ident},
-            {"phone": clean_phone or identifier.strip()}
+            {"phone": clean_phone or raw_ident}
         ]
     })
     if cust:
         c_username = (cust.get("id") or cust.get("customer_id") or f"cust_{clean_phone}").lower()
         linked_user = users_collection.find_one({"$or": [{"username": c_username}, {"email": cust.get("email")}, {"phone": cust.get("phone")}]})
         if linked_user:
+            if cust.get("email") and linked_user.get("email") != cust.get("email"):
+                users_collection.update_one({"_id": linked_user["_id"]}, {"$set": {"email": cust.get("email")}})
+                linked_user["email"] = cust.get("email")
             return linked_user
         else:
             # Create synced user record for this customer
@@ -1739,8 +1824,9 @@ def send_otp_email_via_http(to_email, otp_code, recipient_name="Customer", cfg=N
     if resend_key:
         try:
             print(f"[EMAIL RESEND DISPATCH] Target: {to_email}, Key prefix: {resend_key[:6]}, len: {len(resend_key)}")
+            from_sender = (cfg.get("resendSenderEmail") or os.environ.get("RESEND_SENDER_EMAIL", "")).strip() or f"{store_name} <onboarding@resend.dev>"
             payload = json.dumps({
-                "from": f"{store_name} <onboarding@resend.dev>",
+                "from": from_sender,
                 "to": [to_email],
                 "subject": subject,
                 "html": html_body
@@ -1757,6 +1843,8 @@ def send_otp_email_via_http(to_email, otp_code, recipient_name="Customer", cfg=N
         except urllib.error.HTTPError as he:
             err_body = he.read().decode('utf-8', errors='ignore')
             print(f"[EMAIL HTTP WARN] Resend API HTTP error ({he.code}): {err_body}")
+            if he.code == 403 and "own email address" in err_body:
+                return False, f"Resend sandbox allows delivery to the account owner (llohithacharya@gmail.com). To send to other staff emails, add a custom domain at resend.com/domains."
             return False, f"Resend API error: {err_body}"
         except Exception as e:
             print(f"[EMAIL HTTP WARN] Resend API failed: {e}")
@@ -2127,7 +2215,7 @@ def auth_forgot_password_request():
         "masked_target": masked_target,
         "channels": channels,
         "email_sent": email_sent,
-        "email_status": "Email sent successfully." if email_sent else "Verification code generated and ready.",
+        "email_status": "Email sent successfully." if email_sent else email_status,
         "otp": otp
     })
 

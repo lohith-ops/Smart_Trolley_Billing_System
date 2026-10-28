@@ -201,7 +201,7 @@
                 <i class="fa-solid fa-envelope"></i>
             </div>
             <h2>Update Registered Email</h2>
-            <p class="modal-sub" id="change-email-modal-sub">Modify employee email address for roster & account communications</p>
+            <p class="modal-sub" id="change-email-modal-sub">Password reset verification codes (OTP) will be dispatched directly to this email address.</p>
             
             <form id="change-email-form" class="register-form" style="margin-top: 15px;">
                 <input type="hidden" id="change-email-emp-id">
@@ -212,6 +212,11 @@
                 <div class="form-group">
                     <label>Registered Email Address</label>
                     <input type="email" id="change-email-new-email" required placeholder="e.g. employee@gmail.com" class="form-input" autocomplete="email" pattern="^[a-zA-Z0-9_.+-]+@gmail\.com$" title="Must be a valid Gmail address in the form of example@gmail.com">
+                </div>
+                
+                <div style="background: rgba(6, 182, 212, 0.08); border: 1px dashed rgba(6, 182, 212, 0.3); border-radius: 8px; padding: 10px; margin-top: 10px; font-size: 0.8rem; color: #94a3b8; line-height: 1.4;">
+                    <i class="fa-solid fa-shield-halved" style="color: var(--accent-cyan); margin-right: 6px;"></i>
+                    When this staff member uses "Forgot Password?" during login, their 6-digit verification code will be sent to this registered email.
                 </div>
                 
                 <div class="form-actions" style="margin-top: 20px;">
