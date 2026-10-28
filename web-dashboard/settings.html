@@ -359,6 +359,24 @@
                             </div>
                         </div>
 
+                        <!-- Cloud HTTP Email API (Port 443 - Render Cloud Delivery) -->
+                        <div style="background: rgba(6, 182, 212, 0.05); border: 1px solid rgba(6, 182, 212, 0.3); border-radius: 10px; padding: 14px; margin-bottom: 14px;">
+                            <h4 style="color: var(--accent-cyan); font-size: 0.9rem; margin: 0 0 8px 0; display: flex; align-items: center; justify-content: space-between;">
+                                <span><i class="fa-solid fa-cloud-arrow-up"></i> Cloud Email Gateway (Resend HTTP API — Port 443)</span>
+                                <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 0.7rem; padding: 2px 8px;">Render Compatible</span>
+                            </h4>
+                            <p style="font-size: 0.78rem; color: var(--text-secondary); margin: 0 0 10px 0; line-height: 1.4;">
+                                Used by cloud servers (Render) to bypass SMTP port restrictions and dispatch real OTP emails to your inbox over HTTPS.
+                            </p>
+                            <div class="form-group" style="margin-bottom: 4px;">
+                                <label style="font-weight: 500; font-size: 0.82rem; display: block; margin-bottom: 4px;">
+                                    Resend API Key
+                                    <a href="https://resend.com/api-keys" target="_blank" style="color: var(--accent-cyan); font-size: 0.75rem; margin-left: 6px; text-decoration: none;">Get Free Key at resend.com <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 0.7rem;"></i></a>
+                                </label>
+                                <input type="password" id="resend-api-key-input" placeholder="re_••••••••••••••••••••••••" class="form-input" style="width: 100%;">
+                            </div>
+                        </div>
+
                         <!-- SMS Gateway Section -->
                         <div style="background: rgba(0,0,0,0.2); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 14px; margin-bottom: 16px;">
                             <h4 style="color: var(--text-primary); font-size: 0.9rem; margin: 0 0 10px 0; display: flex; align-items: center; gap: 8px;">

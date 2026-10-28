@@ -100,7 +100,10 @@ def load_config():
         "fast2smsApiKey": os.environ.get("FAST2SMS_API_KEY", ""),
         "twilioSid": os.environ.get("TWILIO_SID", ""),
         "twilioAuthToken": os.environ.get("TWILIO_AUTH_TOKEN", ""),
-        "twilioFromPhone": os.environ.get("TWILIO_FROM_PHONE", "")
+        "twilioFromPhone": os.environ.get("TWILIO_FROM_PHONE", ""),
+        "resendApiKey": os.environ.get("RESEND_API_KEY", ""),
+        "brevoApiKey": os.environ.get("BREVO_API_KEY", ""),
+        "sendgridApiKey": os.environ.get("SENDGRID_API_KEY", "")
     }
     cfg = dict(defaults)
     if os.path.exists(CONFIG_FILE):
@@ -133,6 +136,12 @@ def load_config():
             cfg["smtpPort"] = int(os.environ.get("SMTP_PORT"))
         except:
             pass
+    if os.environ.get("RESEND_API_KEY"):
+        cfg["resendApiKey"] = os.environ.get("RESEND_API_KEY").strip()
+    if os.environ.get("BREVO_API_KEY"):
+        cfg["brevoApiKey"] = os.environ.get("BREVO_API_KEY").strip()
+    if os.environ.get("SENDGRID_API_KEY"):
+        cfg["sendgridApiKey"] = os.environ.get("SENDGRID_API_KEY").strip()
 
     return cfg
 
@@ -1725,12 +1734,16 @@ def send_otp_email_via_http(to_email, otp_code, recipient_name="Customer", cfg=N
             }).encode("utf-8")
             req = urllib.request.Request("https://api.resend.com/emails", data=payload, headers={
                 "Authorization": f"Bearer {resend_key}",
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "User-Agent": "SmartTrolleyBillingSystem/2.0"
             })
             with urllib.request.urlopen(req, timeout=12) as resp:
                 if resp.status in (200, 201, 202):
                     print(f"[EMAIL HTTP DISPATCH] Successfully sent OTP to {to_email} via Resend API")
                     return True, "Email sent successfully via Resend API."
+        except urllib.error.HTTPError as he:
+            err_body = he.read().decode('utf-8', errors='ignore')
+            print(f"[EMAIL HTTP WARN] Resend API HTTP error ({he.code}): {err_body}")
         except Exception as e:
             print(f"[EMAIL HTTP WARN] Resend API failed: {e}")
 
@@ -4193,6 +4206,8 @@ def get_notification_settings():
     masked_sms_key = ("•" * 8) if fast2sms_key else ""
     twilio_token = cfg.get("twilioAuthToken", "")
     masked_twilio_token = ("•" * 8) if twilio_token else ""
+    resend_key = cfg.get("resendApiKey", "")
+    masked_resend_key = ("•" * 8) if resend_key else ""
 
     return jsonify({
         "success": True,
@@ -4201,6 +4216,8 @@ def get_notification_settings():
         "smtpUser":         cfg.get("smtpUser", ""),
         "smtpPasswordSet":  bool(smtp_pass),
         "smtpPasswordMask": masked_smtp_pass,
+        "resendApiKeySet":  bool(resend_key),
+        "resendApiKeyMask": masked_resend_key,
         "fast2smsApiKeySet": bool(fast2sms_key),
         "fast2smsApiKeyMask": masked_sms_key,
         "twilioSid":        cfg.get("twilioSid", ""),
@@ -4226,6 +4243,9 @@ def update_notification_settings():
         cfg["smtpUser"] = (data["smtpUser"] or "").strip()
     if "smtpPassword" in data and data["smtpPassword"] != "••••••••":
         cfg["smtpPassword"] = (data["smtpPassword"] or "").strip()
+
+    if "resendApiKey" in data and data["resendApiKey"] != "••••••••":
+        cfg["resendApiKey"] = (data["resendApiKey"] or "").strip()
 
     if "fast2smsApiKey" in data and data["fast2smsApiKey"] != "••••••••":
         cfg["fast2smsApiKey"] = (data["fast2smsApiKey"] or "").strip()
