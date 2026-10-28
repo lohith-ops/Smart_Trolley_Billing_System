@@ -859,7 +859,11 @@ def forward_cart_action_to_cloud(trolley_id, uid, action):
                 data=payload,
                 headers={"Content-Type": "application/json", "User-Agent": "SmartTrolleyLocalRelay/2.0"}
             )
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            try:
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    pass
+            except urllib.error.HTTPError:
+                # HTTP 404 for unknown cards is expected and correctly logged into feed on cloud
                 pass
         except Exception:
             pass
@@ -976,6 +980,15 @@ def process_scan(action, uid, trolley_id="TROLLEY-001"):
     items = cart.get("items", {}) if cart else {}
 
     if not product:
+        unknown_scan_obj = {
+            "uid":         uid_key,
+            "trolley_id":  trolley_id,
+            "timestamp":   time.time()
+        }
+        carts_collection.update_one(
+            {"_id": cart_id},
+            {"$set": {"last_unknown_scan": unknown_scan_obj}}
+        )
         db['feed'].insert_one({
             "actionType":  "UNKNOWN_SCAN",
             "uid":         uid_key,
@@ -983,6 +996,12 @@ def process_scan(action, uid, trolley_id="TROLLEY-001"):
             "timestamp":   time.time()
         })
         return None, cart.get("total", 0.0), uid_key
+
+    # Clear any previous unknown scan alert once a recognized product is processed
+    carts_collection.update_one(
+        {"_id": cart_id},
+        {"$unset": {"last_unknown_scan": ""}}
+    )
 
     if action == "ADD":
         current_stock = product.get("stock")
@@ -2155,9 +2174,10 @@ def get_dashboard():
         t_is_online = is_serial_connected or is_trolley_connected(tid)
         is_assigned = (t_obj.get("assignment_status") == "ASSIGNED") or bool(t_obj.get("assigned_customer_id"))
         has_items = c.get("itemsContained", 0) > 0
+        has_unknown = bool(c.get("last_unknown_scan") and (now_ts - c.get("last_unknown_scan", {}).get("timestamp", 0) < 180))
 
-        # Preserve in active carts if cart has items OR trolley is currently assigned to a customer OR trolley is actively online!
-        if has_items or is_assigned or t_is_online:
+        # Preserve in active carts if cart has items OR trolley is currently assigned to a customer OR trolley is actively online OR recent unknown scan!
+        if has_items or is_assigned or t_is_online or has_unknown:
             display_id = raw_id.split("-")[-1] if "-" in str(raw_id) else str(raw_id)
             hb = format_heartbeat_status(now_ts if is_serial_connected else t_last_seen, now_ts)
             active_carts.append({
@@ -2167,6 +2187,7 @@ def get_dashboard():
                 "itemsContained":          c.get("itemsContained", 0),
                 "lastActive":              c.get("lastActive", ""),
                 "items":                   c.get("items", {}),
+                "last_unknown_scan":       c.get("last_unknown_scan"),
                 "status":                  c.get("status", "ACTIVE"),
                 "customer_name":           t_obj.get("assigned_customer_name") or c.get("customer_name") or "Guest",
                 "customer_id":             t_obj.get("assigned_customer_id") or c.get("customer_id"),
@@ -5341,6 +5362,7 @@ def serial_loop():
                         print(f"[WARN] Unknown UID Scanned: {uid}")
                         send_command_to_arduino("LCD:Unknown Card!|Check Dashboard")
                         send_command_to_arduino("BEEP:3")
+                        forward_cart_action_to_cloud(SERIAL_TROLLEY_ID, uid, current_mode)
 
         except serial.SerialException as e:
             print(f"Serial connection lost! Reconnecting... Error: {e}")
