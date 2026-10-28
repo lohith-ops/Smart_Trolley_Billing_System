@@ -2256,6 +2256,7 @@ def cart_action():
     if not product:
         send_command_to_arduino("LCD:Unknown Card!|Check Dashboard")
         send_command_to_arduino("BEEP:3")
+        forward_cart_action_to_cloud(trolley_id, uid, action)
         return jsonify({"success": False, "message": "Product not found", "uid": uid_key}), 404
 
     if uid_key == "OUT_OF_STOCK":
@@ -2274,8 +2275,7 @@ def cart_action():
         {"_id": trolley_id},
         {"$set": {"status": "online", "last_seen": time.time(), "connection_status": "connected"}}
     )
-    if product:
-        forward_cart_action_to_cloud(trolley_id, uid, action)
+    forward_cart_action_to_cloud(trolley_id, uid, action)
     return jsonify({
         "success":   True,
         "product":   {"name": product["name"], "price": product["price"], "stock": product.get("stock", 0)},
