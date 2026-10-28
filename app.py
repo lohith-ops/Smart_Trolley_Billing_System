@@ -113,24 +113,7 @@ def load_config():
         except Exception as e:
             print(f"[CONFIG] Error reading config file: {e}")
 
-    # Check MongoDB settings collection if initialized
-    try:
-        s_coll = None
-        if 'settings_collection' in globals() and settings_collection is not None:
-            s_coll = settings_collection
-        elif 'db' in globals() and db is not None:
-            s_coll = db['settings']
-
-        if s_coll is not None:
-            db_cfg = s_coll.find_one({"_id": "app_config"})
-            if db_cfg:
-                for k, v in db_cfg.items():
-                    if k != "_id" and v is not None and v != "":
-                        cfg[k] = v
-    except Exception:
-        pass
-
-    # Ensure environment variables take precedence if explicitly provided
+    # Ensure environment variables provide base defaults
     if os.environ.get("SMTP_EMAIL"):
         cfg["smtpUser"] = os.environ.get("SMTP_EMAIL").strip()
     if os.environ.get("SMTP_PASSWORD"):
@@ -148,6 +131,23 @@ def load_config():
         cfg["brevoApiKey"] = os.environ.get("BREVO_API_KEY").strip()
     if os.environ.get("SENDGRID_API_KEY"):
         cfg["sendgridApiKey"] = os.environ.get("SENDGRID_API_KEY").strip()
+
+    # Check MongoDB settings collection (Active settings saved in dashboard take highest precedence)
+    try:
+        s_coll = None
+        if 'settings_collection' in globals() and settings_collection is not None:
+            s_coll = settings_collection
+        elif 'db' in globals() and db is not None:
+            s_coll = db['settings']
+
+        if s_coll is not None:
+            db_cfg = s_coll.find_one({"_id": "app_config"})
+            if db_cfg:
+                for k, v in db_cfg.items():
+                    if k != "_id" and v is not None and v != "":
+                        cfg[k] = v
+    except Exception:
+        pass
 
     return cfg
 
