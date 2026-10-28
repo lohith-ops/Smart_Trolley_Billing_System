@@ -11,7 +11,7 @@ function initLoginPage() {
     const errorMsg = document.getElementById('login-error-msg');
     const togglePassBtn = document.getElementById('toggle-password');
     const togglePassIcon = document.getElementById('toggle-password-icon');
-    const presetBtns = document.querySelectorAll('.preset-btn');
+
 
     // 1. Password Visibility Toggle
     if (togglePassBtn && passwordInput && togglePassIcon) {
@@ -22,40 +22,6 @@ function initLoginPage() {
         });
     }
 
-    // 1.1 Demo Mode Collapsible Toggle
-    const toggleDemoBtn = document.getElementById('toggle-demo-btn');
-    const demoPresetsContainer = document.getElementById('demo-presets-container');
-    const demoChevron = document.getElementById('demo-chevron');
-    if (toggleDemoBtn && demoPresetsContainer) {
-        toggleDemoBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            const isHidden = demoPresetsContainer.style.display === 'none' || !demoPresetsContainer.style.display;
-            demoPresetsContainer.style.display = isHidden ? 'grid' : 'none';
-            if (demoChevron) {
-                demoChevron.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
-            }
-        });
-    }
-
-    // 2. Preset Buttons Quick Fill & Auto-Login
-    presetBtns.forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            const user = btn.getAttribute('data-user');
-            const pass = btn.getAttribute('data-pass');
-            if (user && pass) {
-                if (usernameInput) usernameInput.value = user;
-                if (passwordInput) passwordInput.value = pass;
-                hideError();
-                // Highlight button briefly
-                btn.style.transform = 'scale(0.96)';
-                setTimeout(() => {
-                    btn.style.transform = '';
-                    handleLogin(user, pass);
-                }, 100);
-            }
-        });
-    });
 
     // 3. Form Submit Handler
     if (form) {
@@ -66,6 +32,38 @@ function initLoginPage() {
             handleLogin(username, password);
         });
     }
+
+    // 3.1 Continue as Guest Handler
+    const guestLinks = document.querySelectorAll('.guest-link');
+    guestLinks.forEach(link => {
+        link.addEventListener('click', async (e) => {
+            e.preventDefault();
+            // Clear any previous user or customer session first
+            const tokenKey = (window.AUTH_CONFIG && window.AUTH_CONFIG.TOKEN_KEY) || 'smart_trolley_jwt_token';
+            const userKey = (window.AUTH_CONFIG && window.AUTH_CONFIG.USER_KEY) || 'smart_trolley_user_profile';
+            localStorage.removeItem(tokenKey);
+            localStorage.removeItem(userKey);
+
+            try {
+                const res = await fetch('/api/auth/guest', { method: 'POST' });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.token && data.user) {
+                        setAuthSession(data.token, data.user);
+                    } else if (window.setGuestSession) {
+                        window.setGuestSession();
+                    }
+                } else if (window.setGuestSession) {
+                    window.setGuestSession();
+                }
+            } catch (err) {
+                if (window.setGuestSession) {
+                    window.setGuestSession();
+                }
+            }
+            window.location.href = 'customer-portal.html';
+        });
+    });
 
     // Auto-login & clean if query params exist from previous form reload
     try {
@@ -205,13 +203,7 @@ function initLoginPage() {
     const toggleForgotPass  = document.getElementById('toggle-forgot-pass');
     const toggleForgotPassIcon = document.getElementById('toggle-forgot-pass-icon');
 
-    // Elements for Demo OTP
-    const demoOtpBanner     = document.getElementById('demo-otp-banner');
-    const demoOtpVal        = document.getElementById('demo-otp-val');
-    const demoOtpFillBtn    = document.getElementById('demo-otp-fill-btn');
-
     let activeResetUsername = '';
-    let currentOtpCode      = '';
 
     function openForgotModal() {
         if (!forgotModal) return;
@@ -248,9 +240,6 @@ function initLoginPage() {
         if (successState) {
             successState.classList.add('hidden');
             successState.style.display = 'none';
-        }
-        if (demoOtpBanner) {
-            demoOtpBanner.style.display = 'none';
         }
         if (otpInput) otpInput.value = '';
         if (newPassInput) newPassInput.value = '';
@@ -333,7 +322,6 @@ function initLoginPage() {
 
                 if (res.ok && data.success) {
                     activeResetUsername = data.username || identifier;
-                    currentOtpCode = data.otp || '';
 
                     step1Form.classList.add('hidden');
                     step1Form.style.display = 'none';
@@ -341,16 +329,20 @@ function initLoginPage() {
                     step2Form.style.display = 'block';
                     
                     if (step2TargetInfo) {
-                        step2TargetInfo.textContent = `Verification code sent to ${data.masked_target || identifier}`;
+                        if (data.email_sent) {
+                            step2TargetInfo.innerHTML = `<i class="fa-solid fa-circle-check" style="color: #10b981; margin-right: 6px;"></i> Verification code sent to registered email: <strong>${data.masked_target || identifier}</strong>`;
+                        } else {
+                            step2TargetInfo.innerHTML = `<i class="fa-solid fa-envelope" style="color: var(--accent-cyan); margin-right: 6px;"></i> Verification code generated for: <strong>${data.masked_target || identifier}</strong>`;
+                        }
                     }
 
-                    // Show helper OTP banner if code is returned
-                    if (data.otp && demoOtpBanner && demoOtpVal) {
-                        demoOtpVal.textContent = data.otp;
-                        demoOtpBanner.style.display = 'flex';
+                    if (data.email_sent) {
+                        showForgotAlert(`A 6-digit verification code has been dispatched to your registered email (${data.masked_target}). Please check your inbox and enter the code below.`, 'success');
+                    } else if (data.email_status) {
+                        showForgotAlert(`A 6-digit verification code was sent to ${data.masked_target}. (Notice: ${data.email_status})`, 'info');
+                    } else {
+                        showForgotAlert(`A 6-digit verification code has been sent to ${data.masked_target}. Please enter it below.`, 'info');
                     }
-
-                    showForgotAlert(`A 6-digit code has been generated & sent. Please enter it below.`, 'info');
                     setTimeout(() => otpInput && otpInput.focus(), 150);
                 } else {
                     showForgotAlert(data.message || 'Unable to request password reset code.');
@@ -361,16 +353,6 @@ function initLoginPage() {
             } finally {
                 sendBtn.disabled = false;
                 sendBtn.innerHTML = `<span>Send Verification Code (OTP)</span> <i class="fa-solid fa-paper-plane"></i>`;
-            }
-        });
-    }
-
-    // Autofill OTP helper button
-    if (demoOtpFillBtn && otpInput) {
-        demoOtpFillBtn.addEventListener('click', () => {
-            if (currentOtpCode) {
-                otpInput.value = currentOtpCode;
-                if (newPassInput) newPassInput.focus();
             }
         });
     }
@@ -466,11 +448,11 @@ function initLoginPage() {
                 });
                 const data = await res.json();
                 if (res.ok && data.success) {
-                    currentOtpCode = data.otp || '';
-                    if (data.otp && demoOtpVal) {
-                        demoOtpVal.textContent = data.otp;
+                    if (data.email_sent) {
+                        showForgotAlert(`A new 6-digit verification code has been dispatched to your registered email (${data.masked_target || activeResetUsername}).`, 'success');
+                    } else {
+                        showForgotAlert(`A new 6-digit verification code has been sent. Please enter it below.`, 'info');
                     }
-                    showForgotAlert(`New verification code sent!`, 'success');
                 } else {
                     showForgotAlert(data.message || 'Failed to resend code.');
                 }

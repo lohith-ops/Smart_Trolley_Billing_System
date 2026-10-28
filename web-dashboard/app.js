@@ -97,7 +97,8 @@ async function fetchDashboard() {
 // Update Dashboard Top Numbers
 function updateStatsUI() {
     els.revenue.innerText = `Rs.${State.revenue.toFixed(2)}`;
-    els.trolleys.innerText = State.activeCarts.length;
+    const onlineCount = State.onlineTrolleys !== undefined ? State.onlineTrolleys : (State.arduinoConnected ? 1 : 0);
+    els.trolleys.innerText = onlineCount;
     els.items.innerText = State.scannedItems;
 }
 
@@ -232,6 +233,12 @@ async function checkoutCart() {
 
         if (data.success) {
             await fetchDashboard();
+            const receiptUrl = `receipt.html?timestamp=${data.timestamp}&id=${data.transaction_id || ''}`;
+            try {
+                window.open(receiptUrl, '_blank');
+            } catch (e) {
+                console.warn("Could not auto-open receipt:", e);
+            }
             showReceiptModal(data.total, data.items || {});
         } else {
             alert(data.message || 'Checkout failed.');

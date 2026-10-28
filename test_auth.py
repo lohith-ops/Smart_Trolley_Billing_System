@@ -26,6 +26,11 @@ def run_tests():
     assert admin_token is not None
     print(f"[PASS] Admin Login Successful. Token received: {admin_token[:20]}...")
 
+    # Pre-clean any test users/employees from aborted previous runs
+    for u in ["supercashier1", "customer_jane", "hacker_bob", "e999"]:
+        client.delete(f"/api/auth/users/{u}", headers={"Authorization": f"Bearer {admin_token}"})
+    client.delete("/api/employees/E999", headers={"Authorization": f"Bearer {admin_token}"})
+
     # 2. Test Login with Cashier Credentials
     print("\n[TEST 2] Testing Cashier Login...")
     res = client.post("/api/auth/login", json={"username": "cashier", "password": "cashier123"})
@@ -75,7 +80,7 @@ def run_tests():
         "password": "pass123456",
         "name": "Alex Smith",
         "role": "cashier",
-        "email": "alex@smarttrolley.local"
+        "email": "alex@gmail.com"
     }, headers={"Authorization": f"Bearer {admin_token}"})
     assert res.status_code == 200, f"Expected 200, got {res.status_code}: {res.data}"
     print("[PASS] New user registered successfully by Admin.")
@@ -88,13 +93,25 @@ def run_tests():
     assert new_user_data["user"]["name"] == "Alex Smith"
     print("[PASS] Newly registered user authenticated successfully.")
 
-    # 10. Test Public Customer Self-Registration (/api/auth/signup)
+    # 10. Test Public Customer Self-Registration (/api/auth/signup) with @gmail.com
     print("\n[TEST 10] Testing Public Customer Self-Registration (/api/auth/signup)...")
+    # Verify non-gmail email is rejected
+    res_bad = client.post("/api/auth/signup", json={
+        "username": "customer_bad_email",
+        "password": "custpassword123",
+        "name": "Bad Email User",
+        "email": "user@yahoo.com",
+        "phone": "9876543210"
+    })
+    assert res_bad.status_code == 400
+    assert "example@gmail.com" in res_bad.get_json().get("message", "")
+    print("[PASS] Non-gmail address successfully rejected.")
+
     res = client.post("/api/auth/signup", json={
         "username": "customer_jane",
         "password": "custpassword123",
         "name": "Jane Doe",
-        "email": "jane@example.com",
+        "email": "jane@gmail.com",
         "phone": "9876543210"
     })
     assert res.status_code == 200, f"Expected 200, got {res.status_code}: {res.data}"
@@ -224,8 +241,192 @@ def run_tests():
     assert notif_data.get("success") is True
     print("[PASS] Notification settings retrieved successfully.")
 
+    # 25. Test Employee Registration with Email & Validation (/api/employees)
+    print("\n[TEST 25] Testing Employee Registration with Email & Validation...")
+    # Invalid email rejection
+    res = client.post("/api/employees", json={
+        "id": "E999",
+        "name": "Test Employee",
+        "email": "invalid-email-format",
+        "role": "Cashier",
+        "shift": "Morning (08:00 AM - 04:00 PM)",
+        "status": "Active"
+    }, headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 400
+    print("[PASS] Invalid employee email format correctly rejected with 400.")
+
+    # Valid registration with email
+    res = client.post("/api/employees", json={
+        "id": "E999",
+        "name": "Test Employee",
+        "email": "test.employee@gmail.com",
+        "role": "Cashier",
+        "shift": "Morning (08:00 AM - 04:00 PM)",
+        "status": "Active"
+    }, headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 200
+    # Verify employee record has email
+    res_list = client.get("/api/employees")
+    assert res_list.status_code == 200
+    emp_record = next((e for e in res_list.get_json() if e["id"] == "E999"), None)
+    assert emp_record is not None
+    assert emp_record.get("email") == "test.employee@gmail.com"
+    print("[PASS] Employee created with registered email successfully.")
+
+    # 26. Test Changing Employee Email (/api/employees/<emp_id>/email)
+    print("\n[TEST 26] Testing Changing Employee Email via Dedicated Endpoint...")
+    res = client.put("/api/employees/E999/email", json={"email": "new.test.email@gmail.com"}, headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 200
+    assert res.get_json().get("success") is True
+    # Verify employee record has updated email
+    res_list = client.get("/api/employees")
+    emp_record = next((e for e in res_list.get_json() if e["id"] == "E999"), None)
+    assert emp_record is not None
+    assert emp_record.get("email") == "new.test.email@gmail.com"
+    print("[PASS] Employee email changed and verified successfully.")
+
+    # 27. Test Updating Employee Email via /api/employees Edit POST
+    print("\n[TEST 27] Testing Updating Employee Email via Roster Edit POST...")
+    res = client.post("/api/employees", json={
+        "id": "E999",
+        "name": "Test Employee Renamed",
+        "email": "updated.employee@gmail.com",
+        "role": "Cashier",
+        "shift": "Evening (04:00 PM - 12:00 AM)",
+        "status": "Active"
+    }, headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 200
+    res_list = client.get("/api/employees")
+    emp_record = next((e for e in res_list.get_json() if e["id"] == "E999"), None)
+    assert emp_record is not None
+    assert emp_record.get("email") == "updated.employee@gmail.com"
+    print("[PASS] Employee email updated via roster edit successfully.")
+
+    # 28. Test Guest Session Generation (/api/auth/guest)
+    print("\n[TEST 28] Testing Guest Session Generation (/api/auth/guest)...")
+    res = client.post("/api/auth/guest")
+    assert res.status_code == 200
+    guest_data = res.get_json()
+    assert guest_data.get("success") is True
+    assert guest_data.get("token") is not None
+    assert guest_data.get("user", {}).get("role") == "guest"
+    print("[PASS] Guest session token generated successfully with 'guest' role.")
+
+    # Clean up test employee
+    client.delete("/api/employees/E999", headers={"Authorization": f"Bearer {admin_token}"})
+    client.delete("/api/auth/users/e999", headers={"Authorization": f"Bearer {admin_token}"})
+
     # Reset customer password back to default 'customer123' for subsequent tests
     client.put("/api/auth/users/customer/password", json={"password": "customer123"}, headers={"Authorization": f"Bearer {admin_token}"})
+
+    # 29. Test Wi-Fi Settings RBAC (/api/settings/wifi)
+    print("\n[TEST 29] Testing Wi-Fi Settings RBAC (/api/settings/wifi)...")
+    res = client.post("/api/settings/wifi", json={"ssid": "TestNet"})
+    assert res.status_code == 401
+    res = client.post("/api/settings/wifi", json={"ssid": "TestNet"}, headers={"Authorization": f"Bearer {cashier_token}"})
+    assert res.status_code == 403
+    res = client.post("/api/settings/wifi", json={"ssid": "TestNet", "password": "pass"}, headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 200
+    print("[PASS] Wi-Fi settings update strictly restricted to Admin/Manager.")
+
+    # 30. Test Wi-Fi Connection Command Injection Prevention (/api/wifi/connect)
+    print("\n[TEST 30] Testing Wi-Fi Connection Input Validation (/api/wifi/connect)...")
+    res = client.post("/api/wifi/connect", json={"ssid": "MyNet; rm -rf /"}, headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 400
+    assert "Valid Wi-Fi SSID" in res.get_json().get("message", "")
+    print("[PASS] Command injection attempt in Wi-Fi SSID correctly rejected with 400.")
+
+    # 31. Test Static File Protection & Traversal Prevention
+    print("\n[TEST 31] Testing Static File Traversal & Sensitive File Blocking...")
+    res = client.get("/backup.json")
+    assert res.status_code in [403, 404]
+    res = client.get("/config.json")
+    assert res.status_code in [403, 404]
+    res = client.get("/../app.py")
+    assert res.status_code in [403, 404]
+    print("[PASS] Unauthorized access to sensitive .json / .py files blocked with 403/404.")
+
+    # 32. Test Feedback Stored XSS Sanitization
+    print("\n[TEST 32] Testing Feedback Stored XSS Sanitization...")
+    res = client.post("/api/feedback", json={"rating": 5, "comments": "<script>alert('xss')</script>Loved it!"})
+    assert res.status_code == 200
+    feedbacks_res = client.get("/api/feedback")
+    latest = feedbacks_res.get_json()["feedbacks"][-1]
+    assert "<script>" not in latest["comments"]
+    assert "&lt;script&gt;" in latest["comments"]
+    print("[PASS] XSS payload safely escaped in feedback submission.")
+
+    # 33. Test NoSQL Injection Prevention in Login
+    print("\n[TEST 33] Testing NoSQL Object Injection Prevention in Login...")
+    res = client.post("/api/auth/login", json={"username": {"$gt": ""}, "password": {"$gt": ""}})
+    assert res.status_code == 400
+    assert "valid text strings" in res.get_json().get("message", "")
+    print("[PASS] Non-string NoSQL injection dictionary in login rejected with 400.")
+
+    # 34. Test Deleting Registered Customer via Admin API (/api/customers/<cust_id>)
+    print("\n[TEST 34] Testing Deleting Registered Customer via Admin API...")
+    # Register test customer
+    res = client.post("/api/customers", json={
+        "id": "CUST-DEL-TEST",
+        "name": "Delete Target Customer",
+        "phone": "9876500001",
+        "email": "deltarget@gmail.com"
+    })
+    assert res.status_code == 201
+    # Verify in list
+    res = client.get("/api/customers")
+    assert any(c.get("id") == "CUST-DEL-TEST" for c in res.get_json())
+    # Delete customer
+    res = client.delete("/api/customers/CUST-DEL-TEST", headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 200
+    assert res.get_json().get("success") is True
+    # Verify deleted from list
+    res = client.get("/api/customers")
+    assert not any(c.get("id") == "CUST-DEL-TEST" for c in res.get_json())
+    print("[PASS] Admin successfully deleted registered customer.")
+
+    # 35. Test Customer Deleting Own Account (/api/customer/account)
+    print("\n[TEST 35] Testing Customer Deleting Own Account...")
+    res = client.post("/api/auth/signup", json={
+        "name": "Self Delete Customer",
+        "username": "selfdelcust",
+        "email": "selfdel@gmail.com",
+        "phone": "9876500002",
+        "password": "password123"
+    })
+    assert res.status_code == 200
+    cust_token = res.get_json()["token"]
+    res = client.delete("/api/customer/account", headers={"Authorization": f"Bearer {cust_token}"})
+    assert res.status_code == 200
+    assert res.get_json().get("success") is True
+    # Verify user account is gone
+    res = client.post("/api/auth/login", json={"username": "selfdelcust", "password": "password123"})
+    assert res.status_code == 401
+    print("[PASS] Customer successfully deleted their own account.")
+
+    # 36. Test Sending OTP to Registered Email on Forgot Password
+    print("\n[TEST 36] Testing Forgot Password OTP to Registered Email...")
+    res = client.post("/api/auth/signup", json={
+        "name": "Email OTP Customer",
+        "username": "emailotpcust",
+        "email": "emailotp@gmail.com",
+        "phone": "9876500003",
+        "password": "password123"
+    })
+    assert res.status_code == 200
+    # Request forgot password by registered email
+    res = client.post("/api/auth/forgot-password/request", json={"identifier": "emailotp@gmail.com"})
+    assert res.status_code == 200
+    fp_res = res.get_json()
+    assert fp_res.get("success") is True
+    assert "email" in fp_res.get("channels", [])
+    assert fp_res.get("otp") is not None
+    assert len(fp_res.get("otp")) == 6
+    assert "masked_target" in fp_res
+    print(f"[PASS] OTP generated & checked for registered email. Masked: {fp_res.get('masked_target')}, OTP: {fp_res.get('otp')}")
+
+    # Clean up test user
+    client.delete("/api/customers/emailotpcust", headers={"Authorization": f"Bearer {admin_token}"})
 
     # Clean up test users
     client.delete("/api/auth/users/supercashier1", headers={"Authorization": f"Bearer {admin_token}"})

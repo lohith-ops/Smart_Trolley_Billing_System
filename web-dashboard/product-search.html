@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Trolley - Product Search</title>
+    <title>Smart Trolley - Product Finder & Price Checker</title>
     <!-- Google Fonts: Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,18 +17,18 @@
 </head>
 <body class="dark-theme">
     <div class="app-container">
-        <!-- Sidebar Navigation -->
+        <!-- Sidebar Navigation (populated dynamically by shared.js) -->
         <aside class="sidebar glass-panel"></aside>
 
         <!-- Main Content Area -->
         <main class="main-content">
             <header class="top-header glass-panel">
-                <div class="header-search" style="width: 320px;">
+                <div class="header-search" style="width: 360px;">
                     <i class="fa-solid fa-magnifying-glass search-icon"></i>
-                    <input type="text" id="prod-search-input" placeholder="Search products by name or category...">
+                    <input type="text" id="prod-search-input" placeholder="Search by item name, RFID UID, shelf...">
                 </div>
                 <div class="header-actions">
-                    <button class="icon-btn"><i class="fa-regular fa-bell"></i></button>
+                    <button class="icon-btn" title="Notifications"><i class="fa-regular fa-bell"></i></button>
                     <div class="user-profile">
                         <img src="https://ui-avatars.com/api/?name=Guest&background=a78bfa&color=fff" alt="User">
                         <span>Guest Shopper</span>
@@ -37,13 +37,51 @@
             </header>
 
             <!-- Filters Toolbar -->
-            <div class="glass-panel" style="padding: 16px 24px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px;">
-                <div style="display: flex; gap: 10px;" id="prod-filter-container">
-                    <button class="btn btn-outline active-filter" data-filter="all" style="padding: 6px 12px; font-size: 0.85rem;">All Categories</button>
-                    <button class="btn btn-outline" data-filter="Dairy" style="padding: 6px 12px; font-size: 0.85rem;">Dairy</button>
-                    <button class="btn btn-outline" data-filter="Grains" style="padding: 6px 12px; font-size: 0.85rem;">Grains</button>
-                    <button class="btn btn-outline" data-filter="Bakery" style="padding: 6px 12px; font-size: 0.85rem;">Bakery</button>
-                    <button class="btn btn-outline" data-filter="Produce" style="padding: 6px 12px; font-size: 0.85rem;">Produce</button>
+            <div class="glass-panel" style="padding: 18px 24px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px;">
+                    <div>
+                        <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+                            <i class="fa-solid fa-magnifying-glass" style="color: var(--accent-cyan);"></i> Product Finder
+                        </h3>
+                        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;" id="prod-search-summary">
+                            Live catalog price checker and shelf locator across store aisles.
+                        </p>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                        <span id="results-count-badge" class="trolley-status-badge active" style="font-size: 0.8rem; padding: 4px 12px;">
+                            Loading products...
+                        </span>
+                        <button id="finder-add-product-btn" class="btn btn-outline" style="font-size: 0.8rem; padding: 5px 12px; color: var(--accent-cyan); border-color: var(--accent-cyan);">
+                            <i class="fa-solid fa-plus" style="margin-right: 4px;"></i> Add Product
+                        </button>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;" id="prod-filter-container">
+                    <button class="btn btn-outline active-filter active" data-filter="all" style="padding: 6px 14px; font-size: 0.82rem;">
+                        <i class="fa-solid fa-border-all"></i> All Categories
+                    </button>
+                    <button class="btn btn-outline" data-filter="Grains" style="padding: 6px 14px; font-size: 0.82rem;">
+                        <i class="fa-solid fa-wheat-awn" style="color: #f59e0b;"></i> Grains
+                    </button>
+                    <button class="btn btn-outline" data-filter="Dairy" style="padding: 6px 14px; font-size: 0.82rem;">
+                        <i class="fa-solid fa-cow" style="color: #06b6d4;"></i> Dairy
+                    </button>
+                    <button class="btn btn-outline" data-filter="Bakery" style="padding: 6px 14px; font-size: 0.82rem;">
+                        <i class="fa-solid fa-bread-slice" style="color: #f97316;"></i> Bakery
+                    </button>
+                    <button class="btn btn-outline" data-filter="Produce" style="padding: 6px 14px; font-size: 0.82rem;">
+                        <i class="fa-solid fa-apple-whole" style="color: #10b981;"></i> Produce
+                    </button>
+                    <button class="btn btn-outline" data-filter="Beverages" style="padding: 6px 14px; font-size: 0.82rem;">
+                        <i class="fa-solid fa-bottle-water" style="color: #a78bfa;"></i> Beverages
+                    </button>
+                    <button class="btn btn-outline" data-filter="Snacks" style="padding: 6px 14px; font-size: 0.82rem;">
+                        <i class="fa-solid fa-cookie" style="color: #f472b6;"></i> Snacks
+                    </button>
+                    <button class="btn btn-outline" data-filter="Grocery" style="padding: 6px 14px; font-size: 0.82rem;">
+                        <i class="fa-solid fa-basket-shopping" style="color: #94a3b8;"></i> Grocery
+                    </button>
                 </div>
             </div>
 
@@ -52,6 +90,81 @@
                 <!-- Product Cards dynamically loaded here -->
             </div>
         </main>
+    </div>
+
+    <!-- Product Edit / Add Modal -->
+    <div class="modal-overlay" id="product-edit-modal">
+        <div class="modal-box glass-panel" style="max-height: 90vh; overflow-y: auto; text-align: left; width: 460px; max-width: 95vw; padding: 28px 24px;">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 6px;">
+                <div class="modal-icon" style="color: var(--accent-cyan); font-size: 1.5rem;">
+                    <i class="fa-solid fa-pen-to-square" id="modal-icon-elem"></i>
+                </div>
+                <div>
+                    <h2 id="modal-title" style="margin: 0; font-size: 1.25rem;">Edit Product Details</h2>
+                    <p class="modal-sub" id="modal-sub-title" style="margin: 2px 0 0; font-size: 0.82rem; color: var(--text-secondary);">Update product metadata, price, stock, category & shelving</p>
+                </div>
+            </div>
+            
+            <form id="product-edit-form" class="register-form" style="margin-top: 16px;">
+                <input type="hidden" id="edit-prod-original-uid">
+                
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 4px; display: block;">RFID Card UID</label>
+                    <input type="text" id="edit-prod-uid" required placeholder="e.g. 5C 1E 7E 05" class="form-input" style="font-family: monospace; width: 100%;">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 4px; display: block;">Product Name</label>
+                    <input type="text" id="edit-prod-name" required placeholder="e.g. Basmati Rice 1kg, Milk 1L" class="form-input" style="width: 100%;">
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                    <div class="form-group">
+                        <label style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 4px; display: block;">Unit Price (Rs.)</label>
+                        <input type="number" step="0.01" id="edit-prod-price" required placeholder="0.00" class="form-input" style="width: 100%;">
+                    </div>
+                    <div class="form-group">
+                        <label style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 4px; display: block;">Stock Count</label>
+                        <input type="number" id="edit-prod-stock" required placeholder="25" class="form-input" style="width: 100%;">
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                        <label style="font-size: 0.82rem; color: var(--text-secondary); margin: 0;">Category</label>
+                        <small id="edit-category-hint" style="font-size: 0.75rem; color: var(--accent-cyan); display: none;">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i> Auto-detected
+                        </small>
+                    </div>
+                    <select id="edit-prod-category" required class="form-input" style="width: 100%;">
+                        <option value="Grains">Grains</option>
+                        <option value="Dairy">Dairy</option>
+                        <option value="Bakery">Bakery</option>
+                        <option value="Produce">Produce</option>
+                        <option value="Beverages">Beverages</option>
+                        <option value="Snacks">Snacks</option>
+                        <option value="Grocery">Grocery</option>
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 4px; display: block;">Shelving Location</label>
+                    <input type="text" id="edit-prod-shelf" required placeholder="e.g. Aisle A - Shelf 1" class="form-input" style="width: 100%;">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 18px;">
+                    <label style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 4px; display: block;">Active Promo / Offer (Optional)</label>
+                    <input type="text" id="edit-prod-offer" placeholder="e.g. 10% Off, Buy 1 Get 1 Free" class="form-input" style="width: 100%;">
+                </div>
+                
+                <div class="form-actions" style="display: flex; gap: 10px;">
+                    <button type="button" class="btn btn-outline" id="edit-prod-cancel-btn" style="flex: 1; padding: 10px 0;">Cancel</button>
+                    <button type="submit" class="btn btn-checkout" id="edit-prod-submit-btn" style="flex: 1.5; padding: 10px 0; background: var(--accent-cyan); color: #000; font-weight: 600;">
+                        <i class="fa-solid fa-check" style="margin-right: 6px;"></i>Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
     </div>
 
     <!-- Application Logic -->

@@ -27,6 +27,9 @@
                     Customer Satisfaction Feedback
                 </div>
                 <div class="header-actions">
+                    <button class="btn btn-outline" id="clear-all-feedback-btn" style="border-color: rgba(239, 68, 68, 0.4); color: #fca5a5;">
+                        <i class="fa-solid fa-trash-can"></i> Clear All Feedback
+                    </button>
                     <button class="btn btn-outline" id="submit-feedback-btn">
                         <i class="fa-solid fa-star"></i> Submit New Feedback
                     </button>
@@ -43,26 +46,87 @@
                     <div class="card-icon cyan"><i class="fa-solid fa-star-half-stroke"></i></div>
                     <div class="card-info">
                         <p>Average Satisfaction Rating</p>
-                        <h3 id="stat-avg-rating">4.7 / 5.0</h3>
+                        <h3 id="stat-avg-rating">5.0 / 5.0</h3>
                     </div>
                 </div>
                 <div class="card glass-panel gradient-border">
                     <div class="card-icon green"><i class="fa-solid fa-comment-check"></i></div>
                     <div class="card-info">
                         <p>Total Feedback Forms Received</p>
-                        <h3 id="stat-total-feedbacks">3</h3>
+                        <h3 id="stat-total-feedbacks">0</h3>
                     </div>
                 </div>
             </div>
 
             <!-- Feedbacks logs -->
             <div class="glass-panel" style="padding: 24px; flex: 1;">
-                <h3 style="font-weight:600; font-size:1.1rem; margin-bottom:20px;">Recent Reviews & Suggestions</h3>
-                <div id="feedback-list-container" style="display: flex; flex-direction: column; gap: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 20px;">
+                    <div>
+                        <h3 style="font-weight:600; font-size:1.1rem; margin: 0;">Recent Reviews & Suggestions</h3>
+                        <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 4px 0 0 0;">Customer experience logs and ratings</p>
+                    </div>
+                    <!-- Rating filter & search toolbar -->
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                        <div style="display: flex; gap: 4px;" id="feedback-filter-tabs">
+                            <button class="btn btn-primary feedback-filter-btn" data-rating="all" style="font-size: 0.78rem; padding: 4px 10px;">All</button>
+                            <button class="btn btn-outline feedback-filter-btn" data-rating="5" style="font-size: 0.78rem; padding: 4px 10px;">5 ★</button>
+                            <button class="btn btn-outline feedback-filter-btn" data-rating="4" style="font-size: 0.78rem; padding: 4px 10px;">4 ★</button>
+                            <button class="btn btn-outline feedback-filter-btn" data-rating="3" style="font-size: 0.78rem; padding: 4px 10px;">3 ★</button>
+                            <button class="btn btn-outline feedback-filter-btn" data-rating="2" style="font-size: 0.78rem; padding: 4px 10px;">2 ★</button>
+                            <button class="btn btn-outline feedback-filter-btn" data-rating="1" style="font-size: 0.78rem; padding: 4px 10px;">1 ★</button>
+                        </div>
+                        <div style="position: relative;">
+                            <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 0.8rem; color: var(--text-secondary);"></i>
+                            <input type="text" id="feedback-search-input" placeholder="Search comments..." class="form-input" style="padding-left: 28px; padding-top: 5px; padding-bottom: 5px; font-size: 0.82rem; width: 170px;">
+                        </div>
+                    </div>
+                </div>
+
+                <div id="feedback-list-container" style="display: flex; flex-direction: column; gap: 14px;">
                     <!-- Populated dynamically -->
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- Delete Single Feedback Modal -->
+    <div class="modal-overlay" id="delete-feedback-modal">
+        <div class="modal-box glass-panel" style="max-width: 440px; text-align: center;">
+            <div class="modal-icon" style="color: var(--accent-red); margin: 0 auto 12px; width: 54px; height: 54px; border-radius: 50%; background: rgba(239, 68, 68, 0.15); display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">
+                <i class="fa-solid fa-trash-can"></i>
+            </div>
+            <h2 style="color: #fff; font-size: 1.25rem; margin-bottom: 8px;">Delete Feedback Review</h2>
+            <p class="modal-sub" style="margin-bottom: 14px;">
+                Are you sure you want to permanently delete this customer review?
+            </p>
+            <div id="delete-feedback-preview" style="background: rgba(0,0,0,0.25); border: 1px dashed rgba(255,255,255,0.1); border-radius: 8px; padding: 12px; margin-bottom: 20px; font-size: 0.85rem; color: var(--text-secondary); text-align: left; max-height: 90px; overflow-y: auto; font-style: italic;">
+            </div>
+            <div class="form-actions" style="display: flex; gap: 10px; justify-content: center;">
+                <button type="button" class="btn btn-outline" id="delete-feedback-cancel-btn" style="flex: 1;">Cancel</button>
+                <button type="button" class="btn btn-danger" id="delete-feedback-confirm-btn" style="flex: 1; background: var(--accent-red); border: none; color: #fff;">
+                    <i class="fa-solid fa-trash-can" style="margin-right: 6px;"></i> Delete Review
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Clear All Feedback Modal -->
+    <div class="modal-overlay" id="clear-all-feedback-modal">
+        <div class="modal-box glass-panel" style="max-width: 440px; text-align: center;">
+            <div class="modal-icon" style="color: var(--accent-red); margin: 0 auto 12px; width: 54px; height: 54px; border-radius: 50%; background: rgba(239, 68, 68, 0.15); display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <h2 style="color: #fff; font-size: 1.25rem; margin-bottom: 8px;">Clear All Feedback</h2>
+            <p class="modal-sub" style="margin-bottom: 16px;">
+                Are you sure you want to delete <strong id="clear-all-count-label" style="color: var(--accent-red);">all</strong> customer reviews? This action cannot be undone.
+            </p>
+            <div class="form-actions" style="display: flex; gap: 10px; justify-content: center;">
+                <button type="button" class="btn btn-outline" id="clear-all-cancel-btn" style="flex: 1;">Cancel</button>
+                <button type="button" class="btn btn-danger" id="clear-all-confirm-btn" style="flex: 1; background: var(--accent-red); border: none; color: #fff;">
+                    <i class="fa-solid fa-trash-can" style="margin-right: 6px;"></i> Delete All
+                </button>
+            </div>
+        </div>
     </div>
 
     <!-- Submit Feedback Modal -->

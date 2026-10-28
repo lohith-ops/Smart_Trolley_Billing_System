@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Trolley - Digital Invoice Receipt</title>
+    <title>GECM Supermarket - Digital Invoice Receipt</title>
     <!-- Google Fonts: Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -20,43 +20,44 @@
         <!-- Receipt Sheet Container -->
         <div class="receipt-paper" id="receipt-print-area">
             <div class="receipt-header">
-                <div class="receipt-logo">SUPERMARKET POS</div>
-                <div style="font-size: 0.8rem; margin-top: 4px; color:#555;">SMART SHOPPING EXPERIENCE</div>
-                <div style="font-size: 0.8rem; color:#555;">OUTER RING ROAD, BANGALORE</div>
+                <div class="receipt-logo" id="receipt-store-name">GECM Supermarket</div>
+                <div id="receipt-store-sub" style="font-size: 0.8rem; margin-top: 4px; color:#555;">SMART TROLLEY BILLING SYSTEM</div>
+                <div id="receipt-store-address" style="font-size: 0.8rem; color:#555;">GECM CAMPUS, HASSAN</div>
             </div>
 
             <!-- Meta details -->
             <div class="receipt-line">
                 <strong>INVOICE NO:</strong>
-                <span id="invoice-no">TXN-8719280</span>
+                <span id="invoice-no" style="font-weight: 700; font-family: monospace; letter-spacing: 0.5px;">INV-000000</span>
             </div>
             <div class="receipt-line">
                 <strong>DATE / TIME:</strong>
-                <span id="invoice-date">07/07/2026 19:15:30</span>
+                <span id="invoice-date">--/--/---- --:--:--</span>
             </div>
             <div class="receipt-line">
-                <strong>CUSTOMER ID:</strong>
-                <span id="invoice-customer">MEM-872910 (Gold)</span>
+                <strong>CUSTOMER NAME:</strong>
+                <span id="invoice-customer" style="font-weight: 600;">Walk-in Customer</span>
             </div>
             <div class="receipt-line">
                 <strong>TROLLEY ID:</strong>
-                <span id="invoice-trolley">Trolley-01</span>
+                <span id="invoice-trolley">Trolley #001</span>
             </div>
 
             <div class="receipt-divider"></div>
 
-            <!-- Items Table -->
+            <!-- Items Table with Serial Number -->
             <table class="receipt-items-table">
                 <thead>
                     <tr>
-                        <th style="width: 50%;">ITEM</th>
-                        <th style="text-align: right;">PRICE</th>
-                        <th style="text-align: center;">QTY</th>
-                        <th style="text-align: right;">SUBTOTAL</th>
+                        <th style="width: 12%; text-align: center;">SL. NO.</th>
+                        <th style="width: 44%;">ITEM</th>
+                        <th style="width: 16%; text-align: right;">PRICE</th>
+                        <th style="width: 12%; text-align: center;">QTY</th>
+                        <th style="width: 16%; text-align: right;">SUBTOTAL</th>
                     </tr>
                 </thead>
                 <tbody id="invoice-items-body">
-                    <!-- Dynamic invoice rows -->
+                    <!-- Dynamic invoice rows with serial numbers -->
                 </tbody>
             </table>
 
@@ -96,7 +97,15 @@
             </div>
             <div class="receipt-line" style="font-size: 0.85rem;">
                 <span>Payment Mode:</span>
-                <span>DIGITAL CARTS WALLET</span>
+                <span id="invoice-payment-mode" style="font-weight: 600;">UPI</span>
+            </div>
+            <div class="receipt-line" style="font-size: 0.85rem;" id="invoice-payment-ref-line">
+                <span>Payment Ref / Txn ID:</span>
+                <span id="invoice-payment-ref" style="font-family: monospace; font-size: 0.8rem; font-weight: 600;">--</span>
+            </div>
+            <div class="receipt-line" style="font-size: 0.85rem;" id="invoice-gateway-status-line">
+                <span>Gateway Status:</span>
+                <span id="invoice-gateway-status" style="color: #10b981; font-weight: 600;">Verified</span>
             </div>
 
             <div class="receipt-divider"></div>

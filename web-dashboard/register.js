@@ -63,9 +63,9 @@ function initRegisterPage() {
                 return;
             }
 
-            const emailPattern = /^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$/;
+            const emailPattern = /^[a-zA-Z0-9_.+-]+@gmail\.com$/i;
             if (email && !emailPattern.test(email)) {
-                showError("Please enter a valid email address (e.g. admin@gmail.com).");
+                showError("Please enter a valid email address in the form of example@gmail.com.");
                 emailInput.focus();
                 return;
             }

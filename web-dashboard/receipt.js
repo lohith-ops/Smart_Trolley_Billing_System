@@ -5,11 +5,19 @@
 document.addEventListener('DOMContentLoaded', () => {
     let transaction = null;
 
+    let currentStoreName = "GECM Supermarket";
+    let currentStoreAddress = "GECM CAMPUS, HASSAN";
+
     const els = {
+        storeName: document.getElementById('receipt-store-name'),
+        storeAddress: document.getElementById('receipt-store-address'),
         invoiceNo: document.getElementById('invoice-no'),
         invoiceDate: document.getElementById('invoice-date'),
         invoiceCustomer: document.getElementById('invoice-customer'),
         invoiceTrolley: document.getElementById('invoice-trolley'),
+        paymentMode: document.getElementById('invoice-payment-mode'),
+        paymentRef: document.getElementById('invoice-payment-ref'),
+        gatewayStatus: document.getElementById('invoice-gateway-status'),
         itemsBody: document.getElementById('invoice-items-body'),
         qtyTotal: document.getElementById('invoice-qty-total'),
         subtotal: document.getElementById('invoice-subtotal'),
@@ -22,31 +30,61 @@ document.addEventListener('DOMContentLoaded', () => {
         btnPdf: document.getElementById('btn-pdf-receipt')
     };
 
-    // Load invoice
+    // Load invoice and store settings
     async function loadInvoice() {
         const urlParams = new URLSearchParams(window.location.search);
         const timestamp = parseFloat(urlParams.get('timestamp'));
+        const txId = urlParams.get('id');
 
-        if (!isNaN(timestamp)) {
-            try {
-                const res = await fetch('/api/transactions');
-                if (res.ok) {
-                    const txs = await res.json();
-                    transaction = txs.find(t => Math.abs(t.timestamp - timestamp) < 1.0);
+        // Fetch store settings for store name
+        try {
+            const setRes = await fetch('/api/settings/payment');
+            if (setRes.ok) {
+                const setData = await setRes.json();
+                if (setData.storeName) {
+                    currentStoreName = setData.storeName;
                 }
-            } catch (e) {
-                console.error("Failed to load matching transaction for receipt:", e);
             }
+        } catch (e) {
+            console.warn("Could not fetch store settings:", e);
         }
 
-        // Fallback to mock invoice if not found
+        if (els.storeName) els.storeName.textContent = currentStoreName;
+        if (els.storeAddress) els.storeAddress.textContent = currentStoreAddress;
+        document.title = `${currentStoreName} - Digital Invoice Receipt`;
+
+        try {
+            const res = await fetch('/api/transactions');
+            if (res.ok) {
+                const txs = await res.json();
+                if (txs && txs.length > 0) {
+                    if (txId) {
+                        transaction = txs.find(t => t.invoiceId === txId || t.transaction_id === txId || t._id === txId);
+                    }
+                    if (!transaction && !isNaN(timestamp)) {
+                        transaction = txs.find(t => Math.abs(t.timestamp - timestamp) < 3.0);
+                    }
+                    // If no timestamp or not matched, default to the most recent transaction
+                    if (!transaction && (isNaN(timestamp) || !urlParams.has('timestamp'))) {
+                        transaction = txs[0];
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("Failed to load matching transaction for receipt:", e);
+        }
+
+        // Fallback to mock invoice if not found and no transactions exist in DB
         if (!transaction) {
             transaction = {
+                invoiceId: `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-0001`,
                 timestamp: Date.now() / 1000,
-                total: 170.00,
+                total: 60.00,
+                paymentMethod: "UPI",
+                customer_name: "Walk-in Customer",
+                trolley_id: "TROLLEY-001",
                 items: {
-                    "5C1E7E05": { name: "Rice 1kg", price: 60.00, quantity: 2, subtotal: 120.00 },
-                    "11223344": { name: "Milk (1 Gallon)", price: 50.00, quantity: 1, subtotal: 50.00 }
+                    "5C1E7E05": { name: "Rice 1kg", price: 60.00, quantity: 1, subtotal: 60.00 }
                 }
             };
         }
@@ -58,13 +96,45 @@ document.addEventListener('DOMContentLoaded', () => {
         const date = new Date(transaction.timestamp * 1000);
         const dateString = date.toLocaleString();
         
-        // Construct transaction/invoice hash ID based on timestamp
-        const txHash = `TXN-${Math.floor(transaction.timestamp)}`;
+        // Proper serial number e.g. INV-20261027-0001
+        const txHash = transaction.invoiceId || transaction.invoice_id || `INV-${Math.floor(transaction.timestamp)}`;
         
-        els.invoiceNo.textContent = txHash;
-        els.invoiceDate.textContent = dateString;
+        if (els.storeName) els.storeName.textContent = currentStoreName;
+        if (els.invoiceNo) els.invoiceNo.textContent = txHash;
+        if (els.invoiceDate) els.invoiceDate.textContent = dateString;
+        
+        // Proper Customer Name & Contact display
+        const custName = (transaction.customer_name || transaction.customerName || '').trim();
+        const custPhone = (transaction.customerPhone || transaction.phone || '').trim();
+        
+        if (els.invoiceCustomer) {
+            if (custName && custPhone) {
+                els.invoiceCustomer.textContent = `${custName} (+91 ${custPhone})`;
+            } else if (custName) {
+                els.invoiceCustomer.textContent = custName;
+            } else if (custPhone) {
+                els.invoiceCustomer.textContent = `Customer (+91 ${custPhone})`;
+            } else {
+                els.invoiceCustomer.textContent = 'Walk-in Customer';
+            }
+        }
         if (els.invoiceTrolley) {
-            els.invoiceTrolley.textContent = transaction.trolley_id ? transaction.trolley_id.replace('TROLLEY-00', 'Trolley #').replace('TROLLEY-', 'Trolley #') : 'Trolley #1';
+            els.invoiceTrolley.textContent = transaction.trolley_id ? transaction.trolley_id.replace('TROLLEY-00', 'Trolley #').replace('TROLLEY-', 'Trolley #') : 'Trolley #001';
+        }
+        if (els.paymentMode) {
+            els.paymentMode.textContent = (transaction.paymentMethod || 'UPI').toUpperCase();
+        }
+        if (els.paymentRef) {
+            const ref = transaction.paymentReference || transaction.razorpayOrderId || transaction._id || 'N/A';
+            els.paymentRef.textContent = ref;
+        }
+        if (els.gatewayStatus) {
+            if (transaction.verified || (transaction.paymentReference && transaction.paymentReference.startsWith('pay_'))) {
+                els.gatewayStatus.innerHTML = '<i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Verified by Razorpay';
+                els.gatewayStatus.style.color = '#10b981';
+            } else {
+                els.gatewayStatus.textContent = transaction.paymentMethod ? `${transaction.paymentMethod} (Completed)` : 'Completed';
+            }
         }
         
         // Calculate mathematics
@@ -77,28 +147,33 @@ document.addEventListener('DOMContentLoaded', () => {
         const qtySum = itemsList.reduce((acc, curr) => acc + curr.quantity, 0);
         const points = Math.floor(total / 10);
 
-        els.qtyTotal.textContent = `${qtySum} units`;
-        els.subtotal.textContent = `Rs.${subAmount.toFixed(2)}`;
-        els.cgst.textContent = `Rs.${cgstAmount.toFixed(2)}`;
-        els.sgst.textContent = `Rs.${sgstAmount.toFixed(2)}`;
-        els.grandTotal.textContent = `Rs.${total.toFixed(2)}`;
-        els.pointsEarned.textContent = `+${points} Points`;
+        if (els.qtyTotal) els.qtyTotal.textContent = `${qtySum} units`;
+        if (els.subtotal) els.subtotal.textContent = `Rs.${subAmount.toFixed(2)}`;
+        if (els.cgst) els.cgst.textContent = `Rs.${cgstAmount.toFixed(2)}`;
+        if (els.sgst) els.sgst.textContent = `Rs.${sgstAmount.toFixed(2)}`;
+        if (els.grandTotal) els.grandTotal.textContent = `Rs.${total.toFixed(2)}`;
+        if (els.pointsEarned) els.pointsEarned.textContent = `+${points} Points`;
 
         // Update QR server dynamic URL
-        els.qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${txHash}`;
+        if (els.qrImage) {
+            els.qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${txHash}`;
+        }
 
-        // Render rows
-        els.itemsBody.innerHTML = '';
-        itemsList.forEach(item => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${item.name}</td>
-                <td style="text-align: right;">Rs.${item.price.toFixed(2)}</td>
-                <td style="text-align: center;">${item.quantity}</td>
-                <td style="text-align: right; font-weight: bold;">Rs.${item.subtotal.toFixed(2)}</td>
-            `;
-            els.itemsBody.appendChild(tr);
-        });
+        // Render rows with proper SL. NO.
+        if (els.itemsBody) {
+            els.itemsBody.innerHTML = '';
+            itemsList.forEach((item, index) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="text-align: center; color: #555; font-size: 0.85rem; font-weight: 600;">${index + 1}</td>
+                    <td><strong>${item.name}</strong></td>
+                    <td style="text-align: right;">Rs.${Number(item.price).toFixed(2)}</td>
+                    <td style="text-align: center; font-weight: 500;">${item.quantity}</td>
+                    <td style="text-align: right; font-weight: bold;">Rs.${Number(item.subtotal).toFixed(2)}</td>
+                `;
+                els.itemsBody.appendChild(tr);
+            });
+        }
     }
 
     // Print Receipt
@@ -118,33 +193,44 @@ document.addEventListener('DOMContentLoaded', () => {
                 format: [80, 220] // thermal receipt paper aspect
             });
 
-            const txHash = `TXN-${Math.floor(transaction.timestamp)}`;
+            const txHash = transaction.invoiceId || transaction.invoice_id || `INV-${Math.floor(transaction.timestamp)}`;
 
             doc.setFont("courier", "bold");
-            doc.setFontSize(14);
-            doc.text("SUPERMARKET POS", 40, 15, { align: 'center' });
+            doc.setFontSize(13);
+            doc.text(currentStoreName.toUpperCase(), 40, 14, { align: 'center' });
             
             doc.setFont("courier", "normal");
             doc.setFontSize(8);
-            doc.text("OUTER RING ROAD, BANGALORE", 40, 20, { align: 'center' });
+            doc.text(currentStoreAddress, 40, 19, { align: 'center' });
+            doc.text("SMART TROLLEY BILLING SYSTEM", 40, 23, { align: 'center' });
             
-            doc.text("-------------------------------------", 40, 25, { align: 'center' });
-            doc.text(`INVOICE: ${txHash}`, 10, 30);
-            doc.text(`DATE   : ${new Date(transaction.timestamp * 1000).toLocaleString()}`, 10, 35);
-            doc.text("MEMBER : MEM-872910 (Gold)", 10, 40);
-            doc.text("-------------------------------------", 40, 45, { align: 'center' });
+            doc.text("-------------------------------------", 40, 27, { align: 'center' });
+            doc.text(`INVOICE : ${txHash}`, 10, 32);
+            doc.text(`DATE    : ${new Date(transaction.timestamp * 1000).toLocaleString()}`, 10, 36);
+            const custName = (transaction.customer_name || transaction.customerName || '').trim();
+            const custPhone = (transaction.customerPhone || transaction.phone || '').trim();
+            let custInfo = 'Walk-in Customer';
+            if (custName && custPhone) custInfo = `${custName} (+91 ${custPhone})`;
+            else if (custName) custInfo = custName;
+            else if (custPhone) custInfo = `+91 ${custPhone}`;
+            doc.text(`CUSTOMER: ${custInfo.substring(0, 24)}`, 10, 40);
+            const trolleyInfo = transaction.trolley_id ? transaction.trolley_id.replace('TROLLEY-00', 'Trolley #').replace('TROLLEY-', 'Trolley #') : 'Trolley #001';
+            doc.text(`TROLLEY : ${trolleyInfo}`, 10, 44);
+            doc.text(`PAYMENT : ${(transaction.paymentMethod || 'UPI').toUpperCase()}`, 10, 48);
+            doc.text("-------------------------------------", 40, 52, { align: 'center' });
 
-            // Table headers
-            doc.text("ITEM         PRICE   QTY   TOTAL", 10, 50);
-            let y = 55;
+            // Table headers with SL NO
+            doc.text("SL ITEM        PRICE   QTY   TOTAL", 10, 57);
+            let y = 62;
 
             const itemsList = Object.values(transaction.items);
-            itemsList.forEach(item => {
-                const name = item.name.substring(0, 10).padEnd(12, ' ');
-                const price = item.price.toFixed(0).padStart(5, ' ');
+            itemsList.forEach((item, index) => {
+                const sl = (index + 1).toString().padEnd(3, ' ');
+                const name = item.name.substring(0, 11).padEnd(12, ' ');
+                const price = Number(item.price).toFixed(0).padStart(5, ' ');
                 const qty = item.quantity.toString().padStart(3, ' ');
-                const sub = item.subtotal.toFixed(0).padStart(7, ' ');
-                doc.text(`${name}${price}${qty}${sub}`, 10, y);
+                const sub = Number(item.subtotal).toFixed(0).padStart(7, ' ');
+                doc.text(`${sl}${name}${price}${qty}${sub}`, 10, y);
                 y += 6;
             });
 

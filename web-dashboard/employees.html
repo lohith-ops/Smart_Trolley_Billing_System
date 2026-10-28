@@ -23,12 +23,15 @@
         <!-- Main Content Area -->
         <main class="main-content">
             <header class="top-header glass-panel">
-                <div style="font-weight: 600; font-size: 1.1rem; color: var(--text-primary);">
-                    Employee Roster Management
+                <div style="font-weight: 600; font-size: 1.1rem; color: var(--text-primary);" id="page-header-title">
+                    Staff & Customer Management
                 </div>
                 <div class="header-actions">
                     <button class="btn btn-outline" id="add-employee-btn">
                         <i class="fa-solid fa-user-plus"></i> Add Employee
+                    </button>
+                    <button class="btn btn-primary" id="add-customer-btn" style="display: none; background: var(--grad-primary);">
+                        <i class="fa-solid fa-user-plus"></i> Register Customer
                     </button>
                     <div class="user-profile">
                         <img src="https://ui-avatars.com/api/?name=Admin&background=10b981&color=fff" alt="Admin">
@@ -37,9 +40,92 @@
                 </div>
             </header>
 
-            <!-- Employee Grid -->
-            <div class="employees-grid" id="employees-container">
-                <!-- Dynamic cards populated by employees.js -->
+            <!-- Navigation Tabs: Staff Roster vs Registered Customers -->
+            <div class="glass-panel" style="display: flex; gap: 12px; padding: 12px 20px; margin-bottom: 20px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <button class="btn btn-primary" id="tab-staff-btn" style="padding: 8px 16px; font-size: 0.88rem;">
+                        <i class="fa-solid fa-user-tie" style="margin-right: 6px;"></i> Staff Members (<span id="staff-badge-count">0</span>)
+                    </button>
+                    <button class="btn btn-outline" id="tab-cust-btn" style="padding: 8px 16px; font-size: 0.88rem;">
+                        <i class="fa-solid fa-users" style="margin-right: 6px;"></i> Registered Customers (<span id="cust-badge-count">0</span>)
+                    </button>
+                </div>
+                <div id="customer-search-wrapper" style="display: none; align-items: center; gap: 10px; min-width: 280px;">
+                    <div class="header-search" style="margin: 0; width: 100%;">
+                        <i class="fa-solid fa-search search-icon"></i>
+                        <input type="text" id="customer-search-input" placeholder="Search by name, ID, mobile, email...">
+                    </div>
+                </div>
+            </div>
+
+            <!-- 1. Staff Members View -->
+            <div id="staff-view-section">
+                <!-- Employee Grid -->
+                <div class="employees-grid" id="employees-container">
+                    <!-- Dynamic cards populated by employees.js -->
+                </div>
+            </div>
+
+            <!-- 2. Registered Customers View -->
+            <div id="customers-view-section" style="display: none;">
+                <!-- Customer Metrics Quick Stats -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 20px;">
+                    <div class="card glass-panel" style="padding: 14px 18px; display: flex; align-items: center; gap: 14px;">
+                        <div style="width: 42px; height: 42px; border-radius: 10px; background: rgba(6, 182, 212, 0.15); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; color: var(--accent-cyan);">
+                            <i class="fa-solid fa-address-book"></i>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase;">Total Customers</div>
+                            <div style="font-size: 1.35rem; font-weight: 700; color: #fff;" id="stat-cust-total">0</div>
+                        </div>
+                    </div>
+                    <div class="card glass-panel" style="padding: 14px 18px; display: flex; align-items: center; gap: 14px;">
+                        <div style="width: 42px; height: 42px; border-radius: 10px; background: rgba(16, 185, 129, 0.15); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; color: var(--accent-green);">
+                            <i class="fa-solid fa-circle-check"></i>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase;">Active Accounts</div>
+                            <div style="font-size: 1.35rem; font-weight: 700; color: var(--accent-green);" id="stat-cust-active">0</div>
+                        </div>
+                    </div>
+                    <div class="card glass-panel" style="padding: 14px 18px; display: flex; align-items: center; gap: 14px;">
+                        <div style="width: 42px; height: 42px; border-radius: 10px; background: rgba(168, 85, 247, 0.15); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; color: var(--accent-purple);">
+                            <i class="fa-solid fa-cart-shopping"></i>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase;">Assigned To Trolleys</div>
+                            <div style="font-size: 1.35rem; font-weight: 700; color: var(--accent-purple);" id="stat-cust-assigned">0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Customer Search & Filter Toolbar -->
+                <div class="glass-panel" style="padding: 16px 20px; margin-bottom: 20px; border-radius: 12px; display: flex; flex-direction: column; gap: 12px;">
+                    <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 260px; position: relative; display: flex; align-items: center;">
+                            <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 14px; color: var(--accent-cyan); font-size: 0.95rem; pointer-events: none;"></i>
+                            <input type="text" id="customer-main-search-input" placeholder="Search registered customers by name, customer ID, phone, or email..." class="form-input" style="padding-left: 40px; padding-right: 36px; width: 100%; border-radius: 10px; font-size: 0.92rem; background: rgba(0,0,0,0.25); border: 1px solid var(--panel-border);">
+                            <button type="button" id="customer-search-clear-btn" style="position: absolute; right: 12px; background: none; border: none; color: var(--text-secondary); cursor: pointer; display: none; font-size: 1rem;" title="Clear search">
+                                <i class="fa-solid fa-circle-xmark"></i>
+                            </button>
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <span style="font-size: 0.8rem; color: var(--text-secondary);"><i class="fa-solid fa-filter"></i> Filter:</span>
+                            <button type="button" class="btn btn-primary cust-filter-btn" data-filter="all" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 8px;">All</button>
+                            <button type="button" class="btn btn-outline cust-filter-btn" data-filter="assigned" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 8px;"><i class="fa-solid fa-cart-shopping"></i> Assigned</button>
+                            <button type="button" class="btn btn-outline cust-filter-btn" data-filter="unassigned" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 8px;">Unassigned</button>
+                        </div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--text-secondary); padding: 0 4px;">
+                        <span id="cust-search-count-label">Showing all registered customers</span>
+                        <span style="font-size: 0.75rem; opacity: 0.7;">Real-time search updates instantly</span>
+                    </div>
+                </div>
+
+                <!-- Customers Grid -->
+                <div class="employees-grid" id="customers-container">
+                    <!-- Dynamic customer cards populated by employees.js -->
+                </div>
             </div>
         </main>
     </div>
@@ -65,6 +151,10 @@
                 <div class="form-group">
                     <label>Username / Login ID</label>
                     <input type="text" id="emp-username" placeholder="e.g. lohi or cashier1" class="form-input" autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label>Email Address</label>
+                    <input type="email" id="emp-email" placeholder="e.g. employee@gmail.com" class="form-input" autocomplete="email" pattern="^[a-zA-Z0-9_.+-]+@gmail\.com$" title="Must be a valid Gmail address in the form of example@gmail.com">
                 </div>
                 <div class="form-group">
                     <label>Assigned Role</label>
@@ -104,6 +194,36 @@
         </div>
     </div>
 
+    <!-- Change Email Modal -->
+    <div class="modal-overlay" id="change-email-modal">
+        <div class="modal-box glass-panel" style="max-width: 440px;">
+            <div class="modal-icon" style="color: var(--accent-cyan);">
+                <i class="fa-solid fa-envelope"></i>
+            </div>
+            <h2>Update Registered Email</h2>
+            <p class="modal-sub" id="change-email-modal-sub">Modify employee email address for roster & account communications</p>
+            
+            <form id="change-email-form" class="register-form" style="margin-top: 15px;">
+                <input type="hidden" id="change-email-emp-id">
+                <div class="form-group">
+                    <label>Employee Name</label>
+                    <input type="text" id="change-email-emp-name" readonly class="form-input readonly-input">
+                </div>
+                <div class="form-group">
+                    <label>Registered Email Address</label>
+                    <input type="email" id="change-email-new-email" required placeholder="e.g. employee@gmail.com" class="form-input" autocomplete="email" pattern="^[a-zA-Z0-9_.+-]+@gmail\.com$" title="Must be a valid Gmail address in the form of example@gmail.com">
+                </div>
+                
+                <div class="form-actions" style="margin-top: 20px;">
+                    <button type="button" class="btn btn-outline" id="change-email-cancel-btn">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="change-email-submit-btn" style="background: var(--accent-cyan); color: #000; font-weight: 600;">
+                        <i class="fa-solid fa-check"></i> Update Email
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Reset Password Modal -->
     <div class="modal-overlay" id="reset-password-modal">
         <div class="modal-box glass-panel" style="max-width: 440px;">
@@ -133,6 +253,65 @@
                     <button type="button" class="btn btn-outline" id="reset-cancel-btn">Cancel</button>
                     <button type="submit" class="btn btn-primary" id="reset-submit-btn" style="background: var(--accent-cyan); color: #000; font-weight: 600;">
                         <i class="fa-solid fa-check"></i> Update Password
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Delete Customer Confirmation Modal -->
+    <div class="modal-overlay" id="delete-customer-modal">
+        <div class="modal-box glass-panel" style="max-width: 440px; text-align: center;">
+            <div class="modal-icon" style="color: var(--accent-red); margin: 0 auto 12px; width: 54px; height: 54px; border-radius: 50%; background: rgba(239, 68, 68, 0.15); display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">
+                <i class="fa-solid fa-trash-can"></i>
+            </div>
+            <h2 style="color: #fff; font-size: 1.25rem; margin-bottom: 8px;">Delete Registered Customer</h2>
+            <p class="modal-sub" style="margin-bottom: 16px;">
+                Are you sure you want to delete customer <strong id="delete-cust-name-label" style="color: var(--accent-cyan);"></strong> (<span id="delete-cust-id-label"></span>)?
+            </p>
+            <div style="background: rgba(239, 68, 68, 0.08); border: 1px dashed rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 12px; margin-bottom: 20px; font-size: 0.82rem; color: #fca5a5; text-align: left; line-height: 1.4;">
+                <i class="fa-solid fa-circle-exclamation" style="margin-right: 6px;"></i>
+                This action will release any active trolley assignment and permanently remove this customer's account, login credentials, and wishlist history.
+            </div>
+            <div class="form-actions" style="display: flex; gap: 10px; justify-content: center;">
+                <button type="button" class="btn btn-outline" id="delete-cust-cancel-btn" style="flex: 1;">Cancel</button>
+                <button type="button" class="btn btn-danger" id="delete-cust-confirm-btn" style="flex: 1; background: var(--accent-red); border: none; color: #fff;">
+                    <i class="fa-solid fa-trash-can" style="margin-right: 6px;"></i> Delete Customer
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Register Customer Modal -->
+    <div class="modal-overlay" id="add-customer-modal">
+        <div class="modal-box glass-panel" style="max-width: 480px;">
+            <div class="modal-icon" style="color: var(--accent-cyan);">
+                <i class="fa-solid fa-user-plus"></i>
+            </div>
+            <h2>Register New Customer</h2>
+            <p class="modal-sub">Add a shopper account for smart trolley shopping and rewards</p>
+            
+            <form id="add-customer-form" class="register-form" style="margin-top: 15px;">
+                <div class="form-group">
+                    <label>Full Name *</label>
+                    <input type="text" id="add-cust-name" required placeholder="e.g. Ramesh Kumar" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label>Mobile Number (10 Digits) *</label>
+                    <input type="tel" id="add-cust-phone" required placeholder="e.g. 9876543210" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label>Email Address (Optional)</label>
+                    <input type="email" id="add-cust-email" placeholder="e.g. customer@gmail.com" class="form-input" pattern="^[a-zA-Z0-9_.+-]+@gmail\.com$" title="Must be a valid Gmail address in the form of example@gmail.com">
+                </div>
+                <div class="form-group">
+                    <label>Customer ID (Optional - Auto-generated if blank)</label>
+                    <input type="text" id="add-cust-id" placeholder="e.g. CUST-1008" class="form-input" style="text-transform: uppercase;">
+                </div>
+                <div class="form-actions" style="margin-top: 20px;">
+                    <button type="button" class="btn btn-outline" id="add-cust-cancel-btn">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="add-cust-submit-btn" style="background: var(--grad-primary);">
+                        <i class="fa-solid fa-check"></i> Register Customer
                     </button>
                 </div>
             </form>
