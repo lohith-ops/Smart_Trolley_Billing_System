@@ -579,6 +579,54 @@ DEFAULT_USERS = [
     }
 ]
 
+DEFAULT_EMPLOYEES = [
+    {
+        "id":       "EMP-001",
+        "username": "admin",
+        "name":     "System Administrator",
+        "role":     "Admin",
+        "email":    "llohithacharya@gmail.com",
+        "shift":    "General (09:00 AM - 06:00 PM)",
+        "status":   "Active"
+    },
+    {
+        "id":       "EMP-002",
+        "username": "manager",
+        "name":     "Store Manager",
+        "role":     "Manager",
+        "email":    "llohithacharya@gmail.com",
+        "shift":    "Morning (08:00 AM - 04:00 PM)",
+        "status":   "Active"
+    },
+    {
+        "id":       "EMP-003",
+        "username": "cashier",
+        "name":     "Billing Cashier",
+        "role":     "Cashier",
+        "email":    "llohithacharya@gmail.com",
+        "shift":    "Morning (08:00 AM - 04:00 PM)",
+        "status":   "Active"
+    },
+    {
+        "id":       "EMP-004",
+        "username": "inventory",
+        "name":     "Inventory Incharge",
+        "role":     "Inventory Incharge",
+        "email":    "llohithacharya@gmail.com",
+        "shift":    "General (09:00 AM - 06:00 PM)",
+        "status":   "Active"
+    },
+    {
+        "id":       "EMP-005",
+        "username": "staff",
+        "name":     "Store Staff",
+        "role":     "Store Staff",
+        "email":    "llohithacharya@gmail.com",
+        "shift":    "Evening (02:00 PM - 10:00 PM)",
+        "status":   "Active"
+    }
+]
+
 def init_users():
     """Seed default administrative & staff users on startup and sync existing employees."""
     for u in DEFAULT_USERS:
@@ -644,6 +692,17 @@ def init_users():
                         users_collection.update_one({"username": uname}, {"$set": {"email": emp_email}})
     except Exception as ex:
         print(f"[AUTH WARN] Error auto-syncing employee accounts: {ex}")
+
+    # Seed default employees in db['employees']
+    try:
+        employees_collection = db["employees"]
+        for de in DEFAULT_EMPLOYEES:
+            existing_emp = employees_collection.find_one({"$or": [{"id": de["id"]}, {"username": de["username"]}]})
+            if not existing_emp:
+                employees_collection.update_one({"id": de["id"]}, {"$set": dict(de)}, upsert=True)
+                print(f"[AUTH] Seeded default employee: {de['name']} ({de['id']})")
+    except Exception as ex:
+        print(f"[AUTH WARN] Error seeding default employees: {ex}")
 
 def generate_token(user):
     """Generate signed JWT token valid for JWT_EXPIRATION_HOURS."""
@@ -1524,8 +1583,10 @@ def auth_register():
     if len(password) < 6:
         return jsonify({"success": False, "message": "Password must be at least 6 characters long."}), 400
 
-    if role not in ["admin", "manager", "cashier", "customer"]:
+    norm_role = normalize_role(role)
+    if norm_role not in ["admin", "manager", "cashier", "inventory", "staff", "customer"]:
         return jsonify({"success": False, "message": "Invalid role specified."}), 400
+    user_role = norm_role
 
     if email and not EMAIL_REGEX.match(email):
         return jsonify({"success": False, "message": "Please enter a valid email address in the form of example@gmail.com."}), 400
@@ -1538,12 +1599,43 @@ def auth_register():
         "username":      username,
         "password_hash": generate_password_hash(password),
         "name":          name,
-        "role":          role,
+        "role":          user_role,
         "email":         email,
         "phone":         phone,
         "created_at":    time.time(),
         "status":        "Active"
     })
+
+    # If new user has a staff role, also sync into employees_collection
+    if user_role in ["admin", "manager", "cashier", "inventory", "staff"]:
+        try:
+            employees_collection = db["employees"]
+            existing_emp = employees_collection.find_one({"$or": [{"username": username}, {"email": email} if email else {"_id": None}]})
+            if not existing_emp:
+                existing_ids = {e.get("id", "").upper() for e in employees_collection.find({}, {"id": 1})}
+                next_num = len(existing_ids) + 1
+                new_id = f"EMP-{next_num:03d}"
+                while new_id in existing_ids:
+                    next_num += 1
+                    new_id = f"EMP-{next_num:03d}"
+                role_label = {
+                    "admin": "Admin",
+                    "manager": "Manager",
+                    "cashier": "Cashier",
+                    "inventory": "Inventory Incharge",
+                    "staff": "Store Staff"
+                }.get(user_role, "Store Staff")
+                employees_collection.insert_one({
+                    "id":       new_id,
+                    "username": username,
+                    "name":     name,
+                    "role":     role_label,
+                    "email":    email,
+                    "shift":    "Morning (08:00 AM - 04:00 PM)",
+                    "status":   "Active"
+                })
+        except Exception as e_sync:
+            print(f"[AUTH WARN] Could not sync registered user to employees: {e_sync}")
 
     return jsonify({"success": True, "message": f"User '{username}' ({role}) registered successfully."})
 
@@ -1850,7 +1942,9 @@ def send_otp_email_via_http(to_email, otp_code, recipient_name="Customer", cfg=N
     # 1. Try Brevo (Sendinblue) HTTP API (Port 443)
     if brevo_key:
         try:
-            sender_email = (cfg.get("smtpUser") or os.environ.get("SMTP_EMAIL", "billing@smartsupermarket.com")).strip()
+            sender_email = (cfg.get("smtpUser") or os.environ.get("SMTP_EMAIL", "llohithacharya@gmail.com")).strip()
+            if not sender_email or "@" not in sender_email:
+                sender_email = "llohithacharya@gmail.com"
             payload = json.dumps({
                 "sender": {"name": store_name, "email": sender_email},
                 "to": [{"email": to_email, "name": recipient_name}],
@@ -1919,9 +2013,7 @@ def send_otp_email(to_email, otp_code, recipient_name="Customer"):
         if http_ok:
             return True, http_msg
         else:
-            print(f"[EMAIL HTTP FAIL] {http_msg}")
-            if os.environ.get("RENDER") or os.environ.get("PORT"):
-                return False, http_msg
+            print(f"[EMAIL HTTP FAIL] {http_msg} - attempting fallback dispatch...")
 
     # 2. SMTP dispatch (Port 465 / 587)
     smtp_server = (cfg.get("smtpServer") or "smtp.gmail.com").strip()
@@ -2726,17 +2818,57 @@ def request_checkout_otp():
         "attempts":   0
     })
 
+    # Also lookup registered customer email to send checkout verification OTP via Email
+    cust_email = (data.get("email") or "").strip().lower()
+    cust_name = "Customer"
+
+    if not cust_email:
+        c = customers_collection.find_one({"phone": phone_digits})
+        if c and c.get("email"):
+            cust_email = c["email"].strip().lower()
+            cust_name = c.get("name", "Customer")
+
+    if not cust_email:
+        u = users_collection.find_one({"phone": phone_digits})
+        if u and u.get("email"):
+            cust_email = u["email"].strip().lower()
+            cust_name = u.get("name", "Customer")
+
+    if not cust_email:
+        trolley_doc = trolleys_collection.find_one({"_id": trolley_id})
+        if trolley_doc and trolley_doc.get("assigned_customer_email"):
+            cust_email = trolley_doc["assigned_customer_email"].strip().lower()
+            cust_name = trolley_doc.get("assigned_customer_name", "Customer")
+
     # Dispatch SMS in background
     threading.Thread(target=send_otp_sms, args=(phone_digits, otp), daemon=True).start()
 
+    # Dispatch Email in background if customer has a registered email
+    if cust_email:
+        threading.Thread(target=send_otp_email, args=(cust_email, otp, cust_name), daemon=True).start()
+
     masked_phone = f"******{phone_digits[-4:]}" if len(phone_digits) >= 4 else phone_digits
+    masked_email = ""
+    if cust_email and "@" in cust_email:
+        parts = cust_email.split("@")
+        masked_user = (parts[0][:2] + "***") if len(parts[0]) >= 2 else (parts[0] + "***")
+        masked_email = f"{masked_user}@{parts[1]}"
+
+    if masked_email:
+        display_target = f"{masked_phone} and {masked_email}"
+        resp_msg = f"Verification code sent to {display_target}."
+    else:
+        display_target = masked_phone
+        resp_msg = f"Verification code sent to {masked_phone}."
 
     return jsonify({
-        "success":      True,
-        "message":      f"Verification code sent to {masked_phone}.",
-        "trolley_id":   trolley_id,
-        "masked_phone": masked_phone,
-        "otp":          otp  # Demo mode fallback
+        "success":       True,
+        "message":       resp_msg,
+        "trolley_id":    trolley_id,
+        "masked_phone":  masked_phone,
+        "masked_email":  masked_email,
+        "masked_target": display_target,
+        "otp":           otp  # Demo mode fallback
     })
 
 @app.route("/api/cart/verify-and-pay", methods=["POST"])
@@ -4945,6 +5077,57 @@ def db_restore():
 @app.route("/api/employees", methods=["GET"])
 def get_employees():
     employees_collection = db["employees"]
+    
+    # Auto-seed default employees if collection is empty
+    try:
+        if employees_collection.count_documents({}) == 0:
+            for de in DEFAULT_EMPLOYEES:
+                employees_collection.update_one({"id": de["id"]}, {"$set": dict(de)}, upsert=True)
+    except Exception as ex:
+        print(f"[EMPLOYEES WARN] Error checking employee count: {ex}")
+
+    # Auto-sync any staff/admin users from users_collection into employees_collection
+    try:
+        staff_roles = ["admin", "manager", "cashier", "inventory", "staff", "inventory incharge", "store staff"]
+        users_list = list(users_collection.find({"role": {"$in": staff_roles}}, {"_id": 0}))
+        existing_emps = list(employees_collection.find({}, {"_id": 0}))
+        existing_unames = {e.get("username", "").lower() for e in existing_emps if e.get("username")}
+        existing_ids = {e.get("id", "").upper() for e in existing_emps if e.get("id")}
+
+        for u in users_list:
+            u_name = u.get("name") or u.get("username", "")
+            u_uname = (u.get("username") or "").lower()
+            if u_uname and u_uname not in existing_unames:
+                next_num = len(existing_ids) + 1
+                new_id = f"EMP-{next_num:03d}"
+                while new_id in existing_ids:
+                    next_num += 1
+                    new_id = f"EMP-{next_num:03d}"
+                existing_ids.add(new_id)
+                existing_unames.add(u_uname)
+
+                norm_r = normalize_role(u.get("role", "cashier"))
+                role_label = {
+                    "admin": "Admin",
+                    "manager": "Manager",
+                    "cashier": "Cashier",
+                    "inventory": "Inventory Incharge",
+                    "staff": "Store Staff"
+                }.get(norm_r, "Store Staff")
+
+                emp_doc = {
+                    "id":       new_id,
+                    "username": u_uname,
+                    "name":     u_name,
+                    "role":     role_label,
+                    "email":    u.get("email", ""),
+                    "shift":    "Morning (08:00 AM - 04:00 PM)",
+                    "status":   u.get("status", "Active")
+                }
+                employees_collection.update_one({"id": new_id}, {"$set": emp_doc}, upsert=True)
+    except Exception as ex:
+        print(f"[AUTH WARN] Error auto-syncing users to employees: {ex}")
+
     emps = list(employees_collection.find({}, {"_id": 0}))
     return jsonify(emps)
 

@@ -96,9 +96,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function fetchEmployees() {
         try {
-            const res = await fetch('/api/employees');
+            const fetchFn = window.authFetch || fetch;
+            const res = await fetchFn('/api/employees');
             if (res.ok) {
                 employees = await res.json();
+                if (els.staffBadgeCount) els.staffBadgeCount.textContent = employees.length;
                 renderEmployees();
             }
         } catch (e) {
@@ -109,6 +111,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderEmployees() {
         if (!els.container) return;
         els.container.innerHTML = '';
+        if (els.staffBadgeCount) els.staffBadgeCount.textContent = employees.length;
 
         if (employees.length === 0) {
             els.container.innerHTML = `
@@ -288,7 +291,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             try {
-                const res = await fetch(`/api/employees/${encodeURIComponent(empId)}/email`, {
+                const fetchFn = window.authFetch || fetch;
+                const res = await fetchFn(`/api/employees/${encodeURIComponent(empId)}/email`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email: newEmail })
@@ -366,7 +370,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            const res = await fetch('/api/employees', {
+            const fetchFn = window.authFetch || fetch;
+            const res = await fetchFn('/api/employees', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -401,7 +406,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             try {
-                const res = await fetch(`/api/employees/${encodeURIComponent(empId)}/password`, {
+                const fetchFn = window.authFetch || fetch;
+                const res = await fetchFn(`/api/employees/${encodeURIComponent(empId)}/password`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ password: newPassword })
