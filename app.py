@@ -1771,150 +1771,103 @@ def auth_update_profile():
     return jsonify({"success": True, "message": "Profile updated successfully.", "email": email})
 
 def find_user_by_identifier(identifier):
-    """Finds a user by username, email, phone number, or employee ID across users, employees, or customers."""
+    """Finds a user by username, email, phone number, employee ID, customer ID, or full name across users, employees, and customers."""
     if not identifier:
         return None
-    raw_ident = identifier.strip()
+    raw_ident = str(identifier).strip()
+    if not raw_ident:
+        return None
     ident = raw_ident.lower()
-    clean_phone = raw_ident.replace(" ", "").replace("-", "").replace("+91", "")
     
-    # 1. Try exact username match in users_collection
-    user = users_collection.find_one({"username": ident})
-    if user:
-        if not user.get("email"):
-            emp = db['employees'].find_one({
-                "$or": [
-                    {"username": ident},
-                    {"id": raw_ident.upper()},
-                    {"id": ident},
-                    {"name": user.get("name")}
-                ]
-            })
-            if emp and emp.get("email"):
-                users_collection.update_one({"_id": user["_id"]}, {"$set": {"email": emp["email"]}})
-                user["email"] = emp["email"]
-        return user
-    
-    # 2. Try email match in users_collection
-    user = users_collection.find_one({"email": ident})
-    if user:
-        return user
+    clean_digits = re.sub(r'\D', '', raw_ident)
+    if len(clean_digits) > 10 and clean_digits.startswith("91"):
+        clean_digits = clean_digits[2:]
+    elif len(clean_digits) == 11 and clean_digits.startswith("0"):
+        clean_digits = clean_digits[1:]
 
-    # 3. Try phone match in users_collection
-    user = users_collection.find_one({"phone": raw_ident})
-    if user:
-        return user
-        
-    # 4. Search all users for case-insensitive / normalized matches
-    all_users = list(users_collection.find({}))
-    for u in all_users:
-        u_username = (u.get("username") or "").lower()
-        u_email    = (u.get("email") or "").lower()
-        u_phone    = (u.get("phone") or "").replace(" ", "").replace("-", "").replace("+91", "")
-        if u_username == ident or (u_email and u_email == ident) or (clean_phone and u_phone == clean_phone):
-            if not u.get("email"):
-                emp = db['employees'].find_one({
-                    "$or": [
-                        {"username": u_username},
-                        {"id": raw_ident.upper()},
-                        {"name": u.get("name")}
-                    ]
-                })
-                if emp and emp.get("email"):
-                    users_collection.update_one({"_id": u["_id"]}, {"$set": {"email": emp["email"]}})
-                    u["email"] = emp["email"]
-            return u
+    # 1. Search users_collection (case-insensitive & whitespace trimmed)
+    try:
+        for u in users_collection.find({}):
+            u_uname = (u.get("username") or "").strip().lower()
+            u_email = (u.get("email") or "").strip().lower()
+            u_name  = (u.get("name") or "").strip().lower()
+            u_phone = re.sub(r'\D', '', str(u.get("phone") or ""))
+            if len(u_phone) > 10 and u_phone.startswith("91"):
+                u_phone = u_phone[2:]
+            elif len(u_phone) == 11 and u_phone.startswith("0"):
+                u_phone = u_phone[1:]
 
-    # 5. Search in db['employees'] to support staff registered via Employee Management
-    emp = db['employees'].find_one({
-        "$or": [
-            {"id": raw_ident.upper()},
-            {"id": raw_ident},
-            {"id": ident},
-            {"username": ident},
-            {"email": ident}
-        ]
-    })
-    if not emp:
-        # Also try case-insensitive regex for name or ID
-        emp = db['employees'].find_one({
-            "$or": [
-                {"name": {"$regex": f"^{re.escape(raw_ident)}$", "$options": "i"}},
-                {"id": {"$regex": f"^{re.escape(raw_ident)}$", "$options": "i"}}
-            ]
-        })
+            if (ident == u_uname or
+                (u_email and ident == u_email) or
+                (u_name and ident == u_name) or
+                (clean_digits and u_phone and clean_digits == u_phone)):
+                return u
+    except Exception as ex:
+        print(f"[AUTH WARN] Error searching users_collection: {ex}")
 
-    if emp:
-        emp_id = (emp.get("id") or "").strip()
-        emp_uname = (emp.get("username") or emp_id.lower()).strip().lower()
-        emp_email = (emp.get("email") or "").strip().lower()
-        emp_name = emp.get("name") or emp_uname
-        emp_role = (emp.get("role") or "cashier").strip().lower()
-        emp_role = normalize_role(emp.get("role"))
+    # 2. Search db['employees']
+    try:
+        for emp in db['employees'].find({}):
+            e_id    = str(emp.get("id") or "").strip().lower()
+            e_uname = (emp.get("username") or "").strip().lower()
+            e_email = (emp.get("email") or "").strip().lower()
+            e_name  = (emp.get("name") or "").strip().lower()
 
-        # Search for corresponding user in users_collection
-        linked_user = users_collection.find_one({
-            "$or": [
-                {"username": emp_uname},
-                {"username": emp_id.lower()},
-                {"id": emp_id},
-                {"email": emp_email} if emp_email else {"_id": None},
-                {"name": emp_name}
-            ]
-        })
-        if linked_user:
-            if emp_email and linked_user.get("email") != emp_email:
-                users_collection.update_one(
-                    {"_id": linked_user["_id"]},
-                    {"$set": {"email": emp_email, "updated_at": time.time()}}
-                )
-                linked_user["email"] = emp_email
-            return linked_user
-        else:
-            # Create user document for this employee
-            new_emp_user = {
-                "username":      emp_uname or emp_id.lower(),
-                "password_hash": generate_password_hash(f"{emp_uname}123"),
-                "name":          emp_name,
-                "role":          emp_role,
-                "email":         emp_email,
-                "status":        emp.get("status", "Active"),
-                "created_at":    time.time()
-            }
-            users_collection.insert_one(new_emp_user)
-            return new_emp_user
+            if (ident == e_id or
+                ident == e_uname or
+                (e_email and ident == e_email) or
+                (e_name and ident == e_name)):
+                target_uname = e_uname or e_id
+                norm_r = normalize_role(emp.get("role", "cashier"))
+                user_doc = {
+                    "username":      target_uname,
+                    "password_hash": generate_password_hash(f"{target_uname}123"),
+                    "name":          emp.get("name", target_uname),
+                    "role":          norm_r,
+                    "email":         e_email,
+                    "status":        emp.get("status", "Active"),
+                    "created_at":    time.time()
+                }
+                users_collection.update_one({"username": target_uname}, {"$set": user_doc}, upsert=True)
+                return users_collection.find_one({"username": target_uname})
+    except Exception as ex:
+        print(f"[AUTH WARN] Error searching db['employees']: {ex}")
 
-    # 6. Search in customers_collection to support shoppers registered via Customer Hub
-    cust = customers_collection.find_one({
-        "$or": [
-            {"id": raw_ident},
-            {"customer_id": raw_ident},
-            {"email": ident},
-            {"phone": clean_phone or raw_ident}
-        ]
-    })
-    if cust:
-        c_username = (cust.get("id") or cust.get("customer_id") or f"cust_{clean_phone}").lower()
-        linked_user = users_collection.find_one({"$or": [{"username": c_username}, {"email": cust.get("email")}, {"phone": cust.get("phone")}]})
-        if linked_user:
-            if cust.get("email") and linked_user.get("email") != cust.get("email"):
-                users_collection.update_one({"_id": linked_user["_id"]}, {"$set": {"email": cust.get("email")}})
-                linked_user["email"] = cust.get("email")
-            return linked_user
-        else:
-            # Create synced user record for this customer
-            new_cust_user = {
-                "username":      c_username,
-                "password_hash": generate_password_hash("customer123"),
-                "name":          cust.get("name", "Customer"),
-                "role":          "customer",
-                "email":         cust.get("email", ""),
-                "phone":         cust.get("phone", ""),
-                "created_at":    time.time(),
-                "status":        "Active"
-            }
-            users_collection.insert_one(new_cust_user)
-            return new_cust_user
+    # 3. Search customers_collection (supports shoppers registered via Customer Hub or employees page)
+    try:
+        for cust in customers_collection.find({}):
+            c_id    = str(cust.get("id") or "").strip().lower()
+            c_cid   = str(cust.get("customer_id") or "").strip().lower()
+            c_uname = (cust.get("username") or "").strip().lower()
+            c_email = (cust.get("email") or "").strip().lower()
+            c_name  = (cust.get("name") or "").strip().lower()
+            c_phone = re.sub(r'\D', '', str(cust.get("phone") or ""))
+            if len(c_phone) > 10 and c_phone.startswith("91"):
+                c_phone = c_phone[2:]
+            elif len(c_phone) == 11 and c_phone.startswith("0"):
+                c_phone = c_phone[1:]
+
+            if (ident == c_id or
+                ident == c_cid or
+                ident == c_uname or
+                (c_email and ident == c_email) or
+                (c_name and ident == c_name) or
+                (clean_digits and c_phone and clean_digits == c_phone)):
+                target_uname = c_uname or c_id or c_cid or (f"cust_{clean_digits}" if clean_digits else "customer")
+                user_doc = {
+                    "username":      target_uname,
+                    "password_hash": generate_password_hash("customer123"),
+                    "name":          cust.get("name", "Customer"),
+                    "role":          "customer",
+                    "email":         c_email,
+                    "phone":         cust.get("phone", ""),
+                    "status":        cust.get("status", "Active"),
+                    "created_at":    time.time()
+                }
+                users_collection.update_one({"username": target_uname}, {"$set": user_doc}, upsert=True)
+                return users_collection.find_one({"username": target_uname})
+    except Exception as ex:
+        print(f"[AUTH WARN] Error searching customers_collection: {ex}")
 
     return None
 
@@ -3637,7 +3590,7 @@ def register_customer():
         "customer_id":      cust_id,
         "name":             name,
         "phone":            phone,
-        "email":            email,
+        "email":            email.lower().strip() if email else "",
         "assigned_trolley": None,
         "total_spent":      0.0,
         "total_visits":     0,
@@ -3645,6 +3598,24 @@ def register_customer():
         "created_at":       time.time()
     }
     customers_collection.insert_one(cust_doc)
+
+    # Automatically ensure corresponding customer record exists in users_collection
+    c_uname = cust_id.lower()
+    users_collection.update_one(
+        {"username": c_uname},
+        {"$set": {
+            "username":      c_uname,
+            "password_hash": generate_password_hash(f"{c_uname}123"),
+            "name":          name,
+            "role":          "customer",
+            "email":         email.lower().strip() if email else "",
+            "phone":         phone,
+            "status":        "Active",
+            "created_at":    time.time()
+        }},
+        upsert=True
+    )
+
     doc_copy = dict(cust_doc)
     doc_copy.pop("_id", None)
     return jsonify({"success": True, "message": "Customer registered successfully", "customer": doc_copy}), 201
