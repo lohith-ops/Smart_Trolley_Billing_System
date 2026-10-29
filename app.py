@@ -2033,23 +2033,21 @@ body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helv
         msg.attach(MIMEText(plain_text, "plain"))
         msg.attach(MIMEText(html_content, "html"))
 
-        # Try primary configured port, and fallback between 465 (SMTPS) and 587 (STARTTLS)
-        ports_to_try = [smtp_port]
-        if 465 not in ports_to_try:
-            ports_to_try.append(465)
-        if 587 not in ports_to_try:
-            ports_to_try.append(587)
+        # Try primary configured port with quick timeout to prevent hanging cloud HTTP threads
+        is_cloud_env = bool(os.environ.get("RENDER") or os.environ.get("PORT") or os.environ.get("DYNO"))
+        conn_timeout = 3 if is_cloud_env else 8
+        ports_to_try = [smtp_port] if is_cloud_env else ([smtp_port] + [p for p in [465, 587] if p != smtp_port])
 
         last_error = None
         for port in ports_to_try:
             try:
                 context = ssl.create_default_context()
                 if port == 465:
-                    with smtplib.SMTP_SSL(smtp_server, port, context=context, timeout=12) as server:
+                    with smtplib.SMTP_SSL(smtp_server, port, context=context, timeout=conn_timeout) as server:
                         server.login(smtp_user, smtp_pass)
                         server.sendmail(smtp_user, to_email, msg.as_string())
                 else:
-                    with smtplib.SMTP(smtp_server, port, timeout=12) as server:
+                    with smtplib.SMTP(smtp_server, port, timeout=conn_timeout) as server:
                         server.starttls(context=context)
                         server.login(smtp_user, smtp_pass)
                         server.sendmail(smtp_user, to_email, msg.as_string())
